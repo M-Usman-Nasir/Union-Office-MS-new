@@ -1,0 +1,349 @@
+import { query } from '../config/database.js';
+
+// Get all complaints
+export const getAll = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, society_id, status, priority, assigned_to } = req.query;
+    const offset = (page - 1) * limit;
+
+    let sql = `
+      SELECT c.*, u.unit_number, s.name as society_name, 
+             submitter.name as submitted_by_name, assignee.name as assigned_to_name
+      FROM complaints c
+      LEFT JOIN units u ON c.unit_id = u.id
+      LEFT JOIN societies s ON c.society_apartment_id = s.id
+      LEFT JOIN users submitter ON c.submitted_by = submitter.id
+      LEFT JOIN users assignee ON c.assigned_to = assignee.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramCount = 0;
+
+    // Residents can only see their own complaints
+    if (req.user.role === 'resident') {
+      paramCount++;
+      sql += ` AND c.submitted_by = $${paramCount}`;
+      params.push(req.user.id);
+    }
+
+    if (society_id) {
+      paramCount++;
+      sql += ` AND c.society_apartment_id = $${paramCount}`;
+      params.push(society_id);
+    }
+
+    if (status) {
+      paramCount++;
+      sql += ` AND c.status = $${paramCount}`;
+      params.push(status);
+    }
+
+    if (priority) {
+      paramCount++;
+      sql += ` AND c.priority = $${paramCount}`;
+      params.push(priority);
+    }
+
+    if (assigned_to) {
+      paramCount++;
+      sql += ` AND c.assigned_to = $${paramCount}`;
+      params.push(assigned_to);
+    }
+
+    sql += ` ORDER BY c.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+    params.push(limit, offset);
+
+    const result = await query(sql, params);
+
+    // Get total count
+    let countSql = 'SELECT COUNT(*) FROM complaints WHERE 1=1';
+    const countParams = [];
+    let countParamCount = 0;
+
+    if (req.user.role === 'resident') {
+      countParamCount++;
+      countSql += ` AND submitted_by = $${countParamCount}`;
+      countParams.push(req.user.id);
+    }
+    if (society_id) {
+      countParamCount++;
+      countSql += ` AND society_apartment_id = $${countParamCount}`;
+      countParams.push(society_id);
+    }
+    if (status) {
+      countParamCount++;
+      countSql += ` AND status = $${countParamCount}`;
+      countParams.push(status);
+    }
+    if (priority) {
+      countParamCount++;
+      countSql += ` AND priority = $${countParamCount}`;
+      countParams.push(priority);
+    }
+    if (assigned_to) {
+      countParamCount++;
+      countSql += ` AND assigned_to = $${countParamCount}`;
+      countParams.push(assigned_to);
+    }
+
+    const countResult = await query(countSql, countParams);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: parseInt(countResult.rows[0].count),
+        pages: Math.ceil(countResult.rows[0].count / limit),
+      },
+    });
+  } catch (error) {
+    console.error('Get complaints error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch complaints',
+      error: error.message,
+    });
+  }
+};
+
+// Get complaint by ID
+export const getById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      `SELECT c.*, u.unit_number, s.name as society_name,
+              submitter.name as submitted_by_name, assignee.name as assigned_to_name
+       FROM complaints c
+       LEFT JOIN units u ON c.unit_id = u.id
+       LEFT JOIN societies s ON c.society_apartment_id = s.id
+       LEFT JOIN users submitter ON c.submitted_by = submitter.id
+       LEFT JOIN users assignee ON c.assigned_to = assignee.id
+       WHERE c.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    // Check if resident is trying to access someone else's complaint
+    if (req.user.role === 'resident' && result.rows[0].submitted_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Get complaint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch complaint',
+      error: error.message,
+    });
+  }
+};
+
+// Create complaint
+export const create = async (req, res) => {
+  try {
+    const { unit_id, society_apartment_id, title, description, priority, is_public } = req.body;
+
+    if (!society_apartment_id || !title || !description) {
+      return res.status(400).json({
+        success: false,
+        message: 'Society ID, title, and description are required',
+      });
+    }
+
+    const result = await query(
+      `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, title, description, priority, is_public, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+       RETURNING *`,
+      [
+        unit_id || null,
+        society_apartment_id,
+        req.user.id,
+        title,
+        description,
+        priority || 'medium',
+        is_public || false,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Complaint submitted successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Create complaint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit complaint',
+      error: error.message,
+    });
+  }
+};
+
+// Update complaint
+export const update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, priority, status, assigned_to, is_public } = req.body;
+
+    const existing = await query('SELECT * FROM complaints WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    // Residents can only update their own complaints (limited fields)
+    if (req.user.role === 'resident') {
+      if (existing.rows[0].submitted_by !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only update your own complaints',
+        });
+      }
+      // Residents can only update title, description, priority
+      const result = await query(
+        `UPDATE complaints 
+         SET title = COALESCE($1, title),
+             description = COALESCE($2, description),
+             priority = COALESCE($3, priority),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4
+         RETURNING *`,
+        [title, description, priority, id]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Complaint updated successfully',
+        data: result.rows[0],
+      });
+    }
+
+    // Admins can update all fields
+    const result = await query(
+      `UPDATE complaints 
+       SET title = COALESCE($1, title),
+           description = COALESCE($2, description),
+           priority = COALESCE($3, priority),
+           status = COALESCE($4, status),
+           assigned_to = COALESCE($5, assigned_to),
+           is_public = COALESCE($6, is_public),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7
+       RETURNING *`,
+      [title, description, priority, status, assigned_to, is_public, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Complaint updated successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Update complaint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update complaint',
+      error: error.message,
+    });
+  }
+};
+
+// Update complaint status
+export const updateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'in_progress', 'resolved', 'closed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be: pending, in_progress, resolved, or closed',
+      });
+    }
+
+    const result = await query(
+      `UPDATE complaints 
+       SET status = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Complaint status updated successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Update complaint status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update complaint status',
+      error: error.message,
+    });
+  }
+};
+
+// Delete complaint
+export const remove = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await query('SELECT submitted_by FROM complaints WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    // Residents can only delete their own complaints
+    if (req.user.role === 'resident' && existing.rows[0].submitted_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only delete your own complaints',
+      });
+    }
+
+    const result = await query('DELETE FROM complaints WHERE id = $1 RETURNING id', [id]);
+
+    res.json({
+      success: true,
+      message: 'Complaint deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete complaint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete complaint',
+      error: error.message,
+    });
+  }
+};

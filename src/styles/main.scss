@@ -1,0 +1,71 @@
+// Main SCSS file - Import all styles
+@use './variables' as *;
+
+// Global styles
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: $font-family-primary;
+  font-size: $font-size-base;
+  line-height: $line-height-normal;
+  color: $text-primary;
+  background-color: $background-color;
+  margin: 0;
+  padding: 0;
+}
+
+// Utility classes
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 $spacing-md;
+  
+  @media (min-width: $breakpoint-lg) {
+    padding: 0 $spacing-xl;
+  }
+}
+
+// Scrollbar styling
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: $surface-color;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $border-color;
+  border-radius: $border-radius-full;
+  
+  &:hover {
+    background: $text-secondary;
+  }
+}
+
+// Focus styles
+*:focus-visible {
+  outline: 2px solid $primary-color;
+  outline-offset: 2px;
+}
+
+// Print styles
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

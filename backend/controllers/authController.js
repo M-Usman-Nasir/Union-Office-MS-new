@@ -1,0 +1,273 @@
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { query } from '../config/database.js';
+
+// Generate JWT tokens
+const generateTokens = (userId) => {
+  const accessToken = jwt.sign(
+    { userId },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+  );
+
+  const refreshToken = jwt.sign(
+    { userId },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
+  );
+
+  return { accessToken, refreshToken };
+};
+
+// Login
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required',
+      });
+    }
+
+    // Find user
+    const result = await query(
+      'SELECT id, email, password, name, role, society_apartment_id, unit_id, is_active FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
+    }
+
+    const user = result.rows[0];
+
+    // Check if user is active
+    if (!user.is_active) {
+      return res.status(401).json({
+        success: false,
+        message: 'Account is inactive. Please contact administrator',
+      });
+    }
+
+    // Verify password
+    // Note: In production, password should be hashed. For now, we'll check if it matches
+    // TODO: Implement proper password hashing when creating users
+    const isPasswordValid = await bcrypt.compare(password, user.password) || password === user.password;
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
+    }
+
+    // Update last login
+    await query(
+      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
+      [user.id]
+    );
+
+    // Generate tokens
+    const { accessToken, refreshToken } = generateTokens(user.id);
+
+    // Set refresh token in httpOnly cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Return user data (without password) and access token
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: userWithoutPassword,
+        accessToken,
+      },
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Login failed',
+      error: error.message,
+    });
+  }
+};
+
+// Register (for super admin to create users)
+export const register = async (req, res) => {
+  try {
+    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number } = req.body;
+
+    // Validation
+    if (!email || !password || !name || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, password, name, and role are required',
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await query(
+      'SELECT id FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists',
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
+    const result = await query(
+      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, email, name, role, society_apartment_id, unit_id, created_at`,
+      [
+        email.toLowerCase(),
+        hashedPassword,
+        name,
+        role,
+        society_apartment_id || null,
+        unit_id || null,
+        cnic || null,
+        contact_number || null,
+        req.user?.id || null,
+      ]
+    );
+
+    const newUser = result.rows[0];
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: newUser,
+    });
+  } catch (error) {
+    console.error('Register error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed',
+      error: error.message,
+    });
+  }
+};
+
+// Get current user
+export const getMe = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, 
+              emergency_contact, move_in_date, created_at, last_login
+       FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Get me error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user information',
+      error: error.message,
+    });
+  }
+};
+
+// Refresh token
+export const refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token required',
+      });
+    }
+
+    // Verify refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+    // Check if user exists and is active
+    const result = await query(
+      'SELECT id FROM users WHERE id = $1 AND is_active = true',
+      [decoded.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid refresh token',
+      });
+    }
+
+    // Generate new access token
+    const accessToken = jwt.sign(
+      { userId: decoded.userId },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+    );
+
+    res.json({
+      success: true,
+      data: { accessToken },
+    });
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired refresh token',
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Token refresh failed',
+      error: error.message,
+    });
+  }
+};
+
+// Logout
+export const logout = async (req, res) => {
+  try {
+    // Clear refresh token cookie
+    res.clearCookie('refreshToken');
+    
+    res.json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Logout failed',
+      error: error.message,
+    });
+  }
+};

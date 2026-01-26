@@ -16,6 +16,15 @@
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
+  margin-bottom: 0.5rem;
+  color: #1a1a1a;
+}
+
+.subtitle {
+  font-size: 1.2em;
+  color: #666;
+  margin-bottom: 2rem;
+  font-weight: 300;
 }
 
 .card {
@@ -30,12 +39,14 @@ button {
   font-weight: 500;
   font-family: inherit;
   background-color: #1a1a1a;
+  color: #ffffff;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: border-color 0.25s, background-color 0.25s;
 }
 
 button:hover {
   border-color: #646cff;
+  background-color: #2a2a2a;
 }
 
 button:focus,
@@ -45,4 +56,11 @@ button:focus-visible {
 
 .read-the-docs {
   color: #888;
+  margin-top: 2rem;
+}
+
+@media (prefers-color-scheme: light) {
+  h1 {
+    color: #213547;
+  }
 }
