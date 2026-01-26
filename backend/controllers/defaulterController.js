@@ -7,12 +7,11 @@ export const getAll = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let sql = `
-      SELECT d.*, u.unit_number, u.owner_name, s.name as society_name,
-             r.name as resident_name, r.contact_number as resident_contact
+      SELECT d.*, u.unit_number, u.owner_name, u.resident_name, u.contact_number as resident_contact,
+             s.name as society_name
       FROM defaulters d
       LEFT JOIN units u ON d.unit_id = u.id
       LEFT JOIN societies s ON d.society_apartment_id = s.id
-      LEFT JOIN users r ON d.resident_id = r.id
       WHERE 1=1
     `;
     const params = [];
@@ -30,7 +29,7 @@ export const getAll = async (req, res) => {
       params.push(status);
     }
 
-    sql += ` ORDER BY d.days_overdue DESC, d.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+    sql += ` ORDER BY d.months_overdue DESC, d.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
     const result = await query(sql, params);
@@ -82,9 +81,10 @@ export const getStatistics = async (req, res) => {
       SELECT 
         COUNT(*) as total_defaulters,
         SUM(amount_due) as total_amount_due,
-        AVG(days_overdue) as avg_days_overdue,
+        AVG(months_overdue) as avg_months_overdue,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active_count,
-        COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved_count
+        COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved_count,
+        COUNT(CASE WHEN status = 'escalated' THEN 1 END) as escalated_count
       FROM defaulters
       WHERE 1=1
     `;

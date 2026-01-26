@@ -12,7 +12,8 @@
     "check:port": "node scripts/checkPort.js",
     "find:port": "node scripts/findPostgresPort.js",
     "hash:password": "node scripts/hashPassword.js",
-    "migrate:lastlogin": "node scripts/addLastLoginColumn.js"
+    "migrate:lastlogin": "node scripts/addLastLoginColumn.js",
+    "seed": "node scripts/seedDatabase.js"
   },
   "keywords": ["express", "postgresql", "api"],
   "author": "",

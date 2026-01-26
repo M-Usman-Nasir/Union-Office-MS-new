@@ -65,7 +65,7 @@ export const API_ENDPOINTS = {
   // Defaulters
   DEFAULTERS: '/defaulters',
   DEFAULTERS_STATISTICS: '/defaulters/statistics',
-  DEFaulter_STATUS: (id) => `/defaulters/${id}/status`,
+  DEFAULTER_STATUS: (id) => `/defaulters/${id}/status`,
   
   // Announcements
   ANNOUNCEMENTS: '/announcements',
@@ -120,6 +120,7 @@ export const ROUTES = {
   RESIDENT_COMPLAINTS: '/resident/complaints',
   RESIDENT_MAINTENANCE: '/resident/maintenance',
   RESIDENT_PROFILE: '/resident/profile',
+  RESIDENT_UNION_INFO: '/resident/union-info',
 }
 
 // Date Formats

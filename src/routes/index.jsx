@@ -6,14 +6,32 @@ import { ROLES, ROUTES } from '@/utils/constants'
 // Import pages
 import LoginPage from '@/pages/auth/LoginPage'
 import SuperAdminDashboard from '@/pages/super-admin/Dashboard'
+import Societies from '@/pages/super-admin/Societies'
+import Blocks from '@/pages/super-admin/Blocks'
+import Floors from '@/pages/super-admin/Floors'
+import Units from '@/pages/super-admin/Units'
 import AdminDashboard from '@/pages/admin/Dashboard'
+import Residents from '@/pages/admin/Residents'
+import Maintenance from '@/pages/admin/Maintenance'
+import Finance from '@/pages/admin/Finance'
+import Complaints from '@/pages/admin/Complaints'
+import Defaulters from '@/pages/admin/Defaulters'
+import Announcements from '@/pages/admin/Announcements'
+import Users from '@/pages/admin/Users'
+import Settings from '@/pages/admin/Settings'
 import ResidentDashboard from '@/pages/resident/Dashboard'
+import ResidentComplaints from '@/pages/resident/Complaints'
+import ResidentMaintenance from '@/pages/resident/Maintenance'
+import ResidentProfile from '@/pages/resident/Profile'
+import UnionInfo from '@/pages/resident/UnionInfo'
+import Offline from '@/pages/error/Offline'
 
 export const AppRoutes = () => {
   return (
     <Routes>
       {/* Public Routes */}
       <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+      <Route path="/offline" element={<Offline />} />
       
       {/* Super Admin Routes */}
       <Route
@@ -23,10 +41,10 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<SuperAdminDashboard />} />
-                <Route path="societies" element={<div>Societies Management</div>} />
-                <Route path="blocks" element={<div>Blocks Management</div>} />
-                <Route path="floors" element={<div>Floors Management</div>} />
-                <Route path="units" element={<div>Units Management</div>} />
+                <Route path="societies" element={<Societies />} />
+                <Route path="blocks" element={<Blocks />} />
+                <Route path="floors" element={<Floors />} />
+                <Route path="units" element={<Units />} />
               </Routes>
             </MainLayout>
           </ProtectedRoute>
@@ -41,14 +59,14 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<AdminDashboard />} />
-                <Route path="residents" element={<div>Residents Management</div>} />
-                <Route path="maintenance" element={<div>Maintenance Management</div>} />
-                <Route path="finance" element={<div>Finance Management</div>} />
-                <Route path="defaulters" element={<div>Defaulters Management</div>} />
-                <Route path="complaints" element={<div>Complaints Management</div>} />
-                <Route path="announcements" element={<div>Announcements Management</div>} />
-                <Route path="settings" element={<div>Settings</div>} />
-                <Route path="users" element={<div>Users Management</div>} />
+                <Route path="residents" element={<Residents />} />
+                <Route path="maintenance" element={<Maintenance />} />
+                <Route path="finance" element={<Finance />} />
+                <Route path="defaulters" element={<Defaulters />} />
+                <Route path="complaints" element={<Complaints />} />
+                <Route path="announcements" element={<Announcements />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="users" element={<Users />} />
               </Routes>
             </MainLayout>
           </ProtectedRoute>
@@ -63,9 +81,10 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<ResidentDashboard />} />
-                <Route path="complaints" element={<div>My Complaints</div>} />
-                <Route path="maintenance" element={<div>My Maintenance</div>} />
-                <Route path="profile" element={<div>My Profile</div>} />
+                <Route path="complaints" element={<ResidentComplaints />} />
+                <Route path="maintenance" element={<ResidentMaintenance />} />
+                <Route path="union-info" element={<UnionInfo />} />
+                <Route path="profile" element={<ResidentProfile />} />
               </Routes>
             </MainLayout>
           </ProtectedRoute>

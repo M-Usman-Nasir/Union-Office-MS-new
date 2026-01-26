@@ -1,36 +1,194 @@
-# Homeland Union
+# 🏠 Homeland Union - Apartment Management System
 
-**Apartment/Residential Complex Management System - Progressive Web App (PWA)**
+A comprehensive Progressive Web Application (PWA) for managing apartment/residential complexes with role-based access control.
 
-## Project Overview
+## 🚀 Quick Start
 
-Homeland Union is a modern web application designed for managing apartment buildings and residential complexes. Built as a Progressive Web App (PWA), it provides a seamless experience across desktop and mobile devices.
-
-## Technology Stack
-
-- **Language**: JavaScript (ES6+)
-- **Framework**: React 18.2.0
-- **Build Tool**: Vite 5.0.8
-- **PWA Support**: vite-plugin-pwa
-- **Code Quality**: ESLint
-
-## Features
-
-- ✅ Progressive Web App (PWA) - Installable on mobile and desktop
-- ✅ Offline support with service workers
-- ✅ Responsive design
-- ✅ Fast development with Vite HMR
-- ✅ Modern React 18 features
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (version 16 or higher)
-- npm or yarn
-
-### Installation
-
-Install dependencies:
-
+```bash
+# Install dependencies
 npm install
+cd backend && npm install
+
+# Setup database (see docs/database/DATABASE_SETUP.md)
+# Run schema: psql -U your_user -d homeland_union -f database/schema.sql
+
+# Seed database with test data
+cd backend && npm run seed
+
+# Start backend server
+cd backend && npm run dev
+
+# Start frontend (in root directory)
+npm run dev
+```
+
+**Test Users:**
+- Super Admin: `admin@homelandunion.com` / `admin123`
+- Union Admin: `unionadmin@homelandunion.com` / `admin123`
+- Resident: `resident@homelandunion.com` / `resident123`
+
+## 📁 Project Structure
+
+```
+Union-Office-MS-new/
+├── backend/              # Node.js/Express backend
+│   ├── config/          # Database configuration
+│   ├── controllers/     # Route controllers
+│   ├── middleware/      # Auth middleware
+│   ├── routes/          # API routes
+│   ├── scripts/         # Utility scripts
+│   └── server.js        # Express server
+├── database/            # Database files
+│   ├── schema.sql       # Database schema
+│   └── migrations/     # Database migrations
+├── docs/                # All documentation
+│   ├── frontend/        # Frontend docs
+│   ├── backend/         # Backend docs
+│   └── database/        # Database docs
+├── public/              # Static assets (icons, etc.)
+├── src/                 # React frontend
+│   ├── api/             # API service modules
+│   ├── components/      # React components
+│   │   ├── charts/      # Chart components
+│   │   ├── common/      # Common components
+│   │   ├── error/       # Error components
+│   │   ├── layout/      # Layout components
+│   │   └── pwa/         # PWA components
+│   ├── contexts/        # React contexts
+│   ├── pages/           # Page components
+│   │   ├── admin/       # Admin pages
+│   │   ├── auth/        # Authentication pages
+│   │   ├── error/       # Error pages
+│   │   ├── resident/    # Resident pages
+│   │   └── super-admin/ # Super Admin pages
+│   ├── routes/          # Route configuration
+│   ├── styles/          # SCSS styles
+│   ├── theme/           # MUI theme (legacy)
+│   └── utils/           # Utility functions
+└── README.md            # This file
+```
+
+## 🎯 Features
+
+### ✅ Admin Features
+- Residents Management
+- Maintenance Management
+- Finance Management
+- Complaints Management
+- Defaulters Management
+- Announcements
+- Users Management
+- Settings
+
+### ✅ Super Admin Features
+- Societies Management
+- Blocks Management
+- Floors Management
+- Units Management
+- System-wide Dashboard
+
+### ✅ Resident Features
+- Personal Dashboard
+- Complaint Submission
+- Maintenance Records
+- Union Information
+- Profile Management
+
+### ✅ PWA Features
+- Offline support
+- Install prompt
+- Dark/light mode
+- Error boundaries
+- Mobile optimization
+- Apple PWA support
+
+## 🛠️ Tech Stack
+
+### Frontend
+- React 18.2.0
+- Material-UI (MUI)
+- Tailwind CSS
+- SCSS
+- React Router
+- SWR
+- ApexCharts
+- Formik & Yup
+- Axios
+
+### Backend
+- Node.js
+- Express.js
+- PostgreSQL
+- JWT Authentication
+- Bcryptjs
+
+## 📚 Documentation
+
+All documentation is organized in the `docs/` directory:
+
+- **Documentation Index:** [docs/README.md](./docs/README.md)
+- **Project Structure:** [docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md)
+- **Quick Start:** [docs/QUICK_START.md](./docs/QUICK_START.md)
+- **Setup Guide:** [docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md)
+- **API Documentation:** [docs/backend/API_DOCUMENTATION.md](./docs/backend/API_DOCUMENTATION.md)
+- **PWA Setup:** [docs/frontend/PWA_SETUP_GUIDE.md](./docs/frontend/PWA_SETUP_GUIDE.md)
+- **Database Setup:** [docs/database/DATABASE_SETUP.md](./docs/database/DATABASE_SETUP.md)
+
+## 🔧 Development
+
+```bash
+# Frontend development
+npm run dev
+
+# Backend development
+cd backend && npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+## 📝 Environment Variables
+
+### Frontend (.env)
+```
+VITE_API_URL=http://localhost:3000/api
+VITE_APP_NAME=Homeland Union
+VITE_APP_VERSION=0.1.0
+```
+
+### Backend (backend/.env)
+```
+PORT=3000
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=homeland_union
+DB_USER=your_user
+DB_PASSWORD=your_password
+JWT_SECRET=your_jwt_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+CORS_ORIGIN=http://localhost:5173
+```
+
+## 🎨 Features Overview
+
+- ✅ Role-based access control (Super Admin, Admin, Resident)
+- ✅ JWT authentication with refresh tokens
+- ✅ Progressive Web App (PWA)
+- ✅ Dark/light mode
+- ✅ Responsive design
+- ✅ Real-time data with SWR
+- ✅ Charts and visualizations
+- ✅ File upload support
+- ✅ Error boundaries
+- ✅ Offline support
+
+## 📄 License
+
+Private project - All rights reserved
+
+## 👥 Contributing
+
+This is a private project. For questions or issues, please contact the project maintainer.

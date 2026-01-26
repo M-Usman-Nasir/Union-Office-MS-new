@@ -9,10 +9,36 @@ import {
   Button,
   Typography,
   Alert,
+  Chip,
+  Divider,
+  IconButton,
+  Tooltip,
 } from '@mui/material'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import toast from 'react-hot-toast'
+
+const TEST_USERS = [
+  {
+    role: 'Super Admin',
+    email: 'admin@homelandunion.com',
+    password: 'admin123',
+    color: 'primary',
+  },
+  {
+    role: 'Union Admin',
+    email: 'unionadmin@homelandunion.com',
+    password: 'admin123',
+    color: 'secondary',
+  },
+  {
+    role: 'Resident',
+    email: 'resident@homelandunion.com',
+    password: 'resident123',
+    color: 'success',
+  },
+]
 
 const LoginPage = () => {
   const [email, setEmail] = useState('')
@@ -26,6 +52,23 @@ const LoginPage = () => {
   if (isAuthenticated) {
     navigate(ROUTES.ADMIN_DASHBOARD)
     return null
+  }
+
+  const handleTestUserClick = (testUser) => {
+    setEmail(testUser.email)
+    setPassword(testUser.password)
+    setError('')
+    toast.success(`Filled credentials for ${testUser.role}`)
+  }
+
+  const handleCopyEmail = (email) => {
+    navigator.clipboard.writeText(email)
+    toast.success('Email copied to clipboard!')
+  }
+
+  const handleCopyPassword = (password) => {
+    navigator.clipboard.writeText(password)
+    toast.success('Password copied to clipboard!')
   }
 
   const handleSubmit = async (e) => {
@@ -120,9 +163,84 @@ const LoginPage = () => {
               </Button>
             </form>
 
-            <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>
-              Default: admin@homelandunion.com / admin123
-            </Typography>
+            <Divider sx={{ my: 3 }}>
+              <Typography variant="caption" color="text.secondary">
+                Test Users
+              </Typography>
+            </Divider>
+
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Click to auto-fill credentials:
+              </Typography>
+              {TEST_USERS.map((testUser) => (
+                <Card
+                  key={testUser.email}
+                  variant="outlined"
+                  sx={{
+                    mt: 1.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      bgcolor: 'action.hover',
+                      borderColor: `${testUser.color}.main`,
+                    },
+                  }}
+                  onClick={() => handleTestUserClick(testUser)}
+                >
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                      <Box flex={1}>
+                        <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                          <Chip
+                            label={testUser.role}
+                            size="small"
+                            color={testUser.color}
+                            variant="outlined"
+                          />
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          <strong>Email:</strong>{' '}
+                          <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                            {testUser.email}
+                          </Box>
+                          <Tooltip title="Copy email">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCopyEmail(testUser.email)
+                              }}
+                              sx={{ ml: 0.5, p: 0.25 }}
+                            >
+                              <ContentCopyIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Password:</strong>{' '}
+                          <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                            {testUser.password}
+                          </Box>
+                          <Tooltip title="Copy password">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCopyPassword(testUser.password)
+                              }}
+                              sx={{ ml: 0.5, p: 0.25 }}
+                            >
+                              <ContentCopyIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           </CardContent>
         </Card>
       </Box>

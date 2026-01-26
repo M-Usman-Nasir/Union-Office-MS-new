@@ -28,7 +28,10 @@ import AnnouncementIcon from '@mui/icons-material/Announcement'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import LogoutIcon from '@mui/icons-material/Logout'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 
 const drawerWidth = 240
@@ -37,6 +40,7 @@ const MainLayout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [anchorEl, setAnchorEl] = useState(null)
   const { user, logout } = useAuth()
+  const { mode, toggleMode } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -84,6 +88,7 @@ const MainLayout = ({ children }) => {
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.RESIDENT_DASHBOARD },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.RESIDENT_COMPLAINTS },
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.RESIDENT_MAINTENANCE },
+        { text: 'Union Info', icon: <ApartmentIcon />, path: ROUTES.RESIDENT_UNION_INFO },
         { text: 'Profile', icon: <PeopleIcon />, path: ROUTES.RESIDENT_PROFILE },
       ]
     }
@@ -137,6 +142,9 @@ const MainLayout = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'Dashboard'}
           </Typography>
+          <IconButton onClick={toggleMode} color="inherit" sx={{ mr: 1 }}>
+            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
           <IconButton onClick={handleMenuClick}>
             <Avatar sx={{ width: 32, height: 32 }}>
               {user?.name?.charAt(0)?.toUpperCase() || 'U'}

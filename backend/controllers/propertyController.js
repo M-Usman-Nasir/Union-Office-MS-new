@@ -5,17 +5,18 @@ export const getBlocks = async (req, res) => {
   try {
     const { society_id } = req.query;
 
-    if (!society_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Society ID is required',
-      });
+    let result;
+    if (society_id) {
+      result = await query(
+        'SELECT * FROM blocks WHERE society_apartment_id = $1 ORDER BY name',
+        [society_id]
+      );
+    } else {
+      // If no society_id provided, return all blocks (for super admin)
+      result = await query(
+        'SELECT * FROM blocks ORDER BY society_apartment_id, name'
+      );
     }
-
-    const result = await query(
-      'SELECT * FROM blocks WHERE society_apartment_id = $1 ORDER BY name',
-      [society_id]
-    );
 
     res.json({
       success: true,
