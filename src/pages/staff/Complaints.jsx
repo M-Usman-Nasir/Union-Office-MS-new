@@ -17,53 +17,39 @@ import {
   Chip,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
-import EditIcon from '@mui/icons-material/Edit'
-import DeleteIcon from '@mui/icons-material/Delete'
 import VisibilityIcon from '@mui/icons-material/Visibility'
-import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import UpdateIcon from '@mui/icons-material/Update'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
+import { staffApi } from '@/api/staffApi'
 import { complaintApi } from '@/api/complaintApi'
-import { userApi } from '@/api/userApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
-import { Autocomplete } from '@mui/material'
 
 const statusOptions = ['pending', 'in_progress', 'resolved', 'closed']
 const priorityOptions = ['low', 'medium', 'high', 'urgent']
 
-const Complaints = () => {
+const validationSchema = Yup.object({
+  status: Yup.string().oneOf(statusOptions).required('Status is required'),
+  notes: Yup.string().required('Notes are required'),
+})
+
+const StaffComplaints = () => {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [openDialog, setOpenDialog] = useState(false)
-  const [openViewDialog, setOpenViewDialog] = useState(false)
-  const [openAssignDialog, setOpenAssignDialog] = useState(false)
   const [openProgressDialog, setOpenProgressDialog] = useState(false)
+  const [openViewDialog, setOpenViewDialog] = useState(false)
   const [selectedComplaint, setSelectedComplaint] = useState(null)
-  const [societyId] = useState(user?.society_apartment_id)
 
   const { data, isLoading, mutate } = useSWR(
-    ['/complaints', page, limit, search, statusFilter, societyId],
-    () => complaintApi.getAll({ page, limit, search, status: statusFilter, society_id: societyId }).then(res => res.data)
-  )
-
-  // Fetch staff list for assignment
-  const { data: staffList } = useSWR(
-    user ? '/users/staff' : null,
-    () => userApi.getAll({ role: 'staff', limit: 100 }).then(res => res.data)
-  )
-
-  // Fetch progress history for selected complaint
-  const { data: progressData } = useSWR(
-    selectedComplaint && openViewDialog ? `/complaints/${selectedComplaint.id}/progress` : null,
-    () => complaintApi.getProgress(selectedComplaint.id).then(res => res.data)
+    ['/staff/complaints', page, limit, search, statusFilter],
+    () => staffApi.getComplaints({ page, limit, search, status: statusFilter }).then(res => res.data)
   )
 
   const handleOpenViewDialog = (complaint) => {
@@ -74,49 +60,6 @@ const Complaints = () => {
   const handleCloseViewDialog = () => {
     setOpenViewDialog(false)
     setSelectedComplaint(null)
-  }
-
-  const handleStatusUpdate = async (id, status) => {
-    try {
-      await complaintApi.updateStatus(id, { status })
-      toast.success('Complaint status updated successfully')
-      mutate()
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Update failed')
-    }
-  }
-
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this complaint?')) {
-      try {
-        await complaintApi.remove(id)
-        toast.success('Complaint deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
-    }
-  }
-
-  const handleOpenAssignDialog = (complaint) => {
-    setSelectedComplaint(complaint)
-    setOpenAssignDialog(true)
-  }
-
-  const handleCloseAssignDialog = () => {
-    setOpenAssignDialog(false)
-    setSelectedComplaint(null)
-  }
-
-  const handleAssignStaff = async (staffId) => {
-    try {
-      await complaintApi.assignStaff(selectedComplaint.id, staffId)
-      toast.success('Staff assigned successfully')
-      mutate()
-      handleCloseAssignDialog()
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Assignment failed')
-    }
   }
 
   const handleOpenProgressDialog = (complaint) => {
@@ -181,11 +124,7 @@ const Complaints = () => {
 
   const columns = [
     { id: 'title', label: 'Title' },
-    { id: 'description', label: 'Description', render: (row) => (
-      <Typography variant="body2" noWrap sx={{ maxWidth: 300 }}>
-        {row.description}
-      </Typography>
-    )},
+    { id: 'unit_number', label: 'Unit' },
     {
       id: 'status',
       label: 'Status',
@@ -197,43 +136,36 @@ const Complaints = () => {
       id: 'priority',
       label: 'Priority',
       render: (row) => (
-        <Chip label={row.priority} color={getPriorityColor(row.priority)} size="small" variant="outlined" />
-      ),
-    },
-    {
-      id: 'assigned_to_name',
-      label: 'Assigned To',
-      render: (row) => (
-        <Typography variant="body2">
-          {row.assigned_to_name || 'Unassigned'}
-        </Typography>
+        <Chip
+          label={row.priority}
+          color={getPriorityColor(row.priority)}
+          size="small"
+          variant="outlined"
+        />
       ),
     },
     { id: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at) },
     {
       id: 'actions',
       label: 'Actions',
-      align: 'right',
       render: (row) => (
         <Box>
-          <Tooltip title="View">
-            <IconButton size="small" onClick={() => handleOpenViewDialog(row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Assign Staff">
-            <IconButton size="small" onClick={() => handleOpenAssignDialog(row)} color="primary">
-              <PersonAddIcon fontSize="small" />
+          <Tooltip title="View Details">
+            <IconButton
+              size="small"
+              onClick={() => handleOpenViewDialog(row)}
+              color="primary"
+            >
+              <VisibilityIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Update Progress">
-            <IconButton size="small" onClick={() => handleOpenProgressDialog(row)} color="secondary">
-              <UpdateIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
-              <DeleteIcon fontSize="small" />
+            <IconButton
+              size="small"
+              onClick={() => handleOpenProgressDialog(row)}
+              color="secondary"
+            >
+              <UpdateIcon />
             </IconButton>
           </Tooltip>
         </Box>
@@ -245,7 +177,10 @@ const Complaints = () => {
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1">
-          Complaints Management
+          My Assigned Complaints
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Manage complaints assigned to you
         </Typography>
       </Box>
 
@@ -265,7 +200,7 @@ const Complaints = () => {
         />
         <TextField
           select
-          label="Status Filter"
+          label="Status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           sx={{ minWidth: 150 }}
@@ -273,7 +208,7 @@ const Complaints = () => {
           <MenuItem value="">All</MenuItem>
           {statusOptions.map((status) => (
             <MenuItem key={status} value={status}>
-              {status}
+              {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
             </MenuItem>
           ))}
         </TextField>
@@ -291,7 +226,7 @@ const Complaints = () => {
         }}
       />
 
-      {/* View Dialog */}
+      {/* View Complaint Dialog */}
       <Dialog open={openViewDialog} onClose={handleCloseViewDialog} maxWidth="md" fullWidth>
         <DialogTitle>Complaint Details</DialogTitle>
         <DialogContent>
@@ -313,21 +248,28 @@ const Complaints = () => {
                 <Typography variant="subtitle2" color="text.secondary">
                   Status
                 </Typography>
-                <Chip label={selectedComplaint.status} color={getStatusColor(selectedComplaint.status)} />
+                <Chip
+                  label={selectedComplaint.status}
+                  color={getStatusColor(selectedComplaint.status)}
+                  size="small"
+                />
               </Grid>
               <Grid item xs={6}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Priority
                 </Typography>
-                <Chip label={selectedComplaint.priority} color={getPriorityColor(selectedComplaint.priority)} variant="outlined" />
+                <Chip
+                  label={selectedComplaint.priority}
+                  color={getPriorityColor(selectedComplaint.priority)}
+                  size="small"
+                  variant="outlined"
+                />
               </Grid>
               <Grid item xs={6}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Assigned To
+                  Unit Number
                 </Typography>
-                <Typography variant="body1">
-                  {selectedComplaint.assigned_to_name || 'Unassigned'}
-                </Typography>
+                <Typography variant="body1">{selectedComplaint.unit_number || 'N/A'}</Typography>
               </Grid>
               <Grid item xs={6}>
                 <Typography variant="subtitle2" color="text.secondary">
@@ -335,30 +277,6 @@ const Complaints = () => {
                 </Typography>
                 <Typography variant="body1">{formatDate(selectedComplaint.created_at)}</Typography>
               </Grid>
-              {progressData?.data && progressData.data.length > 0 && (
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Progress History
-                  </Typography>
-                  <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
-                    {progressData.data.map((progress, index) => (
-                      <Box key={index} sx={{ mb: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                        <Typography variant="body2" fontWeight="bold">
-                          {progress.status} - {formatDate(progress.created_at)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          By: {progress.updated_by_name || 'Unknown'}
-                        </Typography>
-                        {progress.notes && (
-                          <Typography variant="body2" sx={{ mt: 0.5 }}>
-                            {progress.notes}
-                          </Typography>
-                        )}
-                      </Box>
-                    ))}
-                  </Box>
-                </Grid>
-              )}
             </Grid>
           )}
         </DialogContent>
@@ -367,60 +285,20 @@ const Complaints = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Assign Staff Dialog */}
-      <Dialog open={openAssignDialog} onClose={handleCloseAssignDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign Staff to Complaint</DialogTitle>
-        <DialogContent>
-          {selectedComplaint && (
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Complaint: {selectedComplaint.title}
-                </Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <Autocomplete
-                  options={staffList?.data || []}
-                  getOptionLabel={(option) => `${option.name} (${option.email})`}
-                  onChange={(event, newValue) => {
-                    if (newValue) {
-                      handleAssignStaff(newValue.id)
-                    }
-                  }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Select Staff Member"
-                      placeholder="Search staff..."
-                    />
-                  )}
-                />
-              </Grid>
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAssignDialog}>Cancel</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Add Progress Dialog */}
+      {/* Update Progress Dialog */}
       <Dialog open={openProgressDialog} onClose={handleCloseProgressDialog} maxWidth="sm" fullWidth>
         <Formik
           initialValues={{
             status: selectedComplaint?.status || 'pending',
             notes: '',
           }}
-          validationSchema={Yup.object({
-            status: Yup.string().oneOf(statusOptions).required('Status is required'),
-            notes: Yup.string().required('Notes are required'),
-          })}
+          validationSchema={validationSchema}
           onSubmit={handleProgressUpdate}
           enableReinitialize
         >
           {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
             <Form>
-              <DialogTitle>Add Progress Update</DialogTitle>
+              <DialogTitle>Update Complaint Progress</DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={12}>
@@ -473,4 +351,4 @@ const Complaints = () => {
   )
 }
 
-export default Complaints
+export default StaffComplaints

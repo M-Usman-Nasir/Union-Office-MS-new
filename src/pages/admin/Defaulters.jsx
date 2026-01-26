@@ -24,6 +24,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { defaulterApi } from '@/api/defaulterApi'
+import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import toast from 'react-hot-toast'
@@ -54,6 +55,12 @@ const Defaulters = () => {
       console.error('Defaulters statistics error:', err)
       return null
     })
+  )
+
+  // Check visibility settings (for admin view - to show message if disabled)
+  const { data: settings } = useSWR(
+    societyId ? `/settings/${societyId}` : null,
+    () => settingsApi.getSettings(societyId).then(res => res.data.data || res.data).catch(() => null)
   )
 
   const handleOpenDialog = (defaulter) => {

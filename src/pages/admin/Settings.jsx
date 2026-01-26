@@ -10,37 +10,57 @@ import {
   FormControlLabel,
   Button,
   Alert,
+  CircularProgress,
 } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
+import { settingsApi } from '@/api/settingsApi'
 import toast from 'react-hot-toast'
 
 const Settings = () => {
   const { user } = useAuth()
   const [societyId] = useState(user?.society_apartment_id)
-  const [settings, setSettings] = useState({
+  const [saving, setSaving] = useState(false)
+
+  // Fetch settings
+  const { data: settingsData, isLoading, mutate } = useSWR(
+    societyId ? `/settings/${societyId}` : null,
+    () => settingsApi.getSettings(societyId).then(res => res.data.data || res.data)
+  )
+
+  const settings = settingsData || {
     defaulter_list_visible: false,
     complaint_logs_visible: false,
     financial_reports_visible: false,
-  })
-
-  // Note: Settings API would need to be implemented in backend
-  // For now, this is a placeholder that shows the structure
-
-  const handleToggle = (key) => {
-    setSettings((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }))
   }
 
-  const handleSave = async () => {
+  const handleToggle = (key) => {
+    const newSettings = {
+      ...settings,
+      [key]: !settings[key],
+    }
+    handleSave(newSettings)
+  }
+
+  const handleSave = async (newSettings = settings) => {
+    if (!societyId) {
+      toast.error('Society ID not found')
+      return
+    }
+
+    setSaving(true)
     try {
-      // await settingsApi.update(societyId, settings)
+      await settingsApi.updateSettings(societyId, {
+        ...newSettings,
+        society_apartment_id: societyId,
+      })
       toast.success('Settings saved successfully')
+      mutate()
     } catch (error) {
-      toast.error('Failed to save settings')
+      toast.error(error.response?.data?.message || 'Failed to save settings')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -55,9 +75,11 @@ const Settings = () => {
         </Typography>
       </Box>
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Settings API needs to be implemented in the backend. This is a placeholder UI.
-      </Alert>
+      {isLoading && (
+        <Box display="flex" justifyContent="center" sx={{ py: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
@@ -114,10 +136,11 @@ const Settings = () => {
       <Box sx={{ mt: 3 }}>
         <Button
           variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
+          startIcon={saving ? <CircularProgress size={20} /> : <SaveIcon />}
+          onClick={() => handleSave()}
+          disabled={saving || isLoading}
         >
-          Save Settings
+          {saving ? 'Saving...' : 'Save Settings'}
         </Button>
       </Box>
     </Container>

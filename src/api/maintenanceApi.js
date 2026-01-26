@@ -25,4 +25,8 @@ export const maintenanceApi = {
   remove: (id) => {
     return api.delete(API_ENDPOINTS.MAINTENANCE_BY_ID(id))
   },
+
+  generateMonthlyDues: () => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_GENERATE_DUES)
+  },
 }

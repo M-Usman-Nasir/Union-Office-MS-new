@@ -24,6 +24,8 @@ export const ProtectedRoute = ({ children, requiredRole = null }) => {
       return <Navigate to={ROUTES.SUPER_ADMIN_DASHBOARD} replace />
     } else if (user?.role === 'union_admin') {
       return <Navigate to={ROUTES.ADMIN_DASHBOARD} replace />
+    } else if (user?.role === 'staff') {
+      return <Navigate to={ROUTES.STAFF_DASHBOARD} replace />
     } else {
       return <Navigate to={ROUTES.RESIDENT_DASHBOARD} replace />
     }

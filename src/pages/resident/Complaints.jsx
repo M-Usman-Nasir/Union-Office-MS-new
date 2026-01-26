@@ -35,9 +35,10 @@ const ResidentComplaints = () => {
   const [limit, setLimit] = useState(10)
   const [openDialog, setOpenDialog] = useState(false)
 
+  // Fetch complaints - backend should return own complaints + public complaints
   const { data, isLoading, mutate } = useSWR(
     ['/complaints/my', page, limit],
-    () => complaintApi.getAll({ page, limit, user_id: user?.id }).then(res => res.data)
+    () => complaintApi.getAll({ page, limit }).then(res => res.data)
   )
 
   const handleOpenDialog = () => {

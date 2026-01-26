@@ -83,6 +83,12 @@ const MainLayout = ({ children }) => {
         { text: 'Users', icon: <PeopleIcon />, path: ROUTES.ADMIN_USERS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
       ]
+    } else if (user?.role === ROLES.STAFF) {
+      return [
+        { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.STAFF_DASHBOARD },
+        { text: 'My Complaints', icon: <FeedbackIcon />, path: ROUTES.STAFF_COMPLAINTS },
+        { text: 'Payment Updates', icon: <PaymentIcon />, path: ROUTES.STAFF_PAYMENTS },
+      ]
     } else {
       return [
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.RESIDENT_DASHBOARD },

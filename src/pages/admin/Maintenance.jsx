@@ -15,12 +15,14 @@ import {
   IconButton,
   Tooltip,
   Chip,
+  CircularProgress,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import PaymentIcon from '@mui/icons-material/Payment'
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
@@ -46,6 +48,8 @@ const Maintenance = () => {
   const [search, setSearch] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false)
+  const [openGenerateDialog, setOpenGenerateDialog] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [editingMaintenance, setEditingMaintenance] = useState(null)
   const [selectedMaintenance, setSelectedMaintenance] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
@@ -203,19 +207,47 @@ const Maintenance = () => {
         total_amount: 0,
       }
 
+  const handleGenerateMonthlyDues = async () => {
+    if (!window.confirm('Generate monthly dues for all active units? This will create maintenance records for the current month.')) {
+      return
+    }
+
+    setGenerating(true)
+    try {
+      await maintenanceApi.generateMonthlyDues()
+      toast.success('Monthly dues generated successfully')
+      mutate()
+      setOpenGenerateDialog(false)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to generate monthly dues')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
           Maintenance Management
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-        >
-          Add Maintenance
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<CalendarTodayIcon />}
+            onClick={() => setOpenGenerateDialog(true)}
+            color="primary"
+          >
+            Generate Monthly Dues
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+          >
+            Add Maintenance
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ mb: 3 }}>
@@ -390,6 +422,32 @@ const Maintenance = () => {
             </Form>
           )}
         </Formik>
+      </Dialog>
+
+      {/* Generate Monthly Dues Dialog */}
+      <Dialog open={openGenerateDialog} onClose={() => setOpenGenerateDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Generate Monthly Dues</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            This will generate maintenance dues for all active units for the current month ({new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}).
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Only units without existing maintenance records for this month will be processed.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenGenerateDialog(false)} disabled={generating}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateMonthlyDues}
+            disabled={generating}
+            startIcon={generating ? <CircularProgress size={20} /> : null}
+          >
+            {generating ? 'Generating...' : 'Generate Dues'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Container>
   )

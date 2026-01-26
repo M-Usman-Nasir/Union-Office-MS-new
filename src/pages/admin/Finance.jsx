@@ -33,9 +33,20 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
+import { INCOME_TYPES, INCOME_TYPE_LABELS } from '@/utils/constants'
 
 const validationSchema = Yup.object({
   transaction_type: Yup.string().oneOf(['income', 'expense']).required('Transaction type is required'),
+  income_type: Yup.string().when('transaction_type', {
+    is: 'income',
+    then: (schema) => schema.required('Income type is required'),
+    otherwise: (schema) => schema,
+  }),
+  expense_type: Yup.string().when('transaction_type', {
+    is: 'expense',
+    then: (schema) => schema.required('Expense type is required'),
+    otherwise: (schema) => schema,
+  }),
   amount: Yup.number().min(0).required('Amount is required'),
   transaction_date: Yup.date().required('Date is required'),
   description: Yup.string().required('Description is required'),
@@ -154,7 +165,11 @@ const Finance = () => {
     },
   ]
 
-  const incomeTypes = ['Maintenance Collection', 'Rent', 'Other Income']
+  const incomeTypeOptions = [
+    { value: INCOME_TYPES.FINES, label: INCOME_TYPE_LABELS[INCOME_TYPES.FINES] },
+    { value: INCOME_TYPES.ADDITIONAL_CHARGES, label: INCOME_TYPE_LABELS[INCOME_TYPES.ADDITIONAL_CHARGES] },
+    { value: INCOME_TYPES.OTHER_INCOME, label: INCOME_TYPE_LABELS[INCOME_TYPES.OTHER_INCOME] },
+  ]
   const expenseTypes = ['Utility Payment', 'Salary', 'Repairs', 'Security', 'Cleaning', 'Maintenance']
 
   const initialValues = editingFinance
@@ -327,11 +342,14 @@ const Finance = () => {
                         value={values.income_type}
                         onChange={handleChange}
                         onBlur={handleBlur}
+                        error={touched.income_type && !!errors.income_type}
+                        helperText={touched.income_type && errors.income_type}
+                        required
                       >
                         <MenuItem value="">Select Income Type</MenuItem>
-                        {incomeTypes.map((type) => (
-                          <MenuItem key={type} value={type}>
-                            {type}
+                        {incomeTypeOptions.map((type) => (
+                          <MenuItem key={type.value} value={type.value}>
+                            {type.label}
                           </MenuItem>
                         ))}
                       </TextField>
@@ -347,6 +365,9 @@ const Finance = () => {
                         value={values.expense_type}
                         onChange={handleChange}
                         onBlur={handleBlur}
+                        error={touched.expense_type && !!errors.expense_type}
+                        helperText={touched.expense_type && errors.expense_type}
+                        required
                       >
                         <MenuItem value="">Select Expense Type</MenuItem>
                         {expenseTypes.map((type) => (

@@ -25,4 +25,16 @@ export const complaintApi = {
   remove: (id) => {
     return api.delete(API_ENDPOINTS.COMPLAINT_BY_ID(id))
   },
+
+  assignStaff: (id, staffId) => {
+    return api.patch(API_ENDPOINTS.COMPLAINT_ASSIGN(id), { staff_id: staffId })
+  },
+
+  addProgress: (id, data) => {
+    return api.post(API_ENDPOINTS.COMPLAINT_PROGRESS(id), data)
+  },
+
+  getProgress: (id) => {
+    return api.get(API_ENDPOINTS.COMPLAINT_PROGRESS(id))
+  },
 }

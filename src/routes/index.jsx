@@ -24,6 +24,9 @@ import ResidentComplaints from '@/pages/resident/Complaints'
 import ResidentMaintenance from '@/pages/resident/Maintenance'
 import ResidentProfile from '@/pages/resident/Profile'
 import UnionInfo from '@/pages/resident/UnionInfo'
+import StaffDashboard from '@/pages/staff/Dashboard'
+import StaffComplaints from '@/pages/staff/Complaints'
+import StaffPayments from '@/pages/staff/Payments'
 import Offline from '@/pages/error/Offline'
 
 export const AppRoutes = () => {
@@ -85,6 +88,22 @@ export const AppRoutes = () => {
                 <Route path="maintenance" element={<ResidentMaintenance />} />
                 <Route path="union-info" element={<UnionInfo />} />
                 <Route path="profile" element={<ResidentProfile />} />
+              </Routes>
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Staff Routes */}
+      <Route
+        path="/staff/*"
+        element={
+          <ProtectedRoute requiredRole={ROLES.STAFF}>
+            <MainLayout>
+              <Routes>
+                <Route path="dashboard" element={<StaffDashboard />} />
+                <Route path="complaints" element={<StaffComplaints />} />
+                <Route path="payments" element={<StaffPayments />} />
               </Routes>
             </MainLayout>
           </ProtectedRoute>
