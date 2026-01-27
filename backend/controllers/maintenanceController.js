@@ -219,7 +219,7 @@ export const update = async (req, res) => {
 export const recordPayment = async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount_paid, payment_method } = req.body;
+    const { amount_paid } = req.body;
 
     if (!amount_paid) {
       return res.status(400).json({
@@ -237,19 +237,33 @@ export const recordPayment = async (req, res) => {
     }
 
     const maintenance = existing.rows[0];
-    const newAmountPaid = (parseFloat(maintenance.amount_paid) || 0) + parseFloat(amount_paid);
-    const newStatus = newAmountPaid >= parseFloat(maintenance.total_amount) ? 'paid' : 
+    const currentAmountPaid = parseFloat(maintenance.amount_paid) || 0;
+    const paymentAmount = parseFloat(amount_paid);
+    
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment amount',
+      });
+    }
+
+    const newAmountPaid = currentAmountPaid + paymentAmount;
+    const totalAmount = parseFloat(maintenance.total_amount) || 0;
+    const newStatus = newAmountPaid >= totalAmount ? 'paid' : 
                      newAmountPaid > 0 ? 'partially_paid' : 'pending';
+
+    // Set payment_date only if status is 'paid'
+    const paymentDate = newStatus === 'paid' ? new Date().toISOString().split('T')[0] : null;
 
     const result = await query(
       `UPDATE maintenance 
-       SET amount_paid = $1,
-           status = $2,
-           payment_date = CASE WHEN $2 = 'paid' THEN CURRENT_DATE ELSE payment_date END,
+       SET amount_paid = $1::DECIMAL(10, 2),
+           status = $2::VARCHAR,
+           payment_date = COALESCE($3::DATE, payment_date),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
+       WHERE id = $4::INTEGER
        RETURNING *`,
-      [newAmountPaid, newStatus, id]
+      [newAmountPaid, newStatus, paymentDate, parseInt(id)]
     );
 
     res.json({
