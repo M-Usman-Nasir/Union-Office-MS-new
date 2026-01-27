@@ -19,6 +19,7 @@ import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
+import RemoveIcon from '@mui/icons-material/Remove'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { residentApi } from '@/api/residentApi'
@@ -29,13 +30,17 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import { ROLES } from '@/utils/constants'
 
-const validationSchema = Yup.object({
+const getValidationSchema = (isEdit) => Yup.object({
   email: Yup.string().email('Invalid email').required('Email is required'),
-  password: Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
+  password: isEdit 
+    ? Yup.string().min(6, 'Password must be at least 6 characters')
+    : Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
   name: Yup.string().required('Name is required'),
-  role: Yup.string().oneOf(['resident', 'union_admin']).required('Role is required'),
+  society_apartment_id: Yup.number().required('Society is required'),
   contact_number: Yup.string(),
   cnic: Yup.string(),
+  emergency_contact: Yup.string(),
+  move_in_date: Yup.date().nullable(),
 })
 
 const Residents = () => {
@@ -69,11 +74,46 @@ const Residents = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      // Prepare data for backend
+      const submitData = { ...values }
+      
+      // Clean up empty strings - convert to null for optional fields
+      const optionalFields = ['contact_number', 'cnic', 'emergency_contact', 'move_in_date', 'unit_id', 'owner_name', 'license_plate']
+      optionalFields.forEach(field => {
+        if (submitData[field] === '') {
+          submitData[field] = null
+        }
+      })
+      
+      // Filter out empty telephone_bills and other_bills entries
+      if (submitData.telephone_bills && Array.isArray(submitData.telephone_bills)) {
+        submitData.telephone_bills = submitData.telephone_bills.filter(bill => 
+          bill && (bill.provider || bill.account_number || bill.amount)
+        )
+      }
+      if (submitData.other_bills && Array.isArray(submitData.other_bills)) {
+        submitData.other_bills = submitData.other_bills.filter(bill => 
+          bill && (bill.type || bill.provider || bill.amount)
+        )
+      }
+      
       if (editingResident) {
-        await residentApi.update(editingResident.id, values)
+        // For update, remove password if not provided
+        if (!submitData.password) {
+          delete submitData.password
+        }
+        // Remove role as backend doesn't accept it
+        delete submitData.role
+        await residentApi.update(editingResident.id, submitData)
         toast.success('Resident updated successfully')
       } else {
-        await residentApi.create(values)
+        // For create, ensure society_apartment_id is set
+        if (!submitData.society_apartment_id && societyId) {
+          submitData.society_apartment_id = societyId
+        }
+        // Remove role as backend hardcodes it to 'resident'
+        delete submitData.role
+        await residentApi.create(submitData)
         toast.success('Resident created successfully')
       }
       mutate()
@@ -124,23 +164,43 @@ const Residents = () => {
     },
   ]
 
+  // Format date for date input (YYYY-MM-DD)
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return ''
+    return date.toISOString().split('T')[0]
+  }
+
   const initialValues = editingResident
     ? {
         email: editingResident.email || '',
         name: editingResident.name || '',
-        role: editingResident.role || 'resident',
+        society_apartment_id: editingResident.society_apartment_id || societyId || '',
         contact_number: editingResident.contact_number || '',
         cnic: editingResident.cnic || '',
+        emergency_contact: editingResident.emergency_contact || '',
+        move_in_date: formatDateForInput(editingResident.move_in_date),
         unit_id: editingResident.unit_id || '',
+        owner_name: editingResident.owner_name || '',
+        license_plate: editingResident.license_plate || '',
+        telephone_bills: Array.isArray(editingResident.telephone_bills) ? editingResident.telephone_bills : [],
+        other_bills: Array.isArray(editingResident.other_bills) ? editingResident.other_bills : [],
       }
     : {
         email: '',
         password: '',
         name: '',
-        role: 'resident',
+        society_apartment_id: societyId || '',
         contact_number: '',
         cnic: '',
+        emergency_contact: '',
+        move_in_date: '',
         unit_id: '',
+        owner_name: '',
+        license_plate: '',
+        telephone_bills: [],
+        other_bills: [],
       }
 
   return (
@@ -186,14 +246,14 @@ const Residents = () => {
         }}
       />
 
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <Formik
           initialValues={initialValues}
-          validationSchema={validationSchema}
+          validationSchema={getValidationSchema(!!editingResident)}
           onSubmit={handleSubmit}
           enableReinitialize
         >
-          {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
+          {({ values, errors, touched, handleChange, handleBlur, isSubmitting, setFieldValue }) => (
             <Form>
               <DialogTitle>
                 {editingResident ? 'Edit Resident' : 'Add New Resident'}
@@ -241,21 +301,35 @@ const Residents = () => {
                       />
                     </Grid>
                   )}
+                  {editingResident && (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Password (leave blank to keep current)"
+                        name="password"
+                        type="password"
+                        value={values.password}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.password && !!errors.password}
+                        helperText={touched.password && errors.password}
+                      />
+                    </Grid>
+                  )}
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
-                      select
-                      label="Role"
-                      name="role"
-                      value={values.role}
+                      label="Society"
+                      name="society_apartment_id"
+                      type="number"
+                      value={values.society_apartment_id}
                       onChange={handleChange}
                       onBlur={handleBlur}
-                      error={touched.role && !!errors.role}
-                      helperText={touched.role && errors.role}
-                    >
-                      <MenuItem value="resident">Resident</MenuItem>
-                      <MenuItem value="union_admin">Union Admin</MenuItem>
-                    </TextField>
+                      error={touched.society_apartment_id && !!errors.society_apartment_id}
+                      helperText={touched.society_apartment_id && errors.society_apartment_id}
+                      disabled={!!societyId}
+                      required
+                    />
                   </Grid>
                   <Grid item xs={12}>
                     <TextField
@@ -275,6 +349,32 @@ const Residents = () => {
                       value={values.cnic}
                       onChange={handleChange}
                       onBlur={handleBlur}
+                      placeholder="42101-1234567-8"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Emergency Contact"
+                      name="emergency_contact"
+                      value={values.emergency_contact}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="0300-1234567"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Move-in Date"
+                      name="move_in_date"
+                      type="date"
+                      value={values.move_in_date}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -294,6 +394,172 @@ const Residents = () => {
                         </MenuItem>
                       ))}
                     </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Owner Name"
+                      name="owner_name"
+                      value={values.owner_name}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="License Plate"
+                      name="license_plate"
+                      value={values.license_plate}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Telephone Bills
+                    </Typography>
+                    {values.telephone_bills?.map((bill, index) => (
+                      <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Provider"
+                              value={bill.provider || ''}
+                              onChange={(e) => {
+                                const newBills = [...(values.telephone_bills || [])]
+                                newBills[index] = { ...newBills[index], provider: e.target.value }
+                                setFieldValue('telephone_bills', newBills)
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Account Number"
+                              value={bill.account_number || ''}
+                              onChange={(e) => {
+                                const newBills = [...(values.telephone_bills || [])]
+                                newBills[index] = { ...newBills[index], account_number: e.target.value }
+                                handleChange({ target: { name: 'telephone_bills', value: newBills } })
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={3}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Amount"
+                              type="number"
+                              value={bill.amount || ''}
+                              onChange={(e) => {
+                                const newBills = [...(values.telephone_bills || [])]
+                                newBills[index] = { ...newBills[index], amount: parseFloat(e.target.value) || 0 }
+                                handleChange({ target: { name: 'telephone_bills', value: newBills } })
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={1}>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => {
+                                const newBills = values.telephone_bills.filter((_, i) => i !== index)
+                                setFieldValue('telephone_bills', newBills)
+                              }}
+                            >
+                              <RemoveIcon />
+                            </IconButton>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))}
+                    <Button
+                      size="small"
+                      startIcon={<AddIcon />}
+                      onClick={() => {
+                        const newBills = [...(values.telephone_bills || []), { provider: '', account_number: '', amount: 0 }]
+                        setFieldValue('telephone_bills', newBills)
+                      }}
+                    >
+                      Add Telephone Bill
+                    </Button>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Other Bills
+                    </Typography>
+                    {values.other_bills?.map((bill, index) => (
+                      <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={3}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Type"
+                              value={bill.type || ''}
+                              onChange={(e) => {
+                                const newBills = [...(values.other_bills || [])]
+                                newBills[index] = { ...newBills[index], type: e.target.value }
+                                setFieldValue('other_bills', newBills)
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Provider"
+                              value={bill.provider || ''}
+                              onChange={(e) => {
+                                const newBills = [...(values.other_bills || [])]
+                                newBills[index] = { ...newBills[index], provider: e.target.value }
+                                handleChange({ target: { name: 'other_bills', value: newBills } })
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Amount"
+                              type="number"
+                              value={bill.amount || ''}
+                              onChange={(e) => {
+                                const newBills = [...(values.other_bills || [])]
+                                newBills[index] = { ...newBills[index], amount: parseFloat(e.target.value) || 0 }
+                                handleChange({ target: { name: 'other_bills', value: newBills } })
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={1}>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => {
+                                const newBills = values.other_bills.filter((_, i) => i !== index)
+                                setFieldValue('other_bills', newBills)
+                              }}
+                            >
+                              <RemoveIcon />
+                            </IconButton>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))}
+                    <Button
+                      size="small"
+                      startIcon={<AddIcon />}
+                      onClick={() => {
+                        const newBills = [...(values.other_bills || []), { type: '', provider: '', amount: 0 }]
+                        setFieldValue('other_bills', newBills)
+                      }}
+                    >
+                      Add Other Bill
+                    </Button>
                   </Grid>
                 </Grid>
               </DialogContent>

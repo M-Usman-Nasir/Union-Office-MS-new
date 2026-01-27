@@ -58,10 +58,12 @@ const Defaulters = () => {
   )
 
   // Check visibility settings (for admin view - to show message if disabled)
-  const { data: settings } = useSWR(
+  const { data: settings, isLoading: settingsLoading } = useSWR(
     societyId ? `/settings/${societyId}` : null,
     () => settingsApi.getSettings(societyId).then(res => res.data.data || res.data).catch(() => null)
   )
+
+  const isVisible = settings?.defaulter_list_visible !== false
 
   const handleOpenDialog = (defaulter) => {
     setSelectedDefaulter(defaulter)
@@ -149,6 +151,16 @@ const Defaulters = () => {
         <Box sx={{ mb: 3 }}>
           <Alert severity="error">
             {error.response?.data?.message || 'Failed to load defaulters data. Please try again.'}
+          </Alert>
+        </Box>
+      )}
+
+      {/* Visibility Notice */}
+      {!settingsLoading && settings && !isVisible && (
+        <Box sx={{ mb: 3 }}>
+          <Alert severity="warning">
+            Defaulter list visibility is currently disabled. Residents will not be able to view the defaulter list.
+            You can enable it in Settings.
           </Alert>
         </Box>
       )}

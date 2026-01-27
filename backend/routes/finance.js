@@ -10,6 +10,11 @@ router.use(authenticate);
 // Get finance summary
 router.get('/summary', financeController.getSummary);
 
+// Financial reports
+router.get('/reports/monthly', financeController.getMonthlyReport);
+router.get('/reports/yearly', financeController.getYearlyReport);
+router.get('/reports/public-summary', financeController.getPublicSummary);
+
 // Get all finance records
 router.get('/', financeController.getAll);
 

@@ -22,6 +22,9 @@ router.put('/:id', requireRole('super_admin', 'union_admin'), maintenanceControl
 // Record payment
 router.post('/:id/payment', requireRole('super_admin', 'union_admin'), maintenanceController.recordPayment);
 
+// Generate monthly dues manually (admin only)
+router.post('/generate-monthly-dues', requireRole(['super_admin', 'union_admin']), maintenanceController.generateMonthlyDues);
+
 // Delete maintenance record (admin only)
 router.delete('/:id', requireRole('super_admin', 'union_admin'), maintenanceController.remove);
 

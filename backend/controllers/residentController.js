@@ -184,9 +184,21 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date } = req.body;
+    const { 
+      name, 
+      society_apartment_id, 
+      unit_id, 
+      cnic, 
+      contact_number, 
+      emergency_contact, 
+      move_in_date,
+      owner_name,
+      license_plate,
+      telephone_bills,
+      other_bills
+    } = req.body;
 
-    const existing = await query('SELECT id FROM users WHERE id = $1', [id]);
+    const existing = await query('SELECT id, unit_id FROM users WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -194,6 +206,7 @@ export const update = async (req, res) => {
       });
     }
 
+    // Update user record
     const result = await query(
       `UPDATE users 
        SET name = COALESCE($1, name),
@@ -208,6 +221,61 @@ export const update = async (req, res) => {
        RETURNING id, email, name, role, society_apartment_id, unit_id, updated_at`,
       [name, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, id]
     );
+
+    // Update unit record if unit_id exists and additional fields are provided
+    const finalUnitId = unit_id || existing.rows[0].unit_id;
+    if (finalUnitId && (owner_name !== undefined || license_plate !== undefined || telephone_bills !== undefined || other_bills !== undefined)) {
+      try {
+        // Build dynamic update query for unit
+        const unitUpdates = [];
+        const unitParams = [];
+        let paramCount = 0;
+
+        if (owner_name !== undefined) {
+          paramCount++;
+          unitUpdates.push(`owner_name = $${paramCount}`);
+          unitParams.push(owner_name);
+        }
+
+        if (license_plate !== undefined) {
+          paramCount++;
+          unitUpdates.push(`license_plate = $${paramCount}`);
+          unitParams.push(license_plate);
+        }
+
+        // Handle JSONB fields
+        if (telephone_bills !== undefined) {
+          paramCount++;
+          unitUpdates.push(`telephone_bills = $${paramCount}::jsonb`);
+          unitParams.push(JSON.stringify(telephone_bills));
+        }
+
+        if (other_bills !== undefined) {
+          paramCount++;
+          unitUpdates.push(`other_bills = $${paramCount}::jsonb`);
+          unitParams.push(JSON.stringify(other_bills));
+        }
+
+        if (unitUpdates.length > 0) {
+          paramCount++;
+          unitUpdates.push(`updated_at = CURRENT_TIMESTAMP`);
+          unitParams.push(finalUnitId);
+
+          await query(
+            `UPDATE units 
+             SET ${unitUpdates.join(', ')}
+             WHERE id = $${paramCount}`,
+            unitParams
+          ).catch(err => {
+            // If columns don't exist, log warning but don't fail
+            console.warn('Failed to update unit fields (columns may not exist):', err.message);
+          });
+        }
+      } catch (error) {
+        // Log but don't fail the request if unit update fails
+        console.warn('Unit update error (columns may not exist):', error.message);
+      }
+    }
 
     res.json({
       success: true,

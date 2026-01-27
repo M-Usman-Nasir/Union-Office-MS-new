@@ -62,8 +62,13 @@ const Blocks = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      await propertyApi.createBlock(values)
-      toast.success('Block created successfully')
+      if (editingBlock) {
+        await propertyApi.updateBlock(editingBlock.id, values)
+        toast.success('Block updated successfully')
+      } else {
+        await propertyApi.createBlock(values)
+        toast.success('Block created successfully')
+      }
       mutate()
       handleCloseDialog()
     } catch (error) {
@@ -151,7 +156,9 @@ const Blocks = () => {
         >
           {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
             <Form>
-              <DialogTitle>Add New Block</DialogTitle>
+              <DialogTitle>
+                {editingBlock ? 'Edit Block' : 'Add New Block'}
+              </DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={12}>
@@ -165,6 +172,7 @@ const Blocks = () => {
                       onBlur={handleBlur}
                       error={touched.society_apartment_id && !!errors.society_apartment_id}
                       helperText={touched.society_apartment_id && errors.society_apartment_id}
+                      disabled={!!editingBlock}
                     >
                       <MenuItem value="">Select Society</MenuItem>
                       {societiesData?.data?.map((society) => (
@@ -213,7 +221,7 @@ const Blocks = () => {
               <DialogActions>
                 <Button onClick={handleCloseDialog}>Cancel</Button>
                 <Button type="submit" variant="contained" disabled={isSubmitting}>
-                  Create
+                  {editingBlock ? 'Update' : 'Create'}
                 </Button>
               </DialogActions>
             </Form>

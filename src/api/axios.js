@@ -21,6 +21,11 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`
     }
     
+    // Don't set Content-Type for FormData - let browser set it with boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    }
+    
     return config
   },
   (error) => {
@@ -74,13 +79,15 @@ api.interceptors.response.use(
     // Handle other errors
     if (error.response) {
       const { status, data } = error.response
-      
+
       switch (status) {
         case 400:
           toast.error(data.message || 'Bad request')
           break
         case 403:
-          toast.error('You do not have permission to perform this action')
+          // Silently ignore permission errors to avoid ugly global toasts,
+          // especially for resident users hitting admin-only endpoints.
+          // Individual pages can render their own friendly messages if needed.
           break
         case 404:
           toast.error('Resource not found')

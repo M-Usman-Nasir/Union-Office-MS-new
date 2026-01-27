@@ -25,4 +25,22 @@ export const financeApi = {
   remove: (id) => {
     return api.delete(API_ENDPOINTS.FINANCE_BY_ID(id))
   },
+
+  getMonthlyReport: (month, year, params = {}) => {
+    return api.get(API_ENDPOINTS.FINANCE_REPORTS_MONTHLY, {
+      params: { month, year, ...params },
+    })
+  },
+
+  getYearlyReport: (year, params = {}) => {
+    return api.get(API_ENDPOINTS.FINANCE_REPORTS_YEARLY, {
+      params: { year, ...params },
+    })
+  },
+
+  getPublicSummary: (month, year, params = {}) => {
+    return api.get(API_ENDPOINTS.FINANCE_PUBLIC_SUMMARY, {
+      params: { month, year, ...params },
+    })
+  },
 }

@@ -22,6 +22,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import PeopleIcon from '@mui/icons-material/People'
 import PaymentIcon from '@mui/icons-material/Payment'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
+import AssessmentIcon from '@mui/icons-material/Assessment'
 import WarningIcon from '@mui/icons-material/Warning'
 import FeedbackIcon from '@mui/icons-material/Feedback'
 import AnnouncementIcon from '@mui/icons-material/Announcement'
@@ -30,9 +31,10 @@ import ApartmentIcon from '@mui/icons-material/Apartment'
 import LogoutIcon from '@mui/icons-material/Logout'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
+import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { ROUTES, ROLES } from '@/utils/constants'
+import { ROUTES, ROLES, getImageUrl } from '@/utils/constants'
 
 const drawerWidth = 240
 
@@ -70,6 +72,9 @@ const MainLayout = ({ children }) => {
         { text: 'Blocks', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_BLOCKS },
         { text: 'Floors', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_FLOORS },
         { text: 'Units', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_UNITS },
+        { text: 'Users', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
+        { text: 'Global Reports', icon: <AssessmentIcon />, path: ROUTES.SUPER_ADMIN_REPORTS },
+        { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
       ]
     } else if (user?.role === ROLES.ADMIN) {
       return [
@@ -82,6 +87,7 @@ const MainLayout = ({ children }) => {
         { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
         { text: 'Users', icon: <PeopleIcon />, path: ROUTES.ADMIN_USERS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
+        { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.ADMIN_PROFILE },
       ]
     } else if (user?.role === ROLES.STAFF) {
       return [
@@ -94,6 +100,7 @@ const MainLayout = ({ children }) => {
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.RESIDENT_DASHBOARD },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.RESIDENT_COMPLAINTS },
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.RESIDENT_MAINTENANCE },
+        { text: 'Financial Summary', icon: <AssessmentIcon />, path: ROUTES.RESIDENT_FINANCIAL_SUMMARY },
         { text: 'Union Info', icon: <ApartmentIcon />, path: ROUTES.RESIDENT_UNION_INFO },
         { text: 'Profile', icon: <PeopleIcon />, path: ROUTES.RESIDENT_PROFILE },
       ]
@@ -152,8 +159,11 @@ const MainLayout = ({ children }) => {
             {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
           <IconButton onClick={handleMenuClick}>
-            <Avatar sx={{ width: 32, height: 32 }}>
-              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+            <Avatar 
+              src={getImageUrl(user?.profile_image)} 
+              sx={{ width: 32, height: 32 }}
+            >
+              {!user?.profile_image && (user?.name?.charAt(0)?.toUpperCase() || 'U')}
             </Avatar>
           </IconButton>
           <Menu

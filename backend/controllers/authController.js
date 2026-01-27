@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
+import { deleteProfileImage, getImagePath } from '../config/multer.js';
 
 // Generate JWT tokens
 const generateTokens = (userId) => {
@@ -107,7 +108,7 @@ export const login = async (req, res) => {
 // Register (for super admin to create users)
 export const register = async (req, res) => {
   try {
-    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number } = req.body;
+    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact } = req.body;
 
     // Validation
     if (!email || !password || !name || !role) {
@@ -135,8 +136,8 @@ export const register = async (req, res) => {
 
     // Create user
     const result = await query(
-      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, email, name, role, society_apartment_id, unit_id, created_at`,
       [
         email.toLowerCase(),
@@ -147,6 +148,7 @@ export const register = async (req, res) => {
         unit_id || null,
         cnic || null,
         contact_number || null,
+        emergency_contact || null,
         req.user?.id || null,
       ]
     );
@@ -173,7 +175,7 @@ export const getMe = async (req, res) => {
   try {
     const result = await query(
       `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, 
-              emergency_contact, move_in_date, created_at, last_login
+              emergency_contact, profile_image, move_in_date, created_at, last_login
        FROM users WHERE id = $1`,
       [req.user.id]
     );
@@ -194,6 +196,119 @@ export const getMe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get user information',
+      error: error.message,
+    });
+  }
+};
+
+// Update current user's profile
+// Allows the logged-in user (resident, staff, admin, super admin) to update basic profile fields.
+// Fields: name, contact_number, emergency_contact, cnic, profile_image (file upload)
+export const updateMe = async (req, res) => {
+  try {
+    const { name, contact_number, emergency_contact, cnic } = req.body;
+
+    // Basic validation
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required',
+      });
+    }
+
+    // Handle profile image file upload
+    let profileImagePath = null;
+    
+    // Get current user's profile image before update
+    const currentUserResult = await query(
+      'SELECT profile_image FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const currentProfileImage = currentUserResult.rows[0]?.profile_image;
+
+    // If a new image file was uploaded
+    if (req.file) {
+      profileImagePath = getImagePath(req.file.filename);
+      
+      // Delete old profile image if it exists (and it's not base64)
+      if (currentProfileImage && !currentProfileImage.startsWith('data:image/')) {
+        deleteProfileImage(currentProfileImage);
+      }
+    } else if (req.body.remove_image === 'true') {
+      // Handle explicit image removal
+      if (currentProfileImage && !currentProfileImage.startsWith('data:image/')) {
+        deleteProfileImage(currentProfileImage);
+      }
+      profileImagePath = null;
+    } else {
+      // Keep existing image (don't update profile_image column)
+      profileImagePath = undefined; // undefined means don't update this field
+    }
+
+    // Build update query dynamically
+    const updateFields = ['name = $1'];
+    const updateValues = [name];
+    let paramIndex = 2;
+
+    if (profileImagePath !== undefined) {
+      updateFields.push(`profile_image = $${paramIndex}`);
+      updateValues.push(profileImagePath);
+      paramIndex++;
+    }
+
+    if (contact_number !== undefined) {
+      updateFields.push(`contact_number = $${paramIndex}`);
+      updateValues.push(contact_number || null);
+      paramIndex++;
+    }
+
+    if (emergency_contact !== undefined) {
+      updateFields.push(`emergency_contact = $${paramIndex}`);
+      updateValues.push(emergency_contact || null);
+      paramIndex++;
+    }
+
+    if (cnic !== undefined) {
+      updateFields.push(`cnic = $${paramIndex}`);
+      updateValues.push(cnic || null);
+      paramIndex++;
+    }
+
+    updateFields.push('updated_at = CURRENT_TIMESTAMP');
+    updateValues.push(req.user.id);
+
+    const result = await query(
+      `UPDATE users
+       SET ${updateFields.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, profile_image, move_in_date, created_at, last_login`,
+      updateValues
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Update me error:', error);
+    
+    // Clean up uploaded file if there was an error
+    if (req.file) {
+      const { deleteProfileImage } = await import('../config/multer.js');
+      deleteProfileImage(getImagePath(req.file.filename));
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update profile',
       error: error.message,
     });
   }

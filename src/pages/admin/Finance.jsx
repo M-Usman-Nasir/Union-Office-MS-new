@@ -18,6 +18,8 @@ import {
   Card,
   CardContent,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -34,6 +36,7 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
 import { INCOME_TYPES, INCOME_TYPE_LABELS } from '@/utils/constants'
+import FinancialReports from '@/components/finance/FinancialReports'
 
 const validationSchema = Yup.object({
   transaction_type: Yup.string().oneOf(['income', 'expense']).required('Transaction type is required'),
@@ -60,6 +63,7 @@ const Finance = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [editingFinance, setEditingFinance] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
+  const [activeTab, setActiveTab] = useState(0)
 
   const { data, isLoading, error, mutate } = useSWR(
     ['/finance', page, limit, search, societyId],
@@ -270,33 +274,58 @@ const Finance = () => {
         </Grid>
       )}
 
-      <Box sx={{ mb: 3 }}>
-        <TextField
-          fullWidth
-          placeholder="Search finance records..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+          <Tab label="All Transactions" />
+          <Tab label="Expenses" />
+          <Tab label="Income" />
+          <Tab label="Reports" />
+        </Tabs>
       </Box>
 
-      <DataTable
-        columns={columns}
-        data={data?.data || []}
-        loading={isLoading}
-        pagination={data?.pagination}
-        onPageChange={setPage}
-        onRowsPerPageChange={(newLimit) => {
-          setLimit(newLimit)
-          setPage(1)
-        }}
-      />
+      {/* Tab Content */}
+      {activeTab === 3 ? (
+        // Reports Tab
+        <FinancialReports reportType="monthly" />
+      ) : (
+        // Transactions Tabs (All, Expenses, Income)
+        <>
+          <Box sx={{ mb: 3 }}>
+            <TextField
+              fullWidth
+              placeholder="Search finance records..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+
+          <DataTable
+            columns={columns}
+            data={
+              activeTab === 0
+                ? data?.data || []
+                : activeTab === 1
+                ? (data?.data || []).filter((item) => item.transaction_type === 'expense')
+                : (data?.data || []).filter((item) => item.transaction_type === 'income')
+            }
+            loading={isLoading}
+            pagination={data?.pagination}
+            onPageChange={setPage}
+            onRowsPerPageChange={(newLimit) => {
+              setLimit(newLimit)
+              setPage(1)
+            }}
+          />
+        </>
+      )}
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik

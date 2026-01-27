@@ -19,10 +19,10 @@ export const getAll = async (req, res) => {
     const params = [];
     let paramCount = 0;
 
-    // Residents can only see their own complaints
+    // Residents can see their own complaints and public complaints
     if (req.user.role === 'resident') {
       paramCount++;
-      sql += ` AND c.submitted_by = $${paramCount}`;
+      sql += ` AND (c.submitted_by = $${paramCount} OR c.is_public = true)`;
       params.push(req.user.id);
     }
 
@@ -62,7 +62,7 @@ export const getAll = async (req, res) => {
 
     if (req.user.role === 'resident') {
       countParamCount++;
-      countSql += ` AND submitted_by = $${countParamCount}`;
+      countSql += ` AND (submitted_by = $${countParamCount} OR is_public = true)`;
       countParams.push(req.user.id);
     }
     if (society_id) {
@@ -343,6 +343,156 @@ export const remove = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete complaint',
+      error: error.message,
+    });
+  }
+};
+
+// Assign staff to complaint
+export const assignStaff = async (req, res) => {
+  try {
+    const { staff_id } = req.body;
+    const { id } = req.params;
+
+    // Verify staff_id is a staff user
+    const staff = await query(
+      `SELECT id, role FROM users WHERE id = $1 AND role = 'staff'`,
+      [staff_id]
+    );
+
+    if (staff.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid staff user',
+      });
+    }
+
+    // Check if complaint exists
+    const complaint = await query('SELECT id FROM complaints WHERE id = $1', [id]);
+    if (complaint.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    // Update complaint
+    const result = await query(
+      `UPDATE complaints 
+       SET assigned_to = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [staff_id, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Staff assigned successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Assign staff error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to assign staff',
+      error: error.message,
+    });
+  }
+};
+
+// Add progress update
+export const addProgress = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+
+    // Check if complaint exists
+    const complaint = await query('SELECT id FROM complaints WHERE id = $1', [id]);
+    if (complaint.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    // Try to insert progress entry (if complaint_progress table exists)
+    try {
+      await query(
+        `INSERT INTO complaint_progress (complaint_id, updated_by, status, notes)
+         VALUES ($1, $2, $3, $4)`,
+        [id, req.user.id, status || null, notes || null]
+      );
+    } catch (error) {
+      // If table doesn't exist, log but continue
+      console.warn('complaint_progress table may not exist:', error.message);
+    }
+
+    // Update complaint status if provided
+    if (status) {
+      await query(
+        `UPDATE complaints 
+         SET status = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [status, id]
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Progress updated successfully',
+    });
+  } catch (error) {
+    console.error('Add progress error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add progress',
+      error: error.message,
+    });
+  }
+};
+
+// Get progress history
+export const getProgress = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if complaint exists
+    const complaint = await query('SELECT id FROM complaints WHERE id = $1', [id]);
+    if (complaint.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    // Try to get progress history (if complaint_progress table exists)
+    try {
+      const result = await query(
+        `SELECT cp.*, u.name as updated_by_name
+         FROM complaint_progress cp
+         LEFT JOIN users u ON cp.updated_by = u.id
+         WHERE cp.complaint_id = $1
+         ORDER BY cp.created_at DESC`,
+        [id]
+      );
+
+      res.json({
+        success: true,
+        data: result.rows,
+      });
+    } catch (error) {
+      // If table doesn't exist, return empty array
+      console.warn('complaint_progress table may not exist:', error.message);
+      res.json({
+        success: true,
+        data: [],
+      });
+    }
+  } catch (error) {
+    console.error('Get progress error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch progress',
       error: error.message,
     });
   }

@@ -1,3 +1,4 @@
+/* eslint-env node */
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -16,21 +17,43 @@ import defaulterRoutes from './routes/defaulters.js';
 import announcementRoutes from './routes/announcements.js';
 import propertyRoutes from './routes/properties.js';
 import userRoutes from './routes/users.js';
+import superAdminRoutes from './routes/superAdmin.js';
+import settingsRoutes from './routes/settings.js';
+import staffRoutes from './routes/staff.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Guard against environments where `process` is not defined (e.g., browser-based tooling)
+const PORT = (typeof process !== 'undefined' && process.env && process.env.PORT) || 3000;
 
 // Middleware
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parser for JSON and URL-encoded data
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// Serve static files (profile images)
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    // Set CORS headers for image files
+    res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || 'http://localhost:5173');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // Cache images for 1 year
+    if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.png') || filePath.endsWith('.gif')) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+  }
+}));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -59,6 +82,9 @@ app.use('/api/defaulters', defaulterRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/staff', staffRoutes);
 
 // Database connection test endpoint
 app.get('/api/test/db', async (req, res) => {
@@ -96,8 +122,19 @@ app.use((req, res) => {
 });
 
 // Error handling middleware
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('Error:', err);
+  
+  // Handle payload too large error specifically
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      success: false,
+      message: 'Request payload too large. Image size must be less than 2MB.',
+      error: 'Payload size limit exceeded',
+    });
+  }
+  
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal server error',
@@ -123,6 +160,15 @@ const startServer = async () => {
     tables.forEach(table => {
       console.log(`   - ${table.table_name}`);
     });
+
+    // Initialize scheduled jobs
+    try {
+      const { scheduleMonthlyDues } = await import('./jobs/monthlyDuesGenerator.js');
+      scheduleMonthlyDues();
+      console.log('✅ Monthly dues scheduler initialized');
+    } catch (error) {
+      console.warn('⚠️  Could not initialize monthly dues scheduler:', error.message);
+    }
 
     // Start listening
     app.listen(PORT, () => {

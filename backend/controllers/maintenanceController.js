@@ -294,3 +294,32 @@ export const remove = async (req, res) => {
     });
   }
 };
+
+// Generate monthly dues manually
+export const generateMonthlyDues = async (req, res) => {
+  try {
+    const { month, year } = req.body;
+    
+    const currentDate = new Date();
+    const targetMonth = month || currentDate.getMonth() + 1;
+    const targetYear = year || currentDate.getFullYear();
+
+    // Import the generator function
+    const { generateMonthlyDues: generateDues } = await import('../jobs/monthlyDuesGenerator.js');
+    
+    const result = await generateDues(targetMonth, targetYear);
+
+    res.json({
+      success: true,
+      message: 'Monthly dues generated successfully',
+      data: result
+    });
+  } catch (error) {
+    console.error('Generate monthly dues error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate monthly dues',
+      error: error.message,
+    });
+  }
+};

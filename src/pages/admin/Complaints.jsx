@@ -32,6 +32,7 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
 import { Autocomplete } from '@mui/material'
+import ProgressTimeline from '@/components/complaints/ProgressTimeline'
 
 const statusOptions = ['pending', 'in_progress', 'resolved', 'closed']
 const priorityOptions = ['low', 'medium', 'high', 'urgent']
@@ -340,22 +341,8 @@ const Complaints = () => {
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                     Progress History
                   </Typography>
-                  <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
-                    {progressData.data.map((progress, index) => (
-                      <Box key={index} sx={{ mb: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                        <Typography variant="body2" fontWeight="bold">
-                          {progress.status} - {formatDate(progress.created_at)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          By: {progress.updated_by_name || 'Unknown'}
-                        </Typography>
-                        {progress.notes && (
-                          <Typography variant="body2" sx={{ mt: 0.5 }}>
-                            {progress.notes}
-                          </Typography>
-                        )}
-                      </Box>
-                    ))}
+                  <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                    <ProgressTimeline progressEntries={progressData.data} />
                   </Box>
                 </Grid>
               )}

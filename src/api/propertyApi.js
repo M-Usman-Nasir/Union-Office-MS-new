@@ -11,6 +11,10 @@ export const propertyApi = {
     return api.post(API_ENDPOINTS.BLOCKS, data)
   },
 
+  updateBlock: (id, data) => {
+    return api.put(`${API_ENDPOINTS.BLOCKS}/${id}`, data)
+  },
+
   // Floors
   getFloors: (params) => {
     return api.get(API_ENDPOINTS.FLOORS, { params })

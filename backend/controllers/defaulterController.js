@@ -6,6 +6,29 @@ export const getAll = async (req, res) => {
     const { page = 1, limit = 10, society_id, status } = req.query;
     const offset = (page - 1) * limit;
 
+    // Check if defaulter list is visible for residents
+    if (req.user.role === 'resident') {
+      const societyId = society_id || req.user.society_apartment_id;
+      const settings = await query(
+        'SELECT defaulter_list_visible FROM settings WHERE society_apartment_id = $1',
+        [societyId]
+      );
+
+      if (settings.rows.length === 0 || !settings.rows[0].defaulter_list_visible) {
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: 0,
+            pages: 0,
+          },
+          message: 'Defaulter list is not visible for residents',
+        });
+      }
+    }
+
     let sql = `
       SELECT d.*, u.unit_number, u.owner_name, u.resident_name, u.contact_number as resident_contact,
              s.name as society_name

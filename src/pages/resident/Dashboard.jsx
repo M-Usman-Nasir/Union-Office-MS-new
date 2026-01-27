@@ -20,6 +20,7 @@ import { complaintApi } from '@/api/complaintApi'
 import { maintenanceApi } from '@/api/maintenanceApi'
 import { announcementApi } from '@/api/announcementApi'
 import { defaulterApi } from '@/api/defaulterApi'
+import { settingsApi } from '@/api/settingsApi'
 
 const ResidentDashboard = () => {
   const { user } = useAuth()
@@ -40,8 +41,18 @@ const ResidentDashboard = () => {
     () => announcementApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
   )
 
+  const societyId = user?.society_apartment_id
+
+  // Check visibility settings
+  const { data: settingsData } = useSWR(
+    societyId ? `/settings/${societyId}` : null,
+    () => settingsApi.getSettings(societyId).then((res) => res.data.data || res.data).catch(() => null)
+  )
+
+  const defaulterListVisible = settingsData?.defaulter_list_visible !== false
+
   const { data: defaulterData, isLoading: defaulterLoading } = useSWR(
-    user ? '/defaulters/my' : null,
+    user && defaulterListVisible ? '/defaulters/my' : null,
     () => defaulterApi.getAll({ unit_id: user?.unit_id }).then(res => res.data)
   )
 
@@ -128,34 +139,36 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Defaulter Status
-                  </Typography>
-                  {defaulterData?.data && defaulterData.data.length > 0 ? (
-                    <>
-                      <Typography variant="h6" color="error" component="div">
-                        {formatCurrency(defaulterData.data[0].amount_due)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Amount due
-                      </Typography>
-                    </>
-                  ) : (
-                    <>
-                      <Typography variant="h6" color="success.main" component="div">
-                        Clear
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        No pending dues
-                      </Typography>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
+            {defaulterListVisible && (
+              <Grid item xs={12} sm={6} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Defaulter Status
+                    </Typography>
+                    {defaulterData?.data && defaulterData.data.length > 0 ? (
+                      <>
+                        <Typography variant="h6" color="error" component="div">
+                          {formatCurrency(defaulterData.data[0].amount_due)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Amount due
+                        </Typography>
+                      </>
+                    ) : (
+                      <>
+                        <Typography variant="h6" color="success.main" component="div">
+                          Clear
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          No pending dues
+                        </Typography>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
           </Grid>
 
           {/* My Complaints */}

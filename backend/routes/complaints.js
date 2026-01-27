@@ -22,6 +22,15 @@ router.put('/:id', complaintController.update);
 // Update complaint status (admin only)
 router.patch('/:id/status', requireRole('super_admin', 'union_admin'), complaintController.updateStatus);
 
+// Assign staff to complaint (admin only)
+router.patch('/:id/assign', requireRole(['super_admin', 'union_admin']), complaintController.assignStaff);
+
+// Add progress update (admin/staff)
+router.post('/:id/progress', requireRole(['super_admin', 'union_admin', 'staff']), complaintController.addProgress);
+
+// Get progress history
+router.get('/:id/progress', complaintController.getProgress);
+
 // Delete complaint
 router.delete('/:id', complaintController.remove);
 

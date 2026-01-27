@@ -10,6 +10,7 @@ router.use(authenticate);
 // Blocks routes
 router.get('/blocks', propertyController.getBlocks);
 router.post('/blocks', requireRole('super_admin'), propertyController.createBlock);
+router.put('/blocks/:id', requireRole('super_admin'), propertyController.updateBlock);
 
 // Floors routes
 router.get('/floors', propertyController.getFloors);

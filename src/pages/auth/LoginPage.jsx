@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Container,
@@ -45,14 +45,22 @@ const LoginPage = () => {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
 
   // Redirect if already authenticated
-  if (isAuthenticated) {
-    navigate(ROUTES.ADMIN_DASHBOARD)
-    return null
-  }
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // Redirect based on role
+      if (user.role === ROLES.SUPER_ADMIN) {
+        navigate(ROUTES.SUPER_ADMIN_DASHBOARD)
+      } else if (user.role === ROLES.ADMIN) {
+        navigate(ROUTES.ADMIN_DASHBOARD)
+      } else {
+        navigate(ROUTES.RESIDENT_DASHBOARD)
+      }
+    }
+  }, [isAuthenticated, user, navigate])
 
   const handleTestUserClick = (testUser) => {
     setEmail(testUser.email)

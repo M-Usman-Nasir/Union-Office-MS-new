@@ -60,7 +60,7 @@ export const API_ENDPOINTS = {
   FINANCE_BY_ID: (id) => `/finance/${id}`,
   FINANCE_REPORTS_MONTHLY: '/finance/reports/monthly',
   FINANCE_REPORTS_YEARLY: '/finance/reports/yearly',
-  FINANCE_PUBLIC_SUMMARY: '/finance/public-summary',
+  FINANCE_PUBLIC_SUMMARY: '/finance/reports/public-summary',
   
   // Complaints
   COMPLAINTS: '/complaints',
@@ -96,6 +96,7 @@ export const API_ENDPOINTS = {
   
   // Settings
   SETTINGS: (societyId) => `/settings/${societyId}`,
+  MAINTENANCE_CONFIG: (societyId) => `/settings/${societyId}/maintenance-config`,
   
   // Super Admin
   SUPER_ADMIN_REPORTS_GLOBAL: '/super-admin/reports/global',
@@ -121,6 +122,8 @@ export const ROUTES = {
   SUPER_ADMIN_BLOCKS: '/super-admin/blocks',
   SUPER_ADMIN_FLOORS: '/super-admin/floors',
   SUPER_ADMIN_UNITS: '/super-admin/units',
+  SUPER_ADMIN_USERS: '/super-admin/users',
+  SUPER_ADMIN_PROFILE: '/super-admin/profile',
   
   // Admin
   ADMIN_DASHBOARD: '/admin/dashboard',
@@ -132,6 +135,7 @@ export const ROUTES = {
   ADMIN_ANNOUNCEMENTS: '/admin/announcements',
   ADMIN_SETTINGS: '/admin/settings',
   ADMIN_USERS: '/admin/users',
+  ADMIN_PROFILE: '/admin/profile',
   
   // Resident
   RESIDENT_DASHBOARD: '/resident/dashboard',
@@ -176,4 +180,26 @@ export const INCOME_TYPE_LABELS = {
   [INCOME_TYPES.FINES]: 'Fines',
   [INCOME_TYPES.ADDITIONAL_CHARGES]: 'Additional Charges',
   [INCOME_TYPES.OTHER_INCOME]: 'Other Income',
+}
+
+// Helper function to get base URL for static files (without /api)
+export const getBaseUrl = () => {
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+  // Remove /api from the end if present
+  return apiUrl.replace(/\/api\/?$/, '')
+}
+
+// Helper function to get full image URL
+export const getImageUrl = (imagePath) => {
+  if (!imagePath) return null
+  // If it's already a base64 data URL, return as is
+  if (imagePath.startsWith('data:image/')) {
+    return imagePath
+  }
+  // If it's already a full URL, return as is
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  // Otherwise, prepend base URL
+  return `${getBaseUrl()}${imagePath}`
 }

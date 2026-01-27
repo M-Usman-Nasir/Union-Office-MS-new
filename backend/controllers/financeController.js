@@ -321,3 +321,223 @@ export const remove = async (req, res) => {
     });
   }
 };
+
+// Get monthly financial report
+export const getMonthlyReport = async (req, res) => {
+  try {
+    const { month, year, society_id } = req.query;
+    const societyId = society_id || req.user.society_apartment_id;
+
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Month and year are required',
+      });
+    }
+
+    // Get summary
+    const report = await query(`
+      SELECT 
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as total_income,
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as total_expenses,
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) - 
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as net_income,
+        COUNT(CASE WHEN transaction_type = 'income' THEN 1 END) as income_count,
+        COUNT(CASE WHEN transaction_type = 'expense' THEN 1 END) as expense_count
+      FROM finance
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3
+    `, [month, year, societyId]);
+
+    // Get breakdown by income type
+    const incomeBreakdown = await query(`
+      SELECT 
+        income_type,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM finance
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'income'
+      GROUP BY income_type
+      ORDER BY total DESC
+    `, [month, year, societyId]);
+
+    // Get breakdown by expense type
+    const expenseBreakdown = await query(`
+      SELECT 
+        expense_type,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM finance
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'expense'
+      GROUP BY expense_type
+      ORDER BY total DESC
+    `, [month, year, societyId]);
+
+    res.json({
+      success: true,
+      data: {
+        summary: report.rows[0] || {
+          total_income: '0',
+          total_expenses: '0',
+          net_income: '0',
+          income_count: '0',
+          expense_count: '0'
+        },
+        incomeBreakdown: incomeBreakdown.rows,
+        expenseBreakdown: expenseBreakdown.rows
+      }
+    });
+  } catch (error) {
+    console.error('Get monthly report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch monthly report',
+      error: error.message,
+    });
+  }
+};
+
+// Get yearly financial report
+export const getYearlyReport = async (req, res) => {
+  try {
+    const { year, society_id } = req.query;
+    const societyId = society_id || req.user.society_apartment_id;
+
+    if (!year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Year is required',
+      });
+    }
+
+    // Get monthly breakdown
+    const monthlyBreakdown = await query(`
+      SELECT 
+        month,
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as total_income,
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as total_expenses,
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) - 
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as net_income
+      FROM finance
+      WHERE year = $1 AND society_apartment_id = $2
+      GROUP BY month
+      ORDER BY month
+    `, [year, societyId]);
+
+    // Get yearly totals
+    const yearlyTotal = await query(`
+      SELECT 
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as total_income,
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as total_expenses,
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) - 
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as net_income,
+        COUNT(CASE WHEN transaction_type = 'income' THEN 1 END) as income_count,
+        COUNT(CASE WHEN transaction_type = 'expense' THEN 1 END) as expense_count
+      FROM finance
+      WHERE year = $1 AND society_apartment_id = $2
+    `, [year, societyId]);
+
+    // Get breakdown by income type
+    const incomeBreakdown = await query(`
+      SELECT 
+        income_type,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM finance
+      WHERE year = $1 AND society_apartment_id = $2 AND transaction_type = 'income'
+      GROUP BY income_type
+      ORDER BY total DESC
+    `, [year, societyId]);
+
+    // Get breakdown by expense type
+    const expenseBreakdown = await query(`
+      SELECT 
+        expense_type,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM finance
+      WHERE year = $1 AND society_apartment_id = $2 AND transaction_type = 'expense'
+      GROUP BY expense_type
+      ORDER BY total DESC
+    `, [year, societyId]);
+
+    res.json({
+      success: true,
+      data: {
+        yearly: yearlyTotal.rows[0] || {
+          total_income: '0',
+          total_expenses: '0',
+          net_income: '0',
+          income_count: '0',
+          expense_count: '0'
+        },
+        monthly: monthlyBreakdown.rows,
+        incomeBreakdown: incomeBreakdown.rows,
+        expenseBreakdown: expenseBreakdown.rows
+      }
+    });
+  } catch (error) {
+    console.error('Get yearly report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch yearly report',
+      error: error.message,
+    });
+  }
+};
+
+// Get public financial summary (for residents)
+export const getPublicSummary = async (req, res) => {
+  try {
+    const { month, year, society_id } = req.query;
+    const societyId = society_id || req.user.society_apartment_id;
+
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Month and year are required',
+      });
+    }
+
+    // Check if financial reports are visible for this society
+    const settings = await query(
+      'SELECT financial_reports_visible FROM settings WHERE society_apartment_id = $1',
+      [societyId]
+    );
+
+    if (settings.rows.length === 0 || !settings.rows[0].financial_reports_visible) {
+      return res.status(403).json({
+        success: false,
+        message: 'Financial reports are not visible for this society',
+      });
+    }
+
+    // Get summary (same as monthly report but without detailed breakdown)
+    const report = await query(`
+      SELECT 
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as total_income,
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as total_expenses,
+        SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) - 
+        SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as net_income
+      FROM finance
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3
+    `, [month, year, societyId]);
+
+    res.json({
+      success: true,
+      data: {
+        summary: report.rows[0] || {
+          total_income: '0',
+          total_expenses: '0',
+          net_income: '0'
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get public summary error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch public summary',
+      error: error.message,
+    });
+  }
+};

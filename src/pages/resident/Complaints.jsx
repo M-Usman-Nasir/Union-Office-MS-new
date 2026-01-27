@@ -12,11 +12,15 @@ import {
   Grid,
   MenuItem,
   Chip,
+  Tabs,
+  Tab,
+  Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
+import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -34,10 +38,20 @@ const ResidentComplaints = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [openDialog, setOpenDialog] = useState(false)
+  const [filterType, setFilterType] = useState('all') // 'all', 'my', 'public'
+  const societyId = user?.society_apartment_id
+
+  // Check visibility settings
+  const { data: settingsData } = useSWR(
+    societyId ? `/settings/${societyId}` : null,
+    () => settingsApi.getSettings(societyId).then((res) => res.data.data || res.data).catch(() => null)
+  )
+
+  const complaintLogsVisible = settingsData?.complaint_logs_visible !== false
 
   // Fetch complaints - backend should return own complaints + public complaints
   const { data, isLoading, mutate } = useSWR(
-    ['/complaints/my', page, limit],
+    complaintLogsVisible ? ['/complaints/my', page, limit] : null,
     () => complaintApi.getAll({ page, limit }).then(res => res.data)
   )
 
@@ -108,6 +122,11 @@ const ResidentComplaints = () => {
       </Typography>
     )},
     {
+      id: 'unit_number',
+      label: 'Unit',
+      render: (row) => row.unit_number || 'N/A',
+    },
+    {
       id: 'status',
       label: 'Status',
       render: (row) => (
@@ -124,11 +143,21 @@ const ResidentComplaints = () => {
     { id: 'created_at', label: 'Submitted', render: (row) => formatDate(row.created_at) },
   ]
 
+  // Filter complaints based on selected filter
+  const filteredData = data?.data ? data.data.filter((complaint) => {
+    if (filterType === 'my') {
+      return complaint.unit_id === user?.unit_id
+    } else if (filterType === 'public') {
+      return complaint.unit_id !== user?.unit_id && complaint.is_public
+    }
+    return true // 'all' - show all complaints
+  }) : []
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
-          My Complaints
+          Complaints
         </Typography>
         <Button
           variant="contained"
@@ -139,17 +168,39 @@ const ResidentComplaints = () => {
         </Button>
       </Box>
 
-      <DataTable
-        columns={columns}
-        data={data?.data || []}
-        loading={isLoading}
-        pagination={data?.pagination}
-        onPageChange={setPage}
-        onRowsPerPageChange={(newLimit) => {
-          setLimit(newLimit)
-          setPage(1)
-        }}
-      />
+      {!complaintLogsVisible && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Complaint logs are currently not visible. Please contact your administrator if you need access.
+        </Alert>
+      )}
+
+      {complaintLogsVisible && (
+        <>
+          {/* Filter Tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+            <Tabs value={filterType} onChange={(e, newValue) => setFilterType(newValue)}>
+              <Tab label="All Complaints" value="all" />
+              <Tab label="My Complaints" value="my" />
+              <Tab label="Public Complaints" value="public" />
+            </Tabs>
+          </Box>
+
+          <DataTable
+            columns={columns}
+            data={filteredData}
+            loading={isLoading}
+            pagination={{
+              ...data?.pagination,
+              total: filteredData.length,
+            }}
+            onPageChange={setPage}
+            onRowsPerPageChange={(newLimit) => {
+              setLimit(newLimit)
+              setPage(1)
+            }}
+          />
+        </>
+      )}
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <Formik

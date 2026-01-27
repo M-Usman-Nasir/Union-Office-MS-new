@@ -14,6 +14,7 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
+  Chip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -27,6 +28,8 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
 const validationSchema = Yup.object({
+  society_apartment_id: Yup.number().required('Society is required'),
+  block_id: Yup.number().required('Block is required'),
   floor_id: Yup.number().required('Floor is required'),
   unit_number: Yup.string().required('Unit number is required'),
 })
@@ -54,6 +57,18 @@ const Units = () => {
     () => propertyApi.getFloors({ block_id: blockFilter }).then(res => res.data)
   )
 
+  // For dialog - fetch blocks and floors when creating new unit
+  const [dialogSocietyId, setDialogSocietyId] = useState('')
+  const [dialogBlockId, setDialogBlockId] = useState('')
+  const { data: dialogBlocksData } = useSWR(
+    dialogSocietyId ? ['/blocks-dialog', dialogSocietyId] : null,
+    () => propertyApi.getBlocks({ society_id: dialogSocietyId }).then(res => res.data)
+  )
+  const { data: dialogFloorsData } = useSWR(
+    dialogBlockId ? ['/floors-dialog', dialogBlockId] : null,
+    () => propertyApi.getFloors({ block_id: dialogBlockId }).then(res => res.data)
+  )
+
   const { data: unitsData, isLoading, mutate } = useSWR(
     ['/units', societyFilter, blockFilter, floorFilter, search],
     () => propertyApi.getUnits({ society_id: societyFilter, block_id: blockFilter, floor_id: floorFilter, search }).then(res => res.data)
@@ -61,6 +76,14 @@ const Units = () => {
 
   const handleOpenDialog = (unit = null) => {
     setEditingUnit(unit)
+    if (!unit) {
+      // Reset dialog filters when creating new unit
+      setDialogSocietyId('')
+      setDialogBlockId('')
+    } else {
+      setDialogSocietyId(unit.society_apartment_id || '')
+      setDialogBlockId(unit.block_id || '')
+    }
     setOpenDialog(true)
   }
 
@@ -71,11 +94,28 @@ const Units = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      // Prepare data with all fields
+      const unitData = {
+        ...values,
+        society_apartment_id: values.society_apartment_id || societyFilter,
+        block_id: values.block_id || blockFilter,
+        k_electric_account: values.k_electric_account || null,
+        gas_account: values.gas_account || null,
+        water_account: values.water_account || null,
+        phone_tv_account: values.phone_tv_account || null,
+        car_make_model: values.car_make_model || null,
+        license_plate: values.license_plate || null,
+        number_of_cars: values.number_of_cars || 0,
+        is_occupied: values.is_occupied !== undefined ? values.is_occupied : false,
+        telephone_bills: Array.isArray(values.telephone_bills) ? values.telephone_bills : [],
+        other_bills: Array.isArray(values.other_bills) ? values.other_bills : [],
+      }
+
       if (editingUnit) {
-        await propertyApi.updateUnit(editingUnit.id, values)
+        await propertyApi.updateUnit(editingUnit.id, unitData)
         toast.success('Unit updated successfully')
       } else {
-        await propertyApi.createUnit({ ...values, society_apartment_id: societyFilter, block_id: blockFilter })
+        await propertyApi.createUnit(unitData)
         toast.success('Unit created successfully')
       }
       mutate()
@@ -91,9 +131,47 @@ const Units = () => {
     { id: 'unit_number', label: 'Unit Number' },
     { id: 'block_name', label: 'Block', render: (row) => row.block_name || 'N/A' },
     { id: 'floor_number', label: 'Floor', render: (row) => row.floor_number || 'N/A' },
-    { id: 'owner_name', label: 'Owner' },
-    { id: 'resident_name', label: 'Resident' },
-    { id: 'contact_number', label: 'Contact' },
+    { id: 'owner_name', label: 'Owner', render: (row) => row.owner_name || '-' },
+    { id: 'resident_name', label: 'Resident', render: (row) => row.resident_name || '-' },
+    { id: 'contact_number', label: 'Contact', render: (row) => row.contact_number || '-' },
+    { id: 'email', label: 'Email', render: (row) => row.email || '-' },
+    {
+      id: 'is_occupied',
+      label: 'Status',
+      render: (row) => (
+        <Chip
+          label={row.is_occupied ? 'Occupied' : 'Vacant'}
+          color={row.is_occupied ? 'success' : 'default'}
+          size="small"
+        />
+      ),
+    },
+    { id: 'k_electric_account', label: 'K-Electric', render: (row) => row.k_electric_account || '-' },
+    { id: 'gas_account', label: 'Gas', render: (row) => row.gas_account || '-' },
+    { id: 'water_account', label: 'Water', render: (row) => row.water_account || '-' },
+    { id: 'phone_tv_account', label: 'Phone/TV', render: (row) => row.phone_tv_account || '-' },
+    {
+      id: 'car_info',
+      label: 'Car Info',
+      render: (row) => {
+        if (row.car_make_model || row.license_plate || row.number_of_cars) {
+          return `${row.car_make_model || 'N/A'} | ${row.license_plate || 'N/A'} | ${row.number_of_cars || 0} cars`
+        }
+        return '-'
+      },
+    },
+    {
+      id: 'bills',
+      label: 'Bills',
+      render: (row) => {
+        const telBills = Array.isArray(row.telephone_bills) ? row.telephone_bills.length : 0
+        const otherBills = Array.isArray(row.other_bills) ? row.other_bills.length : 0
+        if (telBills > 0 || otherBills > 0) {
+          return `Tel: ${telBills}, Other: ${otherBills}`
+        }
+        return '-'
+      },
+    },
     {
       id: 'actions',
       label: 'Actions',
@@ -110,20 +188,44 @@ const Units = () => {
 
   const initialValues = editingUnit
     ? {
+        society_apartment_id: editingUnit.society_apartment_id || societyFilter || '',
+        block_id: editingUnit.block_id || blockFilter || '',
         floor_id: editingUnit.floor_id || floorFilter || '',
         unit_number: editingUnit.unit_number || '',
         owner_name: editingUnit.owner_name || '',
         resident_name: editingUnit.resident_name || '',
         contact_number: editingUnit.contact_number || '',
         email: editingUnit.email || '',
+        k_electric_account: editingUnit.k_electric_account || '',
+        gas_account: editingUnit.gas_account || '',
+        water_account: editingUnit.water_account || '',
+        phone_tv_account: editingUnit.phone_tv_account || '',
+        car_make_model: editingUnit.car_make_model || '',
+        license_plate: editingUnit.license_plate || '',
+        number_of_cars: editingUnit.number_of_cars || 0,
+        is_occupied: editingUnit.is_occupied !== undefined ? editingUnit.is_occupied : false,
+        telephone_bills: editingUnit.telephone_bills || [],
+        other_bills: editingUnit.other_bills || [],
       }
     : {
+        society_apartment_id: societyFilter || '',
+        block_id: blockFilter || '',
         floor_id: floorFilter || '',
         unit_number: '',
         owner_name: '',
         resident_name: '',
         contact_number: '',
         email: '',
+        k_electric_account: '',
+        gas_account: '',
+        water_account: '',
+        phone_tv_account: '',
+        car_make_model: '',
+        license_plate: '',
+        number_of_cars: 0,
+        is_occupied: false,
+        telephone_bills: [],
+        other_bills: [],
       }
 
   return (
@@ -136,7 +238,6 @@ const Units = () => {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
-          disabled={!floorFilter}
         >
           Add Unit
         </Button>
@@ -219,7 +320,7 @@ const Units = () => {
         onRowsPerPageChange={() => {}}
       />
 
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <Formik
           initialValues={initialValues}
           validationSchema={validationSchema}
@@ -233,6 +334,70 @@ const Units = () => {
               </DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
+                  {!editingUnit && (
+                    <>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          select
+                          label="Society"
+                          name="society_apartment_id"
+                          value={values.society_apartment_id}
+                          onChange={(e) => {
+                            handleChange(e)
+                            setDialogSocietyId(e.target.value)
+                            // Reset block and floor when society changes
+                            if (e.target.value !== values.society_apartment_id) {
+                              handleChange({ target: { name: 'block_id', value: '' } })
+                              handleChange({ target: { name: 'floor_id', value: '' } })
+                              setDialogBlockId('')
+                            }
+                          }}
+                          onBlur={handleBlur}
+                          error={touched.society_apartment_id && !!errors.society_apartment_id}
+                          helperText={touched.society_apartment_id && errors.society_apartment_id}
+                        >
+                          <MenuItem value="">Select Society</MenuItem>
+                          {societiesData?.data?.map((society) => (
+                            <MenuItem key={society.id} value={society.id}>
+                              {society.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          select
+                          label="Block"
+                          name="block_id"
+                          value={values.block_id}
+                          onChange={(e) => {
+                            handleChange(e)
+                            // Reset floor when block changes
+                            if (e.target.value !== values.block_id) {
+                              handleChange({ target: { name: 'floor_id', value: '' } })
+                              setDialogBlockId(e.target.value)
+                            }
+                          }}
+                          onBlur={handleBlur}
+                          error={touched.block_id && !!errors.block_id}
+                          helperText={touched.block_id && errors.block_id}
+                          disabled={!values.society_apartment_id}
+                        >
+                          <MenuItem value="">Select Block</MenuItem>
+                          {(values.society_apartment_id
+                            ? dialogBlocksData?.data || []
+                            : []
+                          ).map((block) => (
+                            <MenuItem key={block.id} value={block.id}>
+                              {block.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                    </>
+                  )}
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -244,10 +409,13 @@ const Units = () => {
                       onBlur={handleBlur}
                       error={touched.floor_id && !!errors.floor_id}
                       helperText={touched.floor_id && errors.floor_id}
-                      disabled={!!editingUnit}
+                      disabled={!!editingUnit || !values.block_id}
                     >
                       <MenuItem value="">Select Floor</MenuItem>
-                      {floorsData?.data?.map((floor) => (
+                      {(editingUnit
+                        ? floorsData?.data || []
+                        : dialogFloorsData?.data || []
+                      ).map((floor) => (
                         <MenuItem key={floor.id} value={floor.id}>
                           Floor {floor.floor_number}
                         </MenuItem>
@@ -306,6 +474,101 @@ const Units = () => {
                       onChange={handleChange}
                       onBlur={handleBlur}
                     />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                      Utility Accounts
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="K-Electric Account"
+                      name="k_electric_account"
+                      value={values.k_electric_account}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Gas Account"
+                      name="gas_account"
+                      value={values.gas_account}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Water Account"
+                      name="water_account"
+                      value={values.water_account}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Phone/TV Account"
+                      name="phone_tv_account"
+                      value={values.phone_tv_account}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                      Vehicle Information
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Car Make/Model"
+                      name="car_make_model"
+                      value={values.car_make_model}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="License Plate"
+                      name="license_plate"
+                      value={values.license_plate}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Number of Cars"
+                      name="number_of_cars"
+                      type="number"
+                      value={values.number_of_cars}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Occupied Status"
+                      name="is_occupied"
+                      value={values.is_occupied}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      <MenuItem value={true}>Occupied</MenuItem>
+                      <MenuItem value={false}>Vacant</MenuItem>
+                    </TextField>
                   </Grid>
                 </Grid>
               </DialogContent>

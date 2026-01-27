@@ -57,7 +57,14 @@ export const authenticate = async (req, res, next) => {
 };
 
 // Check if user has required role
+// Usage:
+//  requireRole('union_admin', 'super_admin')
+//  or
+//  requireRole(['union_admin', 'super_admin'])
 export const requireRole = (...roles) => {
+  // Support both array and rest-args usage
+  const flatRoles = Array.isArray(roles[0]) ? roles[0] : roles;
+
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -66,10 +73,10 @@ export const requireRole = (...roles) => {
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    if (!flatRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'Insufficient permissions. Required role: ' + roles.join(' or '),
+        message: 'Insufficient permissions. Required role: ' + flatRoles.join(' or '),
       });
     }
 

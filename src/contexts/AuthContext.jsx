@@ -72,12 +72,23 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const mutate = async () => {
+    try {
+      const response = await authApi.getMe()
+      setUser(response.data.data)
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.data.data))
+    } catch (error) {
+      console.error('Failed to refresh user data:', error)
+    }
+  }
+
   const value = {
     user,
     loading,
     isAuthenticated,
     login,
     logout,
+    mutate,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
