@@ -24,7 +24,7 @@ import LockIcon from '@mui/icons-material/Lock'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { userApi } from '@/api/userApi'
-import { societyApi } from '@/api/societyApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
@@ -45,10 +45,10 @@ const getValidationSchema = (isEdit, currentUserRole) => {
       .required('Password is required')
   }
 
-  // Society required for union_admin, resident, and staff roles
+  // Apartment required for union_admin, resident, and staff roles
   baseSchema.society_apartment_id = Yup.number().when('role', {
     is: (role) => role === 'union_admin' || role === 'resident' || role === 'staff',
-    then: (schema) => schema.required('Society is required'),
+    then: (schema) => schema.required('Apartment is required'),
     otherwise: (schema) => schema.nullable(),
   })
 
@@ -88,9 +88,9 @@ const Users = () => {
     (currentUser?.role === 'union_admin' && currentUser?.society_apartment_id ? `/societies/${currentUser.society_apartment_id}` : null),
     () => {
       if (currentUser?.role === 'super_admin') {
-        return societyApi.getAll({ limit: 100 }).then(res => res.data)
+        return apartmentApi.getAll({ limit: 100 }).then(res => res.data)
       } else if (currentUser?.role === 'union_admin' && currentUser?.society_apartment_id) {
-        return societyApi.getById(currentUser.society_apartment_id).then(res => ({
+        return apartmentApi.getById(currentUser.society_apartment_id).then(res => ({
           data: [res.data.data]
         }))
       }
@@ -101,7 +101,7 @@ const Users = () => {
   // Fetch all societies for display in table (Super Admin only)
   const { data: allSocietiesData } = useSWR(
     currentUser?.role === 'super_admin' ? '/societies/all' : null,
-    () => societyApi.getAll({ limit: 1000 }).then(res => res.data)
+    () => apartmentApi.getAll({ limit: 1000 }).then(res => res.data)
   )
 
   // Fetch units (filtered by selected society)
@@ -218,7 +218,7 @@ const Users = () => {
   const getSocietyName = (societyId) => {
     if (!societyId) return 'N/A'
     const society = allSocietiesData?.data?.find(s => s.id === societyId)
-    return society?.name || `Society #${societyId}`
+    return society?.name || `Apartment #${societyId}`
   }
 
   const columns = [
@@ -237,7 +237,7 @@ const Users = () => {
     },
     ...(currentUser?.role === 'super_admin' ? [{
       id: 'society_apartment_id',
-      label: 'Society',
+      label: 'Apartment',
       render: (row) => (
         <Typography variant="body2">
           {row.society_apartment_id ? getSocietyName(row.society_apartment_id) : 'N/A'}
@@ -390,7 +390,7 @@ const Users = () => {
             }
 
             // Determine if society field should be shown and editable
-            // Society required for union_admin, resident, and staff roles
+            // Apartment required for union_admin, resident, and staff roles
             const showSocietyField = values.role === 'union_admin' || values.role === 'resident' || values.role === 'staff'
             const isSocietyEditable = currentUser?.role === 'super_admin' || !editingUser
             const isSocietyDisabled = currentUser?.role === 'union_admin' && !editingUser
@@ -476,7 +476,7 @@ const Users = () => {
                         <TextField
                           fullWidth
                           select
-                          label="Society"
+                          label="Apartment"
                           name="society_apartment_id"
                           value={values.society_apartment_id || ''}
                           onChange={handleSocietyChange}
@@ -486,7 +486,7 @@ const Users = () => {
                           disabled={isSocietyDisabled || !isSocietyEditable}
                           required
                         >
-                          <MenuItem value="">Select Society</MenuItem>
+                          <MenuItem value="">Select Apartment</MenuItem>
                           {currentUser?.role === 'super_admin' && societiesData?.data?.map((society) => (
                             <MenuItem key={society.id} value={society.id}>
                               {society.name}

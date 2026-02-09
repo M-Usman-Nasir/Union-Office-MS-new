@@ -322,8 +322,17 @@ const Residents = () => {
                       label="Society"
                       name="society_apartment_id"
                       type="number"
+                      inputProps={{ min: 1 }}
                       value={values.society_apartment_id}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(1, parseInt(raw, 10) || 1)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.society_apartment_id && !!errors.society_apartment_id}
                       helperText={touched.society_apartment_id && errors.society_apartment_id}
@@ -454,10 +463,13 @@ const Residents = () => {
                               size="small"
                               label="Amount"
                               type="number"
+                              inputProps={{ min: 0 }}
                               value={bill.amount || ''}
                               onChange={(e) => {
+                                const raw = e.target.value
+                                const amount = raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0)
                                 const newBills = [...(values.telephone_bills || [])]
-                                newBills[index] = { ...newBills[index], amount: parseFloat(e.target.value) || 0 }
+                                newBills[index] = { ...newBills[index], amount }
                                 handleChange({ target: { name: 'telephone_bills', value: newBills } })
                               }}
                             />
@@ -527,10 +539,13 @@ const Residents = () => {
                               size="small"
                               label="Amount"
                               type="number"
+                              inputProps={{ min: 0 }}
                               value={bill.amount || ''}
                               onChange={(e) => {
+                                const raw = e.target.value
+                                const amount = raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0)
                                 const newBills = [...(values.other_bills || [])]
-                                newBills[index] = { ...newBills[index], amount: parseFloat(e.target.value) || 0 }
+                                newBills[index] = { ...newBills[index], amount }
                                 handleChange({ target: { name: 'other_bills', value: newBills } })
                               }}
                             />

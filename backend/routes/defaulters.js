@@ -10,6 +10,9 @@ router.use(authenticate);
 // Get defaulter statistics
 router.get('/statistics', defaulterController.getStatistics);
 
+// Export defaulters as CSV (admin only)
+router.get('/export', requireRole('super_admin', 'union_admin'), defaulterController.exportDefaulters);
+
 // Get all defaulters
 router.get('/', defaulterController.getAll);
 

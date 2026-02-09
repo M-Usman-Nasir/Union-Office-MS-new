@@ -21,6 +21,7 @@ import {
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
+import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { defaulterApi } from '@/api/defaulterApi'
@@ -38,6 +39,7 @@ const Defaulters = () => {
   const [statusFilter, setStatusFilter] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [selectedDefaulter, setSelectedDefaulter] = useState(null)
+  const [exporting, setExporting] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
 
   const { data, isLoading, error, mutate } = useSWR(
@@ -83,6 +85,25 @@ const Defaulters = () => {
       handleCloseDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Update failed')
+    }
+  }
+
+  const handleExportCsv = async () => {
+    setExporting(true)
+    try {
+      const res = await defaulterApi.exportCsv({ society_id: societyId })
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `defaulters-${societyId || 'all'}-${Date.now()}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Defaulter list exported successfully')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Export failed')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -223,9 +244,10 @@ const Defaulters = () => {
         </Grid>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           fullWidth
+          sx={{ flex: '1 1 200px' }}
           placeholder="Search defaulters..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -249,6 +271,14 @@ const Defaulters = () => {
           <MenuItem value="resolved">Resolved</MenuItem>
           <MenuItem value="escalated">Escalated</MenuItem>
         </TextField>
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          onClick={handleExportCsv}
+          disabled={exporting}
+        >
+          {exporting ? 'Exporting...' : 'Export CSV'}
+        </Button>
       </Box>
 
       <DataTable

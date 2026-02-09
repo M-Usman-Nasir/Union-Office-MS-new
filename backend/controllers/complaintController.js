@@ -11,7 +11,7 @@ export const getAll = async (req, res) => {
              submitter.name as submitted_by_name, assignee.name as assigned_to_name
       FROM complaints c
       LEFT JOIN units u ON c.unit_id = u.id
-      LEFT JOIN societies s ON c.society_apartment_id = s.id
+      LEFT JOIN apartments s ON c.society_apartment_id = s.id
       LEFT JOIN users submitter ON c.submitted_by = submitter.id
       LEFT JOIN users assignee ON c.assigned_to = assignee.id
       WHERE 1=1
@@ -118,7 +118,7 @@ export const getById = async (req, res) => {
               submitter.name as submitted_by_name, assignee.name as assigned_to_name
        FROM complaints c
        LEFT JOIN units u ON c.unit_id = u.id
-       LEFT JOIN societies s ON c.society_apartment_id = s.id
+       LEFT JOIN apartments s ON c.society_apartment_id = s.id
        LEFT JOIN users submitter ON c.submitted_by = submitter.id
        LEFT JOIN users assignee ON c.assigned_to = assignee.id
        WHERE c.id = $1`,
@@ -188,6 +188,51 @@ export const create = async (req, res) => {
     });
   } catch (error) {
     console.error('Create complaint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit complaint',
+      error: error.message,
+    });
+  }
+};
+
+// Create complaint with file attachments (multipart/form-data)
+export const createWithAttachments = async (req, res) => {
+  try {
+    const { unit_id, society_apartment_id, title, description, priority, is_public } = req.body;
+
+    if (!society_apartment_id || !title || !description) {
+      return res.status(400).json({
+        success: false,
+        message: 'Society ID, title, and description are required',
+      });
+    }
+
+    const attachmentPaths = (req.files || []).map((f) => `/uploads/complaints/${f.filename}`);
+
+    const result = await query(
+      `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, title, description, priority, is_public, status, attachments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+       RETURNING *`,
+      [
+        unit_id || null,
+        society_apartment_id,
+        req.user.id,
+        title,
+        description,
+        priority || 'medium',
+        is_public === 'true' || is_public === true,
+        attachmentPaths.length > 0 ? attachmentPaths : null,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Complaint submitted successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Create complaint with attachments error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to submit complaint',

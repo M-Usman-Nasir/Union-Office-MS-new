@@ -34,7 +34,7 @@ export const getAll = async (req, res) => {
              s.name as society_name
       FROM defaulters d
       LEFT JOIN units u ON d.unit_id = u.id
-      LEFT JOIN societies s ON d.society_apartment_id = s.id
+      LEFT JOIN apartments s ON d.society_apartment_id = s.id
       WHERE 1=1
     `;
     const params = [];
@@ -129,6 +129,64 @@ export const getStatistics = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch defaulter statistics',
+      error: error.message,
+    });
+  }
+};
+
+// Export defaulters as CSV (admin only)
+export const exportDefaulters = async (req, res) => {
+  try {
+    const { society_id } = req.query;
+
+    let sql = `
+      SELECT d.id, d.unit_id, d.amount_due, d.months_overdue, d.status, d.created_at,
+             u.unit_number, u.owner_name, u.resident_name, u.contact_number as resident_contact, u.email,
+             s.name as society_name
+      FROM defaulters d
+      LEFT JOIN units u ON d.unit_id = u.id
+      LEFT JOIN apartments s ON d.society_apartment_id = s.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (society_id) {
+      sql += ' AND d.society_apartment_id = $1';
+      params.push(society_id);
+    }
+
+    sql += ' ORDER BY d.months_overdue DESC, d.created_at DESC';
+
+    const result = await query(sql, params);
+
+    // Build CSV
+    const headers = ['Unit', 'Owner', 'Resident', 'Contact', 'Email', 'Amount Due', 'Months Overdue', 'Status', 'Society'];
+    const escapeCsv = (val) => {
+      if (val == null) return '';
+      const s = String(val);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = result.rows.map((r) => [
+      escapeCsv(r.unit_number),
+      escapeCsv(r.owner_name),
+      escapeCsv(r.resident_name),
+      escapeCsv(r.resident_contact),
+      escapeCsv(r.email),
+      escapeCsv(r.amount_due),
+      escapeCsv(r.months_overdue),
+      escapeCsv(r.status),
+      escapeCsv(r.society_name),
+    ]);
+    const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="defaulters-${society_id || 'all'}-${Date.now()}.csv"`);
+    res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+  } catch (error) {
+    console.error('Export defaulters error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export defaulters',
       error: error.message,
     });
   }

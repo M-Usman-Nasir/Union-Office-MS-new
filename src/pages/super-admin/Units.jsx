@@ -21,14 +21,14 @@ import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import useSWR from 'swr'
 import { propertyApi } from '@/api/propertyApi'
-import { societyApi } from '@/api/societyApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
 const validationSchema = Yup.object({
-  society_apartment_id: Yup.number().required('Society is required'),
+  society_apartment_id: Yup.number().required('Apartment is required'),
   block_id: Yup.number().required('Block is required'),
   floor_id: Yup.number().required('Floor is required'),
   unit_number: Yup.string().required('Unit number is required'),
@@ -44,7 +44,7 @@ const Units = () => {
 
   const { data: societiesData } = useSWR(
     '/societies',
-    () => societyApi.getAll({ limit: 100 }).then(res => res.data)
+    () => apartmentApi.getAll({ limit: 100 }).then(res => res.data)
   )
 
   const { data: blocksData } = useSWR(
@@ -246,7 +246,7 @@ const Units = () => {
       <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <TextField
           select
-          label="Select Society"
+          label="Select Apartment"
           value={societyFilter}
           onChange={(e) => {
             setSocietyFilter(e.target.value)
@@ -255,7 +255,7 @@ const Units = () => {
           }}
           sx={{ minWidth: 200 }}
         >
-          <MenuItem value="">Select Society</MenuItem>
+          <MenuItem value="">Select Apartment</MenuItem>
           {societiesData?.data?.map((society) => (
             <MenuItem key={society.id} value={society.id}>
               {society.name}
@@ -340,7 +340,7 @@ const Units = () => {
                         <TextField
                           fullWidth
                           select
-                          label="Society"
+                          label="Apartment"
                           name="society_apartment_id"
                           value={values.society_apartment_id}
                           onChange={(e) => {
@@ -357,7 +357,7 @@ const Units = () => {
                           error={touched.society_apartment_id && !!errors.society_apartment_id}
                           helperText={touched.society_apartment_id && errors.society_apartment_id}
                         >
-                          <MenuItem value="">Select Society</MenuItem>
+                          <MenuItem value="">Select Apartment</MenuItem>
                           {societiesData?.data?.map((society) => (
                             <MenuItem key={society.id} value={society.id}>
                               {society.name}
@@ -551,8 +551,17 @@ const Units = () => {
                       label="Number of Cars"
                       name="number_of_cars"
                       type="number"
+                      inputProps={{ min: 0 }}
                       value={values.number_of_cars}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(0, parseInt(raw, 10) || 0)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                     />
                   </Grid>

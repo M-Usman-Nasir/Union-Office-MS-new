@@ -1,15 +1,17 @@
 import cron from 'node-cron';
 import { query } from '../config/database.js';
+import { notifyDuesGenerated } from '../services/notificationService.js';
 
 // Generate monthly dues for all units
 export const generateMonthlyDues = async (month, year) => {
   try {
     console.log(`Starting monthly dues generation for ${month}/${year}...`);
     
-    // Get all active units
+    // Get all active units with unit number and society name for notifications
     const activeUnits = await query(`
-      SELECT u.id, u.society_apartment_id, u.block_id
+      SELECT u.id, u.society_apartment_id, u.block_id, u.unit_number, s.name as society_name
       FROM units u
+      LEFT JOIN apartments s ON u.society_apartment_id = s.id
       WHERE u.society_apartment_id IS NOT NULL
     `);
 
@@ -76,6 +78,18 @@ export const generateMonthlyDues = async (month, year) => {
               baseAmount,
               dueDate
             ]);
+            
+            // Notify resident by email if setting enabled (non-blocking)
+            notifyDuesGenerated(
+              unit.id,
+              unit.society_apartment_id,
+              unit.unit_number,
+              unit.society_name,
+              month,
+              year,
+              baseAmount,
+              dueDate
+            ).catch((err) => console.error('Dues notification error for unit', unit.id, err.message));
             
             successCount++;
           }

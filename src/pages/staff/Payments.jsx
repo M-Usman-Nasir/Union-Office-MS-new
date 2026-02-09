@@ -251,7 +251,16 @@ const StaffPayments = () => {
                       name="amount_paid"
                       type="number"
                       value={values.amount_paid}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const maxVal = selectedPayment?.total_amount ?? Infinity
+                        const num = Math.min(maxVal, Math.max(0, parseFloat(raw) || 0))
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.amount_paid && !!errors.amount_paid}
                       helperText={touched.amount_paid && errors.amount_paid || `Maximum: ${formatCurrency(selectedPayment?.total_amount)}`}

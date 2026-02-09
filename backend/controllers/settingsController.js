@@ -24,7 +24,9 @@ export const getSettings = async (req, res) => {
           society_apartment_id: parseInt(societyId),
           defaulter_list_visible: false,
           complaint_logs_visible: false,
-          financial_reports_visible: false
+          financial_reports_visible: false,
+          email_dues_on_generate: false,
+          email_reminder_days_before: 0
         }
       });
     }
@@ -47,7 +49,13 @@ export const getSettings = async (req, res) => {
 export const updateSettings = async (req, res) => {
   try {
     const { societyId } = req.params;
-    const { defaulter_list_visible, complaint_logs_visible, financial_reports_visible } = req.body;
+    const {
+      defaulter_list_visible,
+      complaint_logs_visible,
+      financial_reports_visible,
+      email_dues_on_generate,
+      email_reminder_days_before
+    } = req.body;
 
     // Check if settings exist
     const existing = await query(
@@ -57,28 +65,38 @@ export const updateSettings = async (req, res) => {
 
     let result;
     if (existing.rows.length > 0) {
-      // Update existing settings
+      // Update existing settings (new notification columns may not exist until migration 011)
       result = await query(
         `UPDATE settings 
          SET defaulter_list_visible = COALESCE($1, defaulter_list_visible),
              complaint_logs_visible = COALESCE($2, complaint_logs_visible),
              financial_reports_visible = COALESCE($3, financial_reports_visible),
+             email_dues_on_generate = COALESCE($4, email_dues_on_generate),
+             email_reminder_days_before = COALESCE($5, email_reminder_days_before),
              updated_at = CURRENT_TIMESTAMP
-         WHERE society_apartment_id = $4
+         WHERE society_apartment_id = $6
          RETURNING *`,
-        [defaulter_list_visible, complaint_logs_visible, financial_reports_visible, societyId]
+        [
+          defaulter_list_visible,
+          complaint_logs_visible,
+          financial_reports_visible,
+          email_dues_on_generate,
+          email_reminder_days_before != null ? Math.max(0, parseInt(email_reminder_days_before, 10) || 0) : null,
+          societyId
+        ]
       );
     } else {
-      // Create new settings
       result = await query(
-        `INSERT INTO settings (society_apartment_id, defaulter_list_visible, complaint_logs_visible, financial_reports_visible)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO settings (society_apartment_id, defaulter_list_visible, complaint_logs_visible, financial_reports_visible, email_dues_on_generate, email_reminder_days_before)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
         [
           societyId,
           defaulter_list_visible !== undefined ? defaulter_list_visible : false,
           complaint_logs_visible !== undefined ? complaint_logs_visible : false,
-          financial_reports_visible !== undefined ? financial_reports_visible : false
+          financial_reports_visible !== undefined ? financial_reports_visible : false,
+          email_dues_on_generate !== undefined ? email_dues_on_generate : false,
+          Math.max(0, parseInt(email_reminder_days_before, 10) || 0)
         ]
       );
     }

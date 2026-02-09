@@ -37,7 +37,7 @@ Union-Office-MS-new/
 │   │   ├── maintenanceController.js
 │   │   ├── propertyController.js
 │   │   ├── residentController.js
-│   │   ├── societyController.js
+│   │   ├── apartmentController.js
 │   │   └── userController.js
 │   │
 │   ├── 📁 middleware/          # Express Middleware
@@ -52,7 +52,7 @@ Union-Office-MS-new/
 │   │   ├── maintenance.js
 │   │   ├── properties.js
 │   │   ├── residents.js
-│   │   ├── societies.js
+│   │   ├── apartments.js
 │   │   ├── test.js
 │   │   └── users.js
 │   │
@@ -114,7 +114,7 @@ Union-Office-MS-new/
     │   ├── maintenanceApi.js
     │   ├── propertyApi.js
     │   ├── residentApi.js
-    │   ├── societyApi.js
+    │   ├── apartmentApi.js
     │   └── userApi.js
     │
     ├── 📁 components/           # React Components
@@ -171,7 +171,7 @@ Union-Office-MS-new/
     │       ├── Blocks.jsx
     │       ├── Dashboard.jsx
     │       ├── Floors.jsx
-    │       ├── Societies.jsx
+    │       ├── Apartments.jsx
     │       └── Units.jsx
     │
     ├── 📁 routes/               # Route Configuration (2 files)

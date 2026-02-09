@@ -1,6 +1,7 @@
 import express from 'express';
 import * as complaintController from '../controllers/complaintController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { uploadComplaintAttachments } from '../config/multer.js';
 
 const router = express.Router();
 
@@ -10,10 +11,13 @@ router.use(authenticate);
 // Get all complaints
 router.get('/', complaintController.getAll);
 
+// Create complaint with attachments (multipart/form-data)
+router.post('/with-attachments', uploadComplaintAttachments, complaintController.createWithAttachments);
+
 // Get complaint by ID
 router.get('/:id', complaintController.getById);
 
-// Create complaint (any authenticated user)
+// Create complaint (JSON body, no attachments)
 router.post('/', complaintController.create);
 
 // Update complaint

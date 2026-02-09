@@ -1,7 +1,7 @@
 import api from './axios'
 import { API_ENDPOINTS } from '@/utils/constants'
 
-export const societyApi = {
+export const apartmentApi = {
   getAll: (params) => {
     return api.get(API_ENDPOINTS.SOCIETIES, { params })
   },

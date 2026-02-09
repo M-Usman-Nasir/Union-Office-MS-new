@@ -26,10 +26,10 @@ router.get('/db', async (req, res) => {
   }
 });
 
-// Test query - Get all societies
+// Test query - Get all apartments
 router.get('/societies', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM societies LIMIT 10');
+    const result = await query('SELECT * FROM apartments LIMIT 10');
     res.json({
       success: true,
       count: result.rows.length,

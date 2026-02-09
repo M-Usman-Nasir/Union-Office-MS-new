@@ -413,8 +413,17 @@ const Finance = () => {
                       label="Amount"
                       name="amount"
                       type="number"
+                      inputProps={{ min: 0 }}
                       value={values.amount}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(0, parseFloat(raw) || 0)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.amount && !!errors.amount}
                       helperText={touched.amount && errors.amount}

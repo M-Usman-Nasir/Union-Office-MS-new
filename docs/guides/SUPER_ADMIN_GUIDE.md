@@ -6,7 +6,7 @@
 3. [Getting Started](#getting-started)
 4. [Sidebar Navigation](#sidebar-navigation)
 5. [Dashboard](#dashboard)
-6. [Societies Management](#societies-management)
+6. [Apartments Management](#apartments-management)
 7. [Blocks Management](#blocks-management)
 8. [Floors Management](#floors-management)
 9. [Units Management](#units-management)
@@ -63,7 +63,7 @@ After running the database seed script (`npm run seed` in backend directory):
 
 ### First Steps After Login
 1. **View Dashboard:** Check system-wide statistics
-2. **Create Societies:** Set up new apartment complexes
+2. **Create Apartments:** Set up new apartment complexes
 3. **Configure Properties:** Add blocks, floors, and units
 4. **Create Users:** Set up Union Admins, Residents, and Staff (via Users page)
 5. **View Reports:** Access global analytics
@@ -77,7 +77,7 @@ The Super Admin sidebar contains **8 main navigation tabs**:
 | Tab | Icon | Route | Purpose |
 |-----|------|-------|---------|
 | **Dashboard** | DashboardIcon | `/super-admin/dashboard` | System overview and statistics |
-| **Societies** | ApartmentIcon | `/super-admin/societies` | Manage apartment complexes |
+| **Apartments** | ApartmentIcon | `/super-admin/societies` | Manage apartment complexes |
 | **Blocks** | ApartmentIcon | `/super-admin/blocks` | Manage building blocks |
 | **Floors** | ApartmentIcon | `/super-admin/floors` | Manage floor structures |
 | **Units** | ApartmentIcon | `/super-admin/units` | Manage individual units |
@@ -103,10 +103,10 @@ The Super Admin Dashboard provides a high-level view of the entire system, showi
 #### 1. Statistics Cards
 Three key metric cards displayed at the top:
 
-- **Total Societies**
+- **Total Apartments**
   - Icon: ApartmentIcon (Primary color)
-  - Shows: Count of all societies in the system
-  - Data Source: `societyApi.getAll()`
+  - Shows: Count of all apartments in the system
+  - Data Source: `apartmentApi.getAll()`
 
 - **Total Blocks**
   - Icon: BusinessIcon (Secondary color)
@@ -120,20 +120,20 @@ Three key metric cards displayed at the top:
 
 #### 2. System Overview Chart
 - **Chart Type:** Bar Chart
-- **Title:** "Units per Society"
-- **X-Axis:** Society names
+- **Title:** "Units per Apartment"
+- **X-Axis:** Apartment names
 - **Y-Axis:** Total units count
-- **Purpose:** Visual comparison of unit distribution across societies
+- **Purpose:** Visual comparison of unit distribution across apartments
 - **Component:** `BarChart` from `@/components/charts/BarChart`
 
-#### 3. Societies Overview Section
+#### 3. Apartments Overview Section
 - **Layout:** Grid of cards (2 columns on medium+ screens)
 - **Information Displayed:**
-  - Society name
+  - Apartment name
   - Address and city
   - Total blocks count
   - Total units count
-- **Purpose:** Quick reference of all societies with key metrics
+- **Purpose:** Quick reference of all apartments with key metrics
 
 ### Data Loading
 - Uses **SWR** (stale-while-revalidate) for data fetching
@@ -154,17 +154,17 @@ GET /api/properties/units?limit=100
 
 ---
 
-## Societies Management
+## Apartments Management
 
 **Route:** `/super-admin/societies`  
-**Component:** `src/pages/super-admin/Societies.jsx`
+**Component:** `src/pages/super-admin/Apartments.jsx`
 
 ### Overview
-Societies represent apartment complexes or residential communities. This page allows Super Admins to create, view, edit, and delete societies.
+Apartments represent apartment complexes or residential communities. This page allows Super Admins to create, view, edit, and delete apartments.
 
 ### Features
 
-#### 1. Society List Table
+#### 1. Apartment List Table
 - **Columns:**
   - Name
   - Address
@@ -183,7 +183,7 @@ Societies represent apartment complexes or residential communities. This page al
 - **Controls:** Page navigation and rows per page selector
 - **Data Source:** Paginated API response
 
-#### 4. Create Society Dialog
+#### 4. Create Apartment Dialog
 **Fields:**
 - **Name** (Required) - Society/complex name
 - **Address** (Optional) - Full address text

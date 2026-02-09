@@ -22,10 +22,12 @@ cd backend && npm run dev
 npm run dev
 ```
 
-**Test Users:**
+**Test Users (from seed):**
 - Super Admin: `admin@homelandunion.com` / `admin123`
 - Union Admin: `unionadmin@homelandunion.com` / `admin123`
 - Resident: `resident@homelandunion.com` / `resident123`
+
+Staff users can be created via **Admin → Users Management**.
 
 ## 📁 Project Structure
 
@@ -42,24 +44,32 @@ Union-Office-MS-new/
 │   ├── schema.sql       # Database schema
 │   └── migrations/     # Database migrations
 ├── docs/                # All documentation
-│   ├── frontend/        # Frontend docs
 │   ├── backend/         # Backend docs
-│   └── database/        # Database docs
+│   ├── database/        # Database docs
+│   ├── frontend/        # Frontend docs
+│   ├── features/        # Feature reference
+│   ├── guides/          # User guides (Super Admin, Union Admin)
+│   ├── planning/        # Planning / future work
+│   └── srs/             # SRS & implementation docs
 ├── public/              # Static assets (icons, etc.)
 ├── src/                 # React frontend
 │   ├── api/             # API service modules
 │   ├── components/      # React components
 │   │   ├── charts/      # Chart components
 │   │   ├── common/      # Common components
+│   │   ├── complaints/  # Complaint-related components
 │   │   ├── error/       # Error components
+│   │   ├── finance/     # Finance components
 │   │   ├── layout/      # Layout components
-│   │   └── pwa/         # PWA components
+│   │   ├── pwa/         # PWA components
+│   │   └── residents/   # Resident-related components
 │   ├── contexts/        # React contexts
 │   ├── pages/           # Page components
 │   │   ├── admin/       # Admin pages
 │   │   ├── auth/        # Authentication pages
 │   │   ├── error/       # Error pages
 │   │   ├── resident/    # Resident pages
+│   │   ├── staff/       # Staff pages
 │   │   └── super-admin/ # Super Admin pages
 │   ├── routes/          # Route configuration
 │   ├── styles/          # SCSS styles
@@ -81,7 +91,7 @@ Union-Office-MS-new/
 - Settings
 
 ### ✅ Super Admin Features
-- Societies Management
+- Apartments Management
 - Blocks Management
 - Floors Management
 - Units Management
@@ -93,6 +103,11 @@ Union-Office-MS-new/
 - Maintenance Records
 - Union Information
 - Profile Management
+
+### ✅ Staff Features
+- Staff Dashboard
+- Complaints Management
+- Payments Management
 
 ### ✅ PWA Features
 - Offline support
@@ -124,15 +139,15 @@ Union-Office-MS-new/
 
 ## 📚 Documentation
 
-All documentation is organized in the `docs/` directory:
+All documentation is in the `docs/` directory. Start at **[docs/README.md](./docs/README.md)** for the full index.
 
-- **Documentation Index:** [docs/README.md](./docs/README.md)
-- **Project Structure:** [docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md)
 - **Quick Start:** [docs/QUICK_START.md](./docs/QUICK_START.md)
 - **Setup Guide:** [docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md)
-- **API Documentation:** [docs/backend/API_DOCUMENTATION.md](./docs/backend/API_DOCUMENTATION.md)
-- **PWA Setup:** [docs/frontend/PWA_SETUP_GUIDE.md](./docs/frontend/PWA_SETUP_GUIDE.md)
-- **Database Setup:** [docs/database/DATABASE_SETUP.md](./docs/database/DATABASE_SETUP.md)
+- **Project Structure:** [docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md)
+- **Backend:** [API](./docs/backend/API_DOCUMENTATION.md) · [Setup](./docs/backend/SETUP.md)
+- **Frontend:** [PWA Setup](./docs/frontend/PWA_SETUP_GUIDE.md)
+- **Database:** [Database Setup](./docs/database/DATABASE_SETUP.md)
+- **Guides:** [Super Admin](./docs/guides/SUPER_ADMIN_GUIDE.md) · [Union Admin](./docs/guides/UNION_ADMIN_GUIDE.md)
 
 ## 🔧 Development
 
@@ -174,7 +189,7 @@ CORS_ORIGIN=http://localhost:5173
 
 ## 🎨 Features Overview
 
-- ✅ Role-based access control (Super Admin, Admin, Resident)
+- ✅ Role-based access control (Super Admin, Union Admin, Admin, Staff, Resident)
 - ✅ JWT authentication with refresh tokens
 - ✅ Progressive Web App (PWA)
 - ✅ Dark/light mode

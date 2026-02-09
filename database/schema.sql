@@ -23,13 +23,14 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Societies Table
-CREATE TABLE IF NOT EXISTS societies (
+-- Apartments Table (formerly societies)
+CREATE TABLE IF NOT EXISTS apartments (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     address TEXT,
     city VARCHAR(100),
     total_blocks INTEGER DEFAULT 0,
+    total_floors INTEGER DEFAULT 0,
     total_units INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS societies (
 -- Blocks Table
 CREATE TABLE IF NOT EXISTS blocks (
     id SERIAL PRIMARY KEY,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     total_floors INTEGER DEFAULT 0,
     total_units INTEGER DEFAULT 0,
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS floors (
 -- Units Table
 CREATE TABLE IF NOT EXISTS units (
     id SERIAL PRIMARY KEY,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     block_id INTEGER REFERENCES blocks(id) ON DELETE SET NULL,
     floor_id INTEGER REFERENCES floors(id) ON DELETE SET NULL,
     unit_number VARCHAR(50) NOT NULL,
@@ -81,7 +82,7 @@ CREATE TABLE IF NOT EXISTS units (
 CREATE TABLE IF NOT EXISTS maintenance (
     id SERIAL PRIMARY KEY,
     unit_id INTEGER NOT NULL REFERENCES units(id) ON DELETE CASCADE,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
     year INTEGER NOT NULL,
     base_amount DECIMAL(10, 2) NOT NULL,
@@ -96,7 +97,7 @@ CREATE TABLE IF NOT EXISTS maintenance (
 -- Maintenance Config Table
 CREATE TABLE IF NOT EXISTS maintenance_config (
     id SERIAL PRIMARY KEY,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     base_amount DECIMAL(10, 2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -105,7 +106,7 @@ CREATE TABLE IF NOT EXISTS maintenance_config (
 -- Finance Table (Expenses and Income)
 CREATE TABLE IF NOT EXISTS finance (
     id SERIAL PRIMARY KEY,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     transaction_date DATE NOT NULL,
     transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('income', 'expense')),
@@ -132,7 +133,7 @@ CREATE TABLE IF NOT EXISTS announcements (
     language VARCHAR(20),
     visible_to_all BOOLEAN DEFAULT true,
     is_active BOOLEAN DEFAULT true,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     block_id INTEGER REFERENCES blocks(id) ON DELETE SET NULL,
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -143,7 +144,7 @@ CREATE TABLE IF NOT EXISTS announcements (
 CREATE TABLE IF NOT EXISTS defaulters (
     id SERIAL PRIMARY KEY,
     unit_id INTEGER NOT NULL REFERENCES units(id) ON DELETE CASCADE,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     maintenance_id INTEGER REFERENCES maintenance(id) ON DELETE SET NULL,
     amount_due DECIMAL(10, 2) NOT NULL,
     months_overdue INTEGER DEFAULT 0,
@@ -156,7 +157,7 @@ CREATE TABLE IF NOT EXISTS defaulters (
 CREATE TABLE IF NOT EXISTS complaints (
     id SERIAL PRIMARY KEY,
     unit_id INTEGER REFERENCES units(id) ON DELETE SET NULL,
-    society_apartment_id INTEGER NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
     submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
     title VARCHAR(255) NOT NULL,
@@ -172,7 +173,7 @@ CREATE TABLE IF NOT EXISTS complaints (
 -- Settings Table
 CREATE TABLE IF NOT EXISTS settings (
     id SERIAL PRIMARY KEY,
-    society_apartment_id INTEGER REFERENCES societies(id) ON DELETE CASCADE,
+    society_apartment_id INTEGER REFERENCES apartments(id) ON DELETE CASCADE,
     defaulter_list_visible BOOLEAN DEFAULT false,
     complaint_logs_visible BOOLEAN DEFAULT false,
     financial_reports_visible BOOLEAN DEFAULT false,
@@ -209,7 +210,7 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_societies_updated_at BEFORE UPDATE ON societies
+CREATE TRIGGER update_apartments_updated_at BEFORE UPDATE ON apartments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_blocks_updated_at BEFORE UPDATE ON blocks

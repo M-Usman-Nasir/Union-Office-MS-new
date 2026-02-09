@@ -10,7 +10,7 @@ export const getAll = async (req, res) => {
       SELECT m.*, u.unit_number, u.owner_name, s.name as society_name
       FROM maintenance m
       LEFT JOIN units u ON m.unit_id = u.id
-      LEFT JOIN societies s ON m.society_apartment_id = s.id
+      LEFT JOIN apartments s ON m.society_apartment_id = s.id
       WHERE 1=1
     `;
     const params = [];
@@ -113,7 +113,7 @@ export const getById = async (req, res) => {
       `SELECT m.*, u.unit_number, u.owner_name, s.name as society_name
        FROM maintenance m
        LEFT JOIN units u ON m.unit_id = u.id
-       LEFT JOIN societies s ON m.society_apartment_id = s.id
+       LEFT JOIN apartments s ON m.society_apartment_id = s.id
        WHERE m.id = $1`,
       [id]
     );

@@ -137,7 +137,7 @@ src/
 ├── api/
 │   ├── axios.js
 │   ├── userApi.js
-│   ├── societyApi.js
+│   ├── apartmentApi.js
 │   ├── maintenanceApi.js
 │   ├── financeApi.js
 │   ├── defaulterApi.js
@@ -198,7 +198,7 @@ backend/
 ├── routes/
 │   ├── auth.js
 │   ├── users.js
-│   └── societies.js
+│   └── apartments.js
 ├── middleware/
 │   ├── auth.js
 │   └── errorHandler.js

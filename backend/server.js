@@ -8,7 +8,7 @@ import { testConnection, getTables } from './config/database.js';
 // Import routes
 import authRoutes from './routes/auth.js';
 import testRoutes from './routes/test.js';
-import societyRoutes from './routes/societies.js';
+import apartmentRoutes from './routes/apartments.js';
 import residentRoutes from './routes/residents.js';
 import maintenanceRoutes from './routes/maintenance.js';
 import financeRoutes from './routes/finance.js';
@@ -20,6 +20,7 @@ import userRoutes from './routes/users.js';
 import superAdminRoutes from './routes/superAdmin.js';
 import settingsRoutes from './routes/settings.js';
 import staffRoutes from './routes/staff.js';
+import notificationRoutes from './routes/notifications.js';
 
 // Load environment variables
 dotenv.config();
@@ -73,7 +74,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/test', testRoutes);
-app.use('/api/societies', societyRoutes);
+app.use('/api/societies', apartmentRoutes);
 app.use('/api/residents', residentRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/finance', financeRoutes);
@@ -85,6 +86,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Database connection test endpoint
 app.get('/api/test/db', async (req, res) => {
@@ -168,6 +170,13 @@ const startServer = async () => {
       console.log('✅ Monthly dues scheduler initialized');
     } catch (error) {
       console.warn('⚠️  Could not initialize monthly dues scheduler:', error.message);
+    }
+    try {
+      const { scheduleReminderDues } = await import('./jobs/reminderDuesJob.js');
+      scheduleReminderDues();
+      console.log('✅ Reminder dues scheduler initialized');
+    } catch (error) {
+      console.warn('⚠️  Could not initialize reminder dues scheduler:', error.message);
     }
 
     // Start listening

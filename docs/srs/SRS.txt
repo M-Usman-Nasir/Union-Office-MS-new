@@ -1,0 +1,147 @@
+Software Requirements Specification (SRS)
+1. Introduction
+1.1 Purpose
+The purpose of this system is to provide an automated and efficient solution for managing apartment maintenance payments, complaints, and financial transparency. The system will ensure every resident of Homeland Apartments can access critical information regarding maintenance, complaints, and expenses.
+1.2 Scope
+This system will:
+Automate monthly maintenance dues with manual updates for payment statuses.
+Maintain a detailed resident profile with payment and utility information.
+Enable residents to track complaints and defaulter lists based on admin-defined visibility.
+Provide admins with tools to manage finances, complaints, and resident data.
+Allow the super admin to manage multiple apartment complexes.
+
+2. Functional Requirements
+2.1 Super Admin Portal
+Features
+1. Login/Authentication
+Secure access to the super admin portal.
+
+2. Apartment Management
+Add, edit, and delete apartment complexes.
+Assign admin roles to specific apartments.
+
+3. Reports
+View global reports across all apartments.
+
+2.2 Admin Portal
+Features
+1. Login/Authentication
+Secure access for admins and staff.
+
+2. Dashboard
+Overview of financial and complaint statistics.
+
+3. Residents Management
+Add/Edit/Delete Resident Profiles:
+Owner Name
+Resident Name
+Contact Number
+Email
+Electricity, Gas, Water, Telephone, or other bills.
+Car Make, Model, and Number Plate.
+Assign a flat to a resident.
+Update resident details as needed.
+
+4. Payments Module
+Define fixed monthly maintenance fee.
+Automatically generate maintenance dues on the 1st of every month.
+Update payment statuses as:
+Paid: Full payment received.
+Partially Paid: Record amount received and balance due.
+View, export, and toggle the visibility of the defaulter list.
+
+5. Complaints Module
+Receive and track complaints from residents.
+Assign complaints to staff and track resolution progress.
+Toggle complaint visibility (Public or Private).
+
+6. Finance Module
+Record income (manual entries for fines, additional charges).
+Record expenses (e.g., salaries, utilities).
+Generate monthly and yearly financial reports.
+
+7. Settings
+Manage visibility of the defaulter list and complaint logs.
+Update fixed maintenance amounts for each block or flat.
+
+2.3 Resident Portal
+Features
+1. Login/Authentication
+Secure access for residents.
+2. Dashboard
+Display payment history and complaint status.
+Notify residents of pending dues.
+
+3. Payment History
+View details of past payments, including status (Paid, Partially Paid, Unpaid).
+
+4. Defaulter List
+Access defaulter information (if enabled by admin).
+
+5. Complaint Module
+Submit complaints with descriptions and attachments.
+Track complaints with real-time updates.
+
+6. Public Financial Summaries
+View public financial reports (if enabled by admin).
+
+2.4 Staff Portal
+Features
+1. Login/Authentication
+Secure access for staff.
+
+2. Complaint Management
+View assigned complaints.
+Update complaint progress and resolution status.
+
+3. Payment Updates
+Assist admins in updating payment statuses.
+
+3. Non-Functional Requirements
+Security: All user data must be encrypted.
+Scalability: The system should handle multiple apartments and large numbers of residents.
+Usability: User-friendly interface for admins, residents, and staff.
+
+4. Additional Details for UX/UI
+Resident Profile
+When adding a flat or resident, the following fields will be included:
+Owner Name
+Resident Name
+Contact Number
+Email Address
+
+Utilities:
+Electricity Account Details
+Gas Account Details
+Water Account Details
+Telephone/Other Bills
+
+Vehicle Details:
+Car Make and Model
+License Plate Number
+
+Payments Module (Admin View)
+1. Auto-Due Feature
+Fixed maintenance amount automatically added to all flats on the 1st of each month.
+Admins can override or manually adjust dues for specific flats.
+
+2. Defaulter List
+Generated automatically based on unpaid or partially paid dues.
+Can be toggled as public or private.
+
+Complaints Module (Admin View)
+Show complaint status updates to residents.
+Allow residents to view all complaints logged within the apartment (if public).
+
+Finance Module
+1. Income
+Manual entry for fines, additional fees, or other income.
+
+2. Expense
+Add salaries, maintenance costs, or other apartment-related expenses.
+
+3. Reports
+Monthly/yearly breakdown of:
+Total collections.
+Total expenses.
+Net income.

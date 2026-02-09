@@ -18,6 +18,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import toast from 'react-hot-toast'
+import logo from '@/assets/images/logo.png'
+import authPattern from '@/assets/images/auth/auth-pattern.svg'
 
 const TEST_USERS = [
   {
@@ -119,10 +121,30 @@ const LoginPage = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `url(${authPattern})`,
+            backgroundRepeat: 'repeat',
+            backgroundSize: '120px',
+            opacity: 0.06,
+            pointerEvents: 'none',
+          },
         }}
       >
-        <Card sx={{ width: '100%', maxWidth: 450 }}>
+        <Card sx={{ width: '100%', maxWidth: 450, position: 'relative', zIndex: 1 }}>
           <CardContent sx={{ p: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+              <Box
+                component="img"
+                src={logo}
+                alt="Homeland Union"
+                sx={{ height: 56, width: 'auto' }}
+              />
+            </Box>
             <Typography variant="h4" component="h1" gutterBottom align="center">
               Homeland Union
             </Typography>

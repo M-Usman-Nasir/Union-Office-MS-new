@@ -10,7 +10,7 @@ export const getBlocks = async (req, res) => {
       result = await query(
         `SELECT b.*, s.name as society_name
          FROM blocks b
-         LEFT JOIN societies s ON b.society_apartment_id = s.id
+         LEFT JOIN apartments s ON b.society_apartment_id = s.id
          WHERE b.society_apartment_id = $1
          ORDER BY b.name`,
         [society_id]
@@ -20,7 +20,7 @@ export const getBlocks = async (req, res) => {
       result = await query(
         `SELECT b.*, s.name as society_name
          FROM blocks b
-         LEFT JOIN societies s ON b.society_apartment_id = s.id
+         LEFT JOIN apartments s ON b.society_apartment_id = s.id
          ORDER BY b.society_apartment_id, b.name`
       );
     }
@@ -196,7 +196,7 @@ export const getUnits = async (req, res) => {
       FROM units u
       LEFT JOIN floors f ON u.floor_id = f.id
       LEFT JOIN blocks b ON u.block_id = b.id
-      LEFT JOIN societies s ON u.society_apartment_id = s.id
+      LEFT JOIN apartments s ON u.society_apartment_id = s.id
       WHERE 1=1
     `;
     const params = [];
@@ -253,7 +253,7 @@ export const getUnitById = async (req, res) => {
        FROM units u
        LEFT JOIN floors f ON u.floor_id = f.id
        LEFT JOIN blocks b ON u.block_id = b.id
-       LEFT JOIN societies s ON u.society_apartment_id = s.id
+       LEFT JOIN apartments s ON u.society_apartment_id = s.id
        WHERE u.id = $1`,
       [id]
     );

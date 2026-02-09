@@ -85,7 +85,7 @@
 All modular API services created:
 
 - ✅ `authApi.js` - Authentication (login, logout, refresh, register, getMe)
-- ✅ `societyApi.js` - Societies CRUD
+- ✅ `apartmentApi.js` - Societies CRUD
 - ✅ `residentApi.js` - Residents CRUD
 - ✅ `maintenanceApi.js` - Maintenance with payment recording
 - ✅ `financeApi.js` - Finance with summary endpoint
@@ -122,7 +122,7 @@ All modular API services created:
 8. Settings.jsx
 
 **Super Admin Pages (4):**
-1. Societies.jsx
+1. Apartments.jsx
 2. Blocks.jsx
 3. Floors.jsx
 4. Units.jsx

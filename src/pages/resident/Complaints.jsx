@@ -26,6 +26,7 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
+import { getBaseUrl } from '@/utils/constants'
 
 const validationSchema = Yup.object({
   title: Yup.string().required('Title is required'),
@@ -38,6 +39,7 @@ const ResidentComplaints = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [openDialog, setOpenDialog] = useState(false)
+  const [attachmentFiles, setAttachmentFiles] = useState([])
   const [filterType, setFilterType] = useState('all') // 'all', 'my', 'public'
   const societyId = user?.society_apartment_id
 
@@ -61,15 +63,30 @@ const ResidentComplaints = () => {
 
   const handleCloseDialog = () => {
     setOpenDialog(false)
+    setAttachmentFiles([])
   }
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      await complaintApi.create({
-        ...values,
-        unit_id: user?.unit_id,
-        society_apartment_id: user?.society_apartment_id,
-      })
+      const hasAttachments = attachmentFiles.length > 0
+      if (hasAttachments) {
+        const formData = new FormData()
+        formData.append('title', values.title)
+        formData.append('description', values.description)
+        formData.append('priority', values.priority)
+        formData.append('unit_id', user?.unit_id ?? '')
+        formData.append('society_apartment_id', user?.society_apartment_id ?? '')
+        attachmentFiles.forEach((file) => {
+          formData.append('attachments', file)
+        })
+        await complaintApi.createWithAttachments(formData)
+      } else {
+        await complaintApi.create({
+          ...values,
+          unit_id: user?.unit_id,
+          society_apartment_id: user?.society_apartment_id,
+        })
+      }
       toast.success('Complaint submitted successfully')
       mutate()
       handleCloseDialog()
@@ -139,6 +156,24 @@ const ResidentComplaints = () => {
       render: (row) => (
         <Chip label={row.priority} color={getPriorityColor(row.priority)} size="small" variant="outlined" />
       ),
+    },
+    {
+      id: 'attachments',
+      label: 'Attachments',
+      render: (row) => {
+        const att = row.attachments
+        if (!att || !Array.isArray(att) || att.length === 0) return '—'
+        const base = getBaseUrl()
+        return (
+          <Box component="span" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            {att.map((path, i) => (
+              <Button key={i} size="small" href={`${base}${path}`} target="_blank" rel="noopener noreferrer" sx={{ minWidth: 0, py: 0 }}>
+                File {i + 1}
+              </Button>
+            ))}
+          </Box>
+        )
+      },
     },
     { id: 'created_at', label: 'Submitted', render: (row) => formatDate(row.created_at) },
   ]
@@ -260,6 +295,26 @@ const ResidentComplaints = () => {
                       error={touched.description && !!errors.description}
                       helperText={touched.description && errors.description}
                     />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Attachments (optional): Images or PDF, max 5 files, 5MB each
+                    </Typography>
+                    <Button variant="outlined" component="label" size="small">
+                      Choose files
+                      <input
+                        type="file"
+                        hidden
+                        accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,image/*,application/pdf"
+                        multiple
+                        onChange={(e) => setAttachmentFiles(Array.from(e.target.files || []).slice(0, 5))}
+                      />
+                    </Button>
+                    {attachmentFiles.length > 0 && (
+                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                        {attachmentFiles.length} file(s) selected
+                      </Typography>
+                    )}
                   </Grid>
                 </Grid>
               </DialogContent>

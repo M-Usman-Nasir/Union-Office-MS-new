@@ -42,7 +42,7 @@ export const getGlobalReports = async (req, res) => {
         COUNT(DISTINCT c.id) as total_complaints,
         SUM(CASE WHEN f.transaction_type = 'income' THEN f.amount ELSE 0 END) as income,
         SUM(CASE WHEN f.transaction_type = 'expense' THEN f.amount ELSE 0 END) as expenses
-      FROM societies s
+      FROM apartments s
       LEFT JOIN units u ON s.id = u.society_apartment_id
       LEFT JOIN complaints c ON s.id = c.society_apartment_id
       LEFT JOIN finance f ON s.id = f.society_apartment_id AND f.year = $1

@@ -40,7 +40,7 @@ export const API_ENDPOINTS = {
   ME: '/auth/me',
   REGISTER: '/auth/register',
   
-  // Societies
+  // Apartments (societies)
   SOCIETIES: '/societies',
   SOCIETY_BY_ID: (id) => `/societies/${id}`,
   
@@ -64,6 +64,7 @@ export const API_ENDPOINTS = {
   
   // Complaints
   COMPLAINTS: '/complaints',
+  COMPLAINTS_WITH_ATTACHMENTS: '/complaints/with-attachments',
   COMPLAINT_BY_ID: (id) => `/complaints/${id}`,
   COMPLAINT_STATUS: (id) => `/complaints/${id}/status`,
   COMPLAINT_ASSIGN: (id) => `/complaints/${id}/assign`,
@@ -72,6 +73,7 @@ export const API_ENDPOINTS = {
   // Defaulters
   DEFAULTERS: '/defaulters',
   DEFAULTERS_STATISTICS: '/defaulters/statistics',
+  DEFAULTERS_EXPORT: '/defaulters/export',
   DEFAULTER_STATUS: (id) => `/defaulters/${id}/status`,
   
   // Announcements
@@ -97,6 +99,10 @@ export const API_ENDPOINTS = {
   // Settings
   SETTINGS: (societyId) => `/settings/${societyId}`,
   MAINTENANCE_CONFIG: (societyId) => `/settings/${societyId}/maintenance-config`,
+  
+  // Notifications (push + vapid)
+  NOTIFICATIONS_VAPID_PUBLIC: '/notifications/vapid-public',
+  NOTIFICATIONS_SUBSCRIBE: '/notifications/subscribe',
   
   // Super Admin
   SUPER_ADMIN_REPORTS_GLOBAL: '/super-admin/reports/global',

@@ -11,7 +11,7 @@ export const getAssignedComplaints = async (req, res) => {
              submitter.name as submitted_by_name
       FROM complaints c
       LEFT JOIN units u ON c.unit_id = u.id
-      LEFT JOIN societies s ON c.society_apartment_id = s.id
+      LEFT JOIN apartments s ON c.society_apartment_id = s.id
       LEFT JOIN users submitter ON c.submitted_by = submitter.id
       WHERE c.assigned_to = $1
     `;
@@ -82,7 +82,7 @@ export const getPayments = async (req, res) => {
       SELECT m.*, u.unit_number, u.owner_name, s.name as society_name
       FROM maintenance m
       LEFT JOIN units u ON m.unit_id = u.id
-      LEFT JOIN societies s ON m.society_apartment_id = s.id
+      LEFT JOIN apartments s ON m.society_apartment_id = s.id
       WHERE 1=1
     `;
     const params = [];

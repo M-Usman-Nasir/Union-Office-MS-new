@@ -18,14 +18,14 @@ import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import useSWR from 'swr'
 import { propertyApi } from '@/api/propertyApi'
-import { societyApi } from '@/api/societyApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
 const validationSchema = Yup.object({
-  society_apartment_id: Yup.number().required('Society is required'),
+  society_apartment_id: Yup.number().required('Apartment is required'),
   block_id: Yup.number().required('Block is required'),
   floor_number: Yup.number().min(1).required('Floor number is required'),
 })
@@ -38,7 +38,7 @@ const Floors = () => {
 
   const { data: societiesData } = useSWR(
     '/societies',
-    () => societyApi.getAll({ limit: 100 }).then(res => res.data)
+    () => apartmentApi.getAll({ limit: 100 }).then(res => res.data)
   )
 
   const { data: blocksData } = useSWR(
@@ -117,7 +117,7 @@ const Floors = () => {
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
         <TextField
           select
-          label="Select Society"
+          label="Select Apartment"
           value={societyFilter}
           onChange={(e) => {
             setSocietyFilter(e.target.value)
@@ -125,7 +125,7 @@ const Floors = () => {
           }}
           sx={{ minWidth: 250 }}
         >
-          <MenuItem value="">Select Society</MenuItem>
+          <MenuItem value="">Select Apartment</MenuItem>
           {societiesData?.data?.map((society) => (
             <MenuItem key={society.id} value={society.id}>
               {society.name}
@@ -152,7 +152,7 @@ const Floors = () => {
       {!blockFilter ? (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <Typography variant="body1" color="text.secondary">
-            Please select a Society and Block to view floors
+            Please select an Apartment and Block to view floors
           </Typography>
         </Box>
       ) : (
@@ -183,7 +183,7 @@ const Floors = () => {
                     <TextField
                       fullWidth
                       select
-                      label="Society"
+                      label="Apartment"
                       name="society_apartment_id"
                       value={values.society_apartment_id}
                       onChange={(e) => {
@@ -198,7 +198,7 @@ const Floors = () => {
                       helperText={touched.society_apartment_id && errors.society_apartment_id}
                       disabled={!!editingFloor}
                     >
-                      <MenuItem value="">Select Society</MenuItem>
+                      <MenuItem value="">Select Apartment</MenuItem>
                       {societiesData?.data?.map((society) => (
                         <MenuItem key={society.id} value={society.id}>
                           {society.name}
@@ -221,10 +221,10 @@ const Floors = () => {
                     >
                       <MenuItem value="">Select Block</MenuItem>
                       {(values.society_apartment_id
-                        ? blocksData?.data?.filter(
+                        ? (blocksData?.data || []).filter(
                             (block) => block.society_apartment_id === values.society_apartment_id
                           )
-                        : allBlocksData?.data || []
+                        : (allBlocksData?.data || [])
                       ).map((block) => (
                         <MenuItem key={block.id} value={block.id}>
                           {block.name}
@@ -238,8 +238,17 @@ const Floors = () => {
                       label="Floor Number"
                       name="floor_number"
                       type="number"
+                      inputProps={{ min: 1 }}
                       value={values.floor_number}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(1, parseInt(raw, 10) || 1)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.floor_number && !!errors.floor_number}
                       helperText={touched.floor_number && errors.floor_number}
@@ -251,8 +260,17 @@ const Floors = () => {
                       label="Total Units"
                       name="total_units"
                       type="number"
+                      inputProps={{ min: 0 }}
                       value={values.total_units}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(0, parseInt(raw, 10) || 0)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                     />
                   </Grid>

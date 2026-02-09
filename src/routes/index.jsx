@@ -6,7 +6,7 @@ import { ROLES, ROUTES } from '@/utils/constants'
 // Import pages
 import LoginPage from '@/pages/auth/LoginPage'
 import SuperAdminDashboard from '@/pages/super-admin/Dashboard'
-import Societies from '@/pages/super-admin/Societies'
+import Apartments from '@/pages/super-admin/Apartments'
 import Blocks from '@/pages/super-admin/Blocks'
 import Floors from '@/pages/super-admin/Floors'
 import Units from '@/pages/super-admin/Units'
@@ -48,7 +48,7 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<SuperAdminDashboard />} />
-                <Route path="societies" element={<Societies />} />
+                <Route path="societies" element={<Apartments />} />
                 <Route path="blocks" element={<Blocks />} />
                 <Route path="floors" element={<Floors />} />
                 <Route path="units" element={<Units />} />

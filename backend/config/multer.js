@@ -77,3 +77,41 @@ export const deleteProfileImage = (imagePath) => {
 export const getImagePath = (filename) => {
   return `/uploads/profiles/${filename}`;
 };
+
+// --- Complaint attachments ---
+const complaintsDir = path.join(__dirname, '..', 'uploads', 'complaints');
+if (!fs.existsSync(complaintsDir)) {
+  fs.mkdirSync(complaintsDir, { recursive: true });
+}
+
+const complaintsStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, complaintsDir);
+  },
+  filename: (req, file, cb) => {
+    const userId = req.user?.id || 'unknown';
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname) || '';
+    const safeName = (file.originalname || 'file').replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 50);
+    const filename = `complaint_${userId}_${timestamp}_${safeName}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const complaintsFileFilter = (req, file, cb) => {
+  const allowed = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+  ];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only images (JPEG, PNG, GIF, WebP) and PDF are allowed'), false);
+  }
+};
+
+export const uploadComplaintAttachments = multer({
+  storage: complaintsStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+  fileFilter: complaintsFileFilter,
+}).array('attachments', 5);

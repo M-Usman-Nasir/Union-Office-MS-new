@@ -59,22 +59,22 @@ try {
     console.log('ℹ️  Resident user already exists')
   }
   
-  // 2. Create Society
-  console.log('\n🏢 Creating societies...')
+  // 2. Create Apartment (formerly Society)
+  console.log('\n🏢 Creating apartments...')
   let societyId
-  const existingSociety = await query('SELECT id FROM societies WHERE name = $1', ['Homeland Union Society'])
+  const existingApartment = await query('SELECT id FROM apartments WHERE name = $1', ['Homeland Union Society'])
   
-  if (existingSociety.rows.length === 0) {
-    const societyResult = await query(
-      `INSERT INTO societies (name, address, city, total_blocks, total_units) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      ['Homeland Union Society', '123 Main Street', 'Karachi', 3, 30]
+  if (existingApartment.rows.length === 0) {
+    const apartmentResult = await query(
+      `INSERT INTO apartments (name, address, city, total_blocks, total_floors, total_units) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      ['Homeland Union Society', '123 Main Street', 'Karachi', 3, 3, 30]
     )
-    societyId = societyResult.rows[0].id
-    console.log('✅ Created society')
+    societyId = apartmentResult.rows[0].id
+    console.log('✅ Created apartment')
   } else {
-    societyId = existingSociety.rows[0].id
-    console.log('ℹ️  Society already exists')
+    societyId = existingApartment.rows[0].id
+    console.log('ℹ️  Apartment already exists')
   }
   
   // Update union admin with society

@@ -17,7 +17,7 @@ const TelephoneBillsInput = ({ value = [], onChange, error, helperText }) => {
     const newBills = [...value]
     newBills[index] = {
       ...newBills[index],
-      [field]: field === 'amount' ? parseFloat(fieldValue) || 0 : fieldValue,
+      [field]: field === 'amount' ? Math.max(0, parseFloat(fieldValue) || 0) : fieldValue,
     }
     onChange(newBills)
   }
@@ -66,8 +66,13 @@ const TelephoneBillsInput = ({ value = [], onChange, error, helperText }) => {
                 size="small"
                 label="Amount"
                 type="number"
+                inputProps={{ min: 0 }}
                 value={bill.amount || ''}
-                onChange={(e) => handleChange(index, 'amount', e.target.value)}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  const amount = raw === '' ? '' : Math.max(0, parseFloat(raw) || 0)
+                  handleChange(index, 'amount', amount)
+                }}
                 error={error}
                 InputProps={{
                   startAdornment: <Typography sx={{ mr: 1, fontSize: '0.875rem' }}>PKR</Typography>,

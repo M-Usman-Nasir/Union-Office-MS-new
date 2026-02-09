@@ -10,7 +10,7 @@ import {
 } from '@mui/material'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
-import { societyApi } from '@/api/societyApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import BusinessIcon from '@mui/icons-material/Business'
@@ -22,7 +22,7 @@ const UnionInfo = () => {
 
   const { data: societyData, isLoading: societyLoading } = useSWR(
     societyId ? ['/societies', societyId] : null,
-    () => societyApi.getById(societyId).then(res => res.data.data)
+    () => apartmentApi.getById(societyId).then(res => res.data.data)
   )
 
   const { data: blocksData } = useSWR(

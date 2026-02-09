@@ -338,8 +338,21 @@ const Maintenance = () => {
                       label="Year"
                       name="year"
                       type="number"
+                      inputProps={{ min: 2000, max: new Date().getFullYear() }}
                       value={values.year}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const year = parseInt(raw, 10)
+                        const clamped = Math.min(
+                          new Date().getFullYear(),
+                          Math.max(2000, isNaN(year) ? 2000 : year)
+                        )
+                        handleChange({ target: { name: e.target.name, value: clamped } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.year && !!errors.year}
                       helperText={touched.year && errors.year}
@@ -351,8 +364,17 @@ const Maintenance = () => {
                       label="Base Amount"
                       name="base_amount"
                       type="number"
+                      inputProps={{ min: 0 }}
                       value={values.base_amount}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(0, parseFloat(raw) || 0)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.base_amount && !!errors.base_amount}
                       helperText={touched.base_amount && errors.base_amount}
@@ -364,8 +386,17 @@ const Maintenance = () => {
                       label="Total Amount"
                       name="total_amount"
                       type="number"
+                      inputProps={{ min: 0 }}
                       value={values.total_amount}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const num = Math.max(0, parseFloat(raw) || 0)
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                       error={touched.total_amount && !!errors.total_amount}
                       helperText={touched.total_amount && errors.total_amount}
@@ -406,8 +437,18 @@ const Maintenance = () => {
                       label="Amount Paid"
                       name="amount_paid"
                       type="number"
+                      inputProps={{ min: 0, max: selectedMaintenance?.total_amount }}
                       value={values.amount_paid}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        if (raw === '') {
+                          handleChange(e)
+                          return
+                        }
+                        const maxVal = selectedMaintenance?.total_amount ?? Infinity
+                        const num = Math.min(maxVal, Math.max(0, parseFloat(raw) || 0))
+                        handleChange({ target: { name: e.target.name, value: num } })
+                      }}
                       onBlur={handleBlur}
                     />
                   </Grid>

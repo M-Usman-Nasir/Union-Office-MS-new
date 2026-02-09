@@ -10,7 +10,7 @@ export const getAll = async (req, res) => {
       SELECT r.*, u.unit_number, u.owner_name, s.name as society_name
       FROM users r
       LEFT JOIN units u ON r.unit_id = u.id
-      LEFT JOIN societies s ON r.society_apartment_id = s.id
+      LEFT JOIN apartments s ON r.society_apartment_id = s.id
       WHERE r.role IN ('resident', 'union_admin')
     `;
     const params = [];
@@ -96,7 +96,7 @@ export const getById = async (req, res) => {
       `SELECT r.*, u.unit_number, u.owner_name, s.name as society_name
        FROM users r
        LEFT JOIN units u ON r.unit_id = u.id
-       LEFT JOIN societies s ON r.society_apartment_id = s.id
+       LEFT JOIN apartments s ON r.society_apartment_id = s.id
        WHERE r.id = $1 AND r.role IN ('resident', 'union_admin')`,
       [id]
     );

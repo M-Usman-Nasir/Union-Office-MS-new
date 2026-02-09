@@ -19,7 +19,7 @@ router.post('/floors', requireRole('super_admin'), propertyController.createFloo
 // Units routes
 router.get('/units', propertyController.getUnits);
 router.get('/units/:id', propertyController.getUnitById);
-router.post('/units', requireRole('super_admin', 'union_admin'), propertyController.createUnit);
-router.put('/units/:id', requireRole('super_admin', 'union_admin'), propertyController.updateUnit);
+router.post('/units', requireRole('super_admin'), propertyController.createUnit);
+router.put('/units/:id', requireRole('super_admin'), propertyController.updateUnit);
 
 export default router;

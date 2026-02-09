@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import PropTypes from 'prop-types'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Box,
@@ -18,6 +19,8 @@ import {
   MenuItem,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import PeopleIcon from '@mui/icons-material/People'
 import PaymentIcon from '@mui/icons-material/Payment'
@@ -32,17 +35,27 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
+import { useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useAuth } from '@/contexts/AuthContext'
-import { useTheme } from '@/contexts/ThemeContext'
+import { useTheme as useAppTheme } from '@/contexts/ThemeContext'
 import { ROUTES, ROLES, getImageUrl } from '@/utils/constants'
+import userRound from '@/assets/images/users/user-round.svg'
+import PushNotificationEnabler from '@/components/notifications/PushNotificationEnabler'
 
+const sidebarLogo = '/icons/mob_Logo.png'
 const drawerWidth = 240
+const drawerWidthCollapsed = 64
 
 const MainLayout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [anchorEl, setAnchorEl] = useState(null)
+  const effectiveDrawerWidth = sidebarOpen ? drawerWidth : drawerWidthCollapsed
+  const theme = useTheme()
+  const isDesktop = useMediaQuery(theme.breakpoints.up('sm'))
   const { user, logout } = useAuth()
-  const { mode, toggleMode } = useTheme()
+  const { mode, toggleMode } = useAppTheme()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -68,7 +81,7 @@ const MainLayout = ({ children }) => {
     if (user?.role === ROLES.SUPER_ADMIN) {
       return [
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.SUPER_ADMIN_DASHBOARD },
-        { text: 'Societies', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
+        { text: 'Apartments', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
         { text: 'Blocks', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_BLOCKS },
         { text: 'Floors', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_FLOORS },
         { text: 'Units', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_UNITS },
@@ -109,27 +122,64 @@ const MainLayout = ({ children }) => {
 
   const menuItems = getMenuItems()
 
-  const drawer = (
-    <Box>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div">
-          Homeland Union
-        </Typography>
+  const drawer = (collapsed = false) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Toolbar
+        sx={{
+          gap: 1.5,
+          minHeight: { xs: 56, sm: 64 },
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          px: collapsed ? 0 : 2,
+        }}
+      >
+        <Box
+          component="img"
+          src={sidebarLogo}
+          alt="Homeland Union"
+          sx={{ height: 36, width: 'auto', display: 'block', flexShrink: 0 }}
+        />
+        {!collapsed && (
+          <Typography variant="h6" noWrap component="div">
+            Homeland Union
+          </Typography>
+        )}
       </Toolbar>
       <Divider />
-      <List>
+      <List sx={{ flexGrow: 1, minHeight: 0, overflow: 'auto' }}>
         {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
+          <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => navigate(item.path)}
+              sx={{
+                justifyContent: collapsed ? 'center' : 'initial',
+                px: collapsed ? 0 : 2,
+              }}
             >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
+              <ListItemIcon
+                sx={{
+                  minWidth: collapsed ? 0 : 56,
+                  justifyContent: 'center',
+                }}
+              >
+                {item.icon}
+              </ListItemIcon>
+              {!collapsed && <ListItemText primary={item.text} />}
             </ListItemButton>
           </ListItem>
         ))}
       </List>
+      <Divider />
+      <Box sx={{ p: 1, flexShrink: 0, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end' }}>
+        <IconButton
+          aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          onClick={() => setSidebarOpen((o) => !o)}
+          sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+          size="small"
+        >
+          {sidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+        </IconButton>
+      </Box>
     </Box>
   )
 
@@ -138,17 +188,20 @@ const MainLayout = ({ children }) => {
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
+          width: { sm: `calc(100% - ${effectiveDrawerWidth}px)` },
+          ml: { sm: `${effectiveDrawerWidth}px` },
         }}
       >
         <Toolbar>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
+            aria-label={isDesktop && !sidebarOpen ? 'Open sidebar' : 'Open menu'}
             edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            onClick={() => {
+              if (isDesktop && !sidebarOpen) setSidebarOpen(true)
+              else handleDrawerToggle()
+            }}
+            sx={{ mr: 2, display: { xs: 'block', sm: sidebarOpen ? 'none' : 'block' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -159,11 +212,11 @@ const MainLayout = ({ children }) => {
             {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
           <IconButton onClick={handleMenuClick}>
-            <Avatar 
-              src={getImageUrl(user?.profile_image)} 
+            <Avatar
+              src={getImageUrl(user?.profile_image) || userRound}
               sx={{ width: 32, height: 32 }}
             >
-              {!user?.profile_image && (user?.name?.charAt(0)?.toUpperCase() || 'U')}
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
             </Avatar>
           </IconButton>
           <Menu
@@ -191,7 +244,7 @@ const MainLayout = ({ children }) => {
       </AppBar>
       <Box
         component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
+        sx={{ width: { sm: effectiveDrawerWidth }, flexShrink: { sm: 0 } }}
       >
         <Drawer
           variant="temporary"
@@ -205,17 +258,27 @@ const MainLayout = ({ children }) => {
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
           }}
         >
-          {drawer}
+          {drawer(false)}
         </Drawer>
         <Drawer
           variant="permanent"
           sx={{
             display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: effectiveDrawerWidth,
+              overflowX: 'hidden',
+              height: '100%',
+              transition: (theme) =>
+                theme.transitions.create('width', {
+                  easing: theme.transitions.easing.sharp,
+                  duration: theme.transitions.duration.enteringScreen,
+                }),
+            },
           }}
           open
         >
-          {drawer}
+          {drawer(!sidebarOpen)}
         </Drawer>
       </Box>
       <Box
@@ -223,14 +286,24 @@ const MainLayout = ({ children }) => {
         sx={{
           flexGrow: 1,
           p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          width: { sm: `calc(100% - ${effectiveDrawerWidth}px)` },
+          transition: (theme) =>
+            theme.transitions.create(['margin', 'width'], {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
         }}
       >
         <Toolbar />
         {children}
+        <PushNotificationEnabler />
       </Box>
     </Box>
   )
+}
+
+MainLayout.propTypes = {
+  children: PropTypes.node,
 }
 
 export default MainLayout

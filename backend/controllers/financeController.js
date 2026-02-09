@@ -9,7 +9,7 @@ export const getAll = async (req, res) => {
     let sql = `
       SELECT f.*, s.name as society_name, u.name as added_by_name
       FROM finance f
-      LEFT JOIN societies s ON f.society_apartment_id = s.id
+      LEFT JOIN apartments s ON f.society_apartment_id = s.id
       LEFT JOIN users u ON f.added_by = u.id
       WHERE 1=1
     `;
@@ -173,7 +173,7 @@ export const getById = async (req, res) => {
     const result = await query(
       `SELECT f.*, s.name as society_name, u.name as added_by_name
        FROM finance f
-       LEFT JOIN societies s ON f.society_apartment_id = s.id
+       LEFT JOIN apartments s ON f.society_apartment_id = s.id
        LEFT JOIN users u ON f.added_by = u.id
        WHERE f.id = $1`,
       [id]

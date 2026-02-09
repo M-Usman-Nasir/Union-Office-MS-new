@@ -1,12 +1,12 @@
 import { query } from '../config/database.js';
 
-// Get all societies
+// Get all apartments
 export const getAll = async (req, res) => {
   try {
     const { page = 1, limit = 10, search } = req.query;
     const offset = (page - 1) * limit;
 
-    let sql = 'SELECT * FROM societies WHERE 1=1';
+    let sql = `SELECT * FROM apartments WHERE 1=1`;
     const params = [];
     let paramCount = 0;
 
@@ -22,7 +22,7 @@ export const getAll = async (req, res) => {
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM societies WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM apartments WHERE 1=1';
     const countParams = [];
     if (search) {
       countParams.push(`%${search}%`);
@@ -41,26 +41,26 @@ export const getAll = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Get societies error:', error);
+    console.error('Get apartments error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch societies',
+      message: 'Failed to fetch apartments',
       error: error.message,
     });
   }
 };
 
-// Get society by ID
+// Get apartment by ID
 export const getById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await query('SELECT * FROM societies WHERE id = $1', [id]);
+    const result = await query('SELECT * FROM apartments WHERE id = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Society not found',
+        message: 'Apartment not found',
       });
     }
 
@@ -69,115 +69,116 @@ export const getById = async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
-    console.error('Get society error:', error);
+    console.error('Get apartment error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch society',
+      message: 'Failed to fetch apartment',
       error: error.message,
     });
   }
 };
 
-// Create society
+// Create apartment
 export const create = async (req, res) => {
   try {
-    const { name, address, city, total_blocks, total_units } = req.body;
+    const { name, address, city, total_blocks, total_floors, total_units } = req.body;
 
     if (!name) {
       return res.status(400).json({
         success: false,
-        message: 'Society name is required',
+        message: 'Apartment name is required',
       });
     }
 
     const result = await query(
-      `INSERT INTO societies (name, address, city, total_blocks, total_units)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO apartments (name, address, city, total_blocks, total_floors, total_units)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [name, address || null, city || null, total_blocks || 0, total_units || 0]
+      [name, address || null, city || null, total_blocks || 0, total_floors || 0, total_units || 0]
     );
 
     res.status(201).json({
       success: true,
-      message: 'Society created successfully',
+      message: 'Apartment created successfully',
       data: result.rows[0],
     });
   } catch (error) {
-    console.error('Create society error:', error);
+    console.error('Create apartment error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to create society',
+      message: 'Failed to create apartment',
       error: error.message,
     });
   }
 };
 
-// Update society
+// Update apartment
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, city, total_blocks, total_units } = req.body;
+    const { name, address, city, total_blocks, total_floors, total_units } = req.body;
 
-    // Check if society exists
-    const existing = await query('SELECT id FROM societies WHERE id = $1', [id]);
+    // Check if apartment exists
+    const existing = await query('SELECT id FROM apartments WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Society not found',
+        message: 'Apartment not found',
       });
     }
 
     const result = await query(
-      `UPDATE societies 
+      `UPDATE apartments 
        SET name = COALESCE($1, name),
            address = COALESCE($2, address),
            city = COALESCE($3, city),
            total_blocks = COALESCE($4, total_blocks),
-           total_units = COALESCE($5, total_units),
+           total_floors = COALESCE($5, total_floors),
+           total_units = COALESCE($6, total_units),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $6
+       WHERE id = $7
        RETURNING *`,
-      [name, address, city, total_blocks, total_units, id]
+      [name, address, city, total_blocks, total_floors, total_units, id]
     );
 
     res.json({
       success: true,
-      message: 'Society updated successfully',
+      message: 'Apartment updated successfully',
       data: result.rows[0],
     });
   } catch (error) {
-    console.error('Update society error:', error);
+    console.error('Update apartment error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update society',
+      message: 'Failed to update apartment',
       error: error.message,
     });
   }
 };
 
-// Delete society
+// Delete apartment
 export const remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await query('DELETE FROM societies WHERE id = $1 RETURNING id', [id]);
+    const result = await query('DELETE FROM apartments WHERE id = $1 RETURNING id', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Society not found',
+        message: 'Apartment not found',
       });
     }
 
     res.json({
       success: true,
-      message: 'Society deleted successfully',
+      message: 'Apartment deleted successfully',
     });
   } catch (error) {
-    console.error('Delete society error:', error);
+    console.error('Delete apartment error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete society',
+      message: 'Failed to delete apartment',
       error: error.message,
     });
   }

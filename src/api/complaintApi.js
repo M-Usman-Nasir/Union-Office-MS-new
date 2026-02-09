@@ -14,6 +14,13 @@ export const complaintApi = {
     return api.post(API_ENDPOINTS.COMPLAINTS, data)
   },
 
+  /** Create complaint with file attachments (FormData). */
+  createWithAttachments: (formData) => {
+    return api.post(API_ENDPOINTS.COMPLAINTS_WITH_ATTACHMENTS, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   update: (id, data) => {
     return api.put(API_ENDPOINTS.COMPLAINT_BY_ID(id), data)
   },

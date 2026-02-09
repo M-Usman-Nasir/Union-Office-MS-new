@@ -34,6 +34,7 @@ import PaymentIcon from '@mui/icons-material/Payment'
 import FinanceChart from '@/components/charts/FinanceChart'
 import PieChart from '@/components/charts/PieChart'
 import BarChart from '@/components/charts/BarChart'
+import earningIcon from '@/assets/images/icons/earning.svg'
 
 const AdminDashboard = () => {
   const { user } = useAuth()
@@ -164,7 +165,12 @@ const AdminDashboard = () => {
                         Total Income
                       </Typography>
                     </Box>
-                    <TrendingUpIcon sx={{ fontSize: 40, color: 'success.main' }} />
+                    <Box
+                      component="img"
+                      src={earningIcon}
+                      alt=""
+                      sx={{ height: 40, width: 40, color: 'success.main' }}
+                    />
                   </Box>
                 </CardContent>
               </Card>

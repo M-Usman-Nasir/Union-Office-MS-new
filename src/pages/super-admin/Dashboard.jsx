@@ -9,7 +9,7 @@ import {
 } from '@mui/material'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
-import { societyApi } from '@/api/societyApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import BusinessIcon from '@mui/icons-material/Business'
@@ -22,7 +22,7 @@ const SuperAdminDashboard = () => {
   // Fetch data
   const { data: societiesData, isLoading: societiesLoading } = useSWR(
     '/societies',
-    () => societyApi.getAll({ limit: 100 }).then(res => res.data)
+    () => apartmentApi.getAll({ limit: 100 }).then(res => res.data)
   )
 
   const { data: blocksData, isLoading: blocksLoading } = useSWR(
@@ -63,7 +63,7 @@ const SuperAdminDashboard = () => {
                       {societiesData?.pagination?.total || societiesData?.data?.length || 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Total Societies
+                      Total Apartments
                     </Typography>
                   </Box>
                   <ApartmentIcon sx={{ fontSize: 40, color: 'primary.main' }} />
@@ -121,8 +121,8 @@ const SuperAdminDashboard = () => {
                       category: society.name,
                       value: society.total_units || 0,
                     }))}
-                    title="Units per Society"
-                    xLabel="Society"
+                    title="Units per Apartment"
+                    xLabel="Apartment"
                     yLabel="Total Units"
                   />
                 ) : (
@@ -134,12 +134,12 @@ const SuperAdminDashboard = () => {
             </Card>
           </Grid>
 
-          {/* Societies List */}
+          {/* Apartments List */}
           <Grid item xs={12}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Societies Overview
+                  Apartments Overview
                 </Typography>
                 {societiesData?.data && societiesData.data.length > 0 ? (
                   <Grid container spacing={2}>
@@ -168,7 +168,7 @@ const SuperAdminDashboard = () => {
                   </Grid>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
-                    No societies found
+                    No apartments found
                   </Typography>
                 )}
               </CardContent>

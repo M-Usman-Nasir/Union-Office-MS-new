@@ -2,35 +2,26 @@
 
 This directory contains all project documentation organized by category.
 
-## 📚 Documentation Structure
+## Getting started
 
-### General Documentation
-- `QUICK_START.md` - Quick start guide for the project
-- `SETUP_GUIDE.md` - Complete setup instructions
-- `TESTING_GUIDE.md` - Testing instructions and guidelines
+- [Quick Start](./QUICK_START.md)
+- [Setup Guide](./SETUP_GUIDE.md)
+- [Project Structure](./PROJECT_STRUCTURE.md)
+- [Testing](./TESTING_GUIDE.md)
 
-### Feature Documentation
-- `COMPLETE_FEATURES_SUMMARY.md` - Complete list of all features
-- `FEATURES_COMPLETED.md` - Features completion status
-- `FEATURES_IMPLEMENTED.md` - Detailed feature implementation
-- `IMPLEMENTATION_SUMMARY.md` - Implementation summary
+## By area
 
-### Frontend Documentation
-- `frontend/PWA_SETUP_GUIDE.md` - PWA setup and configuration guide
+- **Backend:** [README](./backend/README.md) · [Setup](./backend/SETUP.md) · [API](./backend/API_DOCUMENTATION.md) · [PostgreSQL](./backend/START_POSTGRES.md) · [Connection fix](./backend/FIX_CONNECTION.md)
+- **Frontend:** [PWA Setup](./frontend/PWA_SETUP_GUIDE.md)
+- **Database:** [Database Setup](./database/DATABASE_SETUP.md)
 
-### Backend Documentation
-- `backend/API_DOCUMENTATION.md` - Complete API reference
-- `backend/README.md` - Backend overview
-- `backend/SETUP.md` - Backend setup instructions
-- `backend/FIX_CONNECTION.md` - Database connection troubleshooting
-- `backend/START_POSTGRES.md` - PostgreSQL startup guide
+## User guides
 
-### Database Documentation
-- `database/DATABASE_SETUP.md` - Database setup guide
+- [Super Admin Guide](./guides/SUPER_ADMIN_GUIDE.md)
+- [Union Admin Guide](./guides/UNION_ADMIN_GUIDE.md)
 
-## 🚀 Quick Links
+## Reference
 
-- **Getting Started:** [QUICK_START.md](./QUICK_START.md)
-- **Setup Guide:** [SETUP_GUIDE.md](./SETUP_GUIDE.md)
-- **API Reference:** [backend/API_DOCUMENTATION.md](./backend/API_DOCUMENTATION.md)
-- **PWA Setup:** [frontend/PWA_SETUP_GUIDE.md](./frontend/PWA_SETUP_GUIDE.md)
+- [Features](./features/FEATURES.md)
+- [SRS & implementation](./srs/INDEX.md)
+- [Planning (optional)](./planning/PENDING_DUES_NOTIFICATIONS.md)
