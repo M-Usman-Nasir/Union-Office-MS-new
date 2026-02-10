@@ -19,7 +19,7 @@ export const userApi = {
   },
 
   updatePassword: (id, data) => {
-    return api.put(API_ENDPOINTS.USER_PASSWORD(id), data)
+    return api.patch(API_ENDPOINTS.USER_PASSWORD(id), data)
   },
 
   remove: (id) => {

@@ -40,9 +40,13 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config
+    const requestUrl = originalRequest?.url || ''
 
-    // Handle 401 Unauthorized - Token expired or invalid
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Don't run refresh/redirect for login or refresh endpoint - let caller handle the error
+    const isAuthEndpoint = /\/auth\/(login|refresh)$/.test(requestUrl.replace(/\?.*/, ''))
+
+    // Handle 401 Unauthorized - Token expired or invalid (skip for login/refresh)
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
 
       try {

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
 import { deleteProfileImage, getImagePath } from '../config/multer.js';
+import { createOrUpdateSubscription } from './subscriptionController.js';
 
 // Generate JWT tokens
 const generateTokens = (userId) => {
@@ -131,6 +132,20 @@ export const register = async (req, res) => {
       });
     }
 
+    // One Union Admin per apartment: no other union_admin can have this society_apartment_id
+    if (role === 'union_admin' && society_apartment_id) {
+      const existingAdmin = await query(
+        'SELECT id FROM users WHERE role = $1 AND society_apartment_id = $2',
+        ['union_admin', society_apartment_id]
+      );
+      if (existingAdmin.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'This apartment already has an admin. Each apartment can have only one Union Admin.',
+        });
+      }
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -154,6 +169,15 @@ export const register = async (req, res) => {
     );
 
     const newUser = result.rows[0];
+
+    // Create subscription when creating a Union Admin (so Super Admin can track admins)
+    if (role === 'union_admin' && society_apartment_id) {
+      try {
+        await createOrUpdateSubscription(newUser.id, society_apartment_id);
+      } catch (subErr) {
+        console.warn('Subscription create skipped (table may not exist yet):', subErr.message);
+      }
+    }
 
     res.status(201).json({
       success: true,

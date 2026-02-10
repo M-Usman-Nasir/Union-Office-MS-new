@@ -106,6 +106,13 @@ export const API_ENDPOINTS = {
   
   // Super Admin
   SUPER_ADMIN_REPORTS_GLOBAL: '/super-admin/reports/global',
+  SUPER_ADMIN_SUBSCRIPTION_PLANS: '/super-admin/subscription/plans',
+  SUPER_ADMIN_SUBSCRIPTION_ADMINS: '/super-admin/subscription/admins',
+  SUPER_ADMIN_SUBSCRIPTION: '/super-admin/subscription',
+  SUPER_ADMIN_SUBSCRIPTION_BY_ID: (id) => `/super-admin/subscription/${id}`,
+  // Societies cascading (City → Area → Apartment)
+  SOCIETIES_CITIES: '/societies/cities',
+  SOCIETIES_AREAS: '/societies/areas',
 }
 
 // Local Storage Keys
@@ -129,6 +136,7 @@ export const ROUTES = {
   SUPER_ADMIN_FLOORS: '/super-admin/floors',
   SUPER_ADMIN_UNITS: '/super-admin/units',
   SUPER_ADMIN_USERS: '/super-admin/users',
+  SUPER_ADMIN_ADMINS: '/super-admin/admins',
   SUPER_ADMIN_PROFILE: '/super-admin/profile',
   
   // Admin

@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database.js';
+import { createOrUpdateSubscription } from './subscriptionController.js';
 
-// Get all users
+// Get all users (Super Admin: all users; Union Admin: only users in their society)
 export const getAll = async (req, res) => {
   try {
     const { page = 1, limit = 10, role, search } = req.query;
@@ -10,6 +11,13 @@ export const getAll = async (req, res) => {
     let sql = 'SELECT id, email, name, role, society_apartment_id, unit_id, is_active, created_at, last_login FROM users WHERE 1=1';
     const params = [];
     let paramCount = 0;
+
+    // Union Admin can only see users in their assigned society
+    if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
+      paramCount++;
+      sql += ` AND society_apartment_id = $${paramCount}`;
+      params.push(req.user.society_apartment_id);
+    }
 
     if (role) {
       paramCount++;
@@ -33,6 +41,11 @@ export const getAll = async (req, res) => {
     const countParams = [];
     let countParamCount = 0;
 
+    if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
+      countParamCount++;
+      countSql += ` AND society_apartment_id = $${countParamCount}`;
+      countParams.push(req.user.society_apartment_id);
+    }
     if (role) {
       countParamCount++;
       countSql += ` AND role = $${countParamCount}`;
@@ -66,7 +79,7 @@ export const getAll = async (req, res) => {
   }
 };
 
-// Get user by ID
+// Get user by ID (Union Admin can only get users in their society or themselves)
 export const getById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -83,9 +96,20 @@ export const getById = async (req, res) => {
       });
     }
 
+    const userRow = result.rows[0];
+    // Union Admin can only view users in their society (or themselves)
+    if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
+      if (parseInt(id) !== req.user.id && userRow.society_apartment_id !== req.user.society_apartment_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You can only view users in your apartment.',
+        });
+      }
+    }
+
     res.json({
       success: true,
-      data: result.rows[0],
+      data: userRow,
     });
   } catch (error) {
     console.error('Get user error:', error);
@@ -97,18 +121,55 @@ export const getById = async (req, res) => {
   }
 };
 
-// Update user
+// Update user (Union Admin can only update users in their society or themselves; one union_admin per apartment enforced)
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active } = req.body;
 
-    const existing = await query('SELECT id FROM users WHERE id = $1', [id]);
+    const existing = await query(
+      'SELECT id, role, society_apartment_id FROM users WHERE id = $1',
+      [id]
+    );
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
       });
+    }
+
+    const targetUser = existing.rows[0];
+    // Union Admin can only update users in their society (or themselves)
+    if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
+      if (parseInt(id) !== req.user.id && targetUser.society_apartment_id !== req.user.society_apartment_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You can only update users in your apartment.',
+        });
+      }
+      // Union Admin cannot change role or society_apartment_id (only super_admin can assign apartments)
+      if (role !== undefined && role !== targetUser.role) {
+        return res.status(403).json({ success: false, message: 'Only Super Admin can change user role.' });
+      }
+      if (society_apartment_id !== undefined && society_apartment_id !== targetUser.society_apartment_id) {
+        return res.status(403).json({ success: false, message: 'Only Super Admin can assign apartment.' });
+      }
+    }
+
+    // Enforce one union_admin per apartment (when super_admin assigns role or society)
+    const effectiveRole = role !== undefined ? role : targetUser.role;
+    const effectiveSocietyId = society_apartment_id !== undefined ? society_apartment_id : targetUser.society_apartment_id;
+    if (effectiveRole === 'union_admin' && effectiveSocietyId) {
+      const existingAdmin = await query(
+        'SELECT id FROM users WHERE role = $1 AND society_apartment_id = $2 AND id != $3',
+        ['union_admin', effectiveSocietyId, id]
+      );
+      if (existingAdmin.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'This apartment already has an admin. Each apartment can have only one Union Admin.',
+        });
+      }
     }
 
     const result = await query(
@@ -127,10 +188,19 @@ export const update = async (req, res) => {
       [name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, id]
     );
 
+    const updatedUser = result.rows[0];
+    if (updatedUser.role === 'union_admin' && updatedUser.society_apartment_id) {
+      try {
+        await createOrUpdateSubscription(updatedUser.id, updatedUser.society_apartment_id);
+      } catch (subErr) {
+        console.warn('Subscription update skipped:', subErr.message);
+      }
+    }
+
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: result.rows[0],
+      data: updatedUser,
     });
   } catch (error) {
     console.error('Update user error:', error);

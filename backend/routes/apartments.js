@@ -7,7 +7,11 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticate);
 
-// Get all apartments
+// Cascading selection: City → Area → Apartment (must be before /:id)
+router.get('/cities', apartmentController.getCities);
+router.get('/areas', apartmentController.getAreas);
+
+// Get all apartments (optional query: city, area, search)
 router.get('/', apartmentController.getAll);
 
 // Get apartment by ID

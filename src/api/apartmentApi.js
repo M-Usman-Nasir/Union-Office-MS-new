@@ -2,6 +2,8 @@ import api from './axios'
 import { API_ENDPOINTS } from '@/utils/constants'
 
 export const apartmentApi = {
+  getCities: () => api.get(API_ENDPOINTS.SOCIETIES_CITIES),
+  getAreas: (city) => api.get(API_ENDPOINTS.SOCIETIES_AREAS, { params: city ? { city } : {} }),
   getAll: (params) => {
     return api.get(API_ENDPOINTS.SOCIETIES, { params })
   },

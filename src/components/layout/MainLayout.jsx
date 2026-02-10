@@ -39,8 +39,7 @@ import { useTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme as useAppTheme } from '@/contexts/ThemeContext'
-import { ROUTES, ROLES, getImageUrl } from '@/utils/constants'
-import userRound from '@/assets/images/users/user-round.svg'
+import { ROUTES, ROLES } from '@/utils/constants'
 import PushNotificationEnabler from '@/components/notifications/PushNotificationEnabler'
 
 const sidebarLogo = '/icons/mob_Logo.png'
@@ -76,6 +75,13 @@ const MainLayout = ({ children }) => {
     navigate(ROUTES.LOGIN)
   }
 
+  const getGreeting = () => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Good morning'
+    if (hour < 17) return 'Good afternoon'
+    return 'Good evening'
+  }
+
   // Menu items based on role
   const getMenuItems = () => {
     if (user?.role === ROLES.SUPER_ADMIN) {
@@ -86,6 +92,7 @@ const MainLayout = ({ children }) => {
         { text: 'Floors', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_FLOORS },
         { text: 'Units', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_UNITS },
         { text: 'Users', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
+        { text: 'Admins & Subscriptions', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_ADMINS },
         { text: 'Global Reports', icon: <AssessmentIcon />, path: ROUTES.SUPER_ADMIN_REPORTS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
       ]
@@ -213,7 +220,6 @@ const MainLayout = ({ children }) => {
           </IconButton>
           <IconButton onClick={handleMenuClick}>
             <Avatar
-              src={getImageUrl(user?.profile_image) || userRound}
               sx={{ width: 32, height: 32 }}
             >
               {user?.name?.charAt(0)?.toUpperCase() || 'U'}
@@ -225,7 +231,9 @@ const MainLayout = ({ children }) => {
             onClose={handleMenuClose}
           >
             <MenuItem disabled>
-              <Typography variant="body2">{user?.name || user?.email}</Typography>
+              <Typography variant="body2">
+                {getGreeting()}, {user?.name || user?.email}
+              </Typography>
             </MenuItem>
             <MenuItem disabled>
               <Typography variant="caption" color="text.secondary">

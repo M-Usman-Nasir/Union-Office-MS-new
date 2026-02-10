@@ -3,10 +3,29 @@ import { query } from '../config/database.js';
 // Blocks Controller
 export const getBlocks = async (req, res) => {
   try {
-    const { society_id } = req.query;
+    const { society_id, city, area } = req.query;
 
     let result;
-    if (society_id) {
+    if (city && area) {
+      // Blocks by city and area (for City → Area → Block selection)
+      result = await query(
+        `SELECT b.id, b.name, b.society_apartment_id, s.name as society_name
+         FROM blocks b
+         INNER JOIN apartments s ON b.society_apartment_id = s.id
+         WHERE s.city = $1 AND (s.area = $2 OR (s.area IS NULL AND $2 = ''))
+         ORDER BY s.name, b.name`,
+        [city, area || '']
+      );
+    } else if (city) {
+      result = await query(
+        `SELECT b.id, b.name, b.society_apartment_id, s.name as society_name
+         FROM blocks b
+         INNER JOIN apartments s ON b.society_apartment_id = s.id
+         WHERE s.city = $1
+         ORDER BY s.name, b.name`,
+        [city]
+      );
+    } else if (society_id) {
       result = await query(
         `SELECT b.*, s.name as society_name
          FROM blocks b

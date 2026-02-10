@@ -12,6 +12,7 @@ import Floors from '@/pages/super-admin/Floors'
 import Units from '@/pages/super-admin/Units'
 import GlobalReports from '@/pages/super-admin/GlobalReports'
 import SuperAdminProfile from '@/pages/super-admin/Profile'
+import Admins from '@/pages/super-admin/Admins'
 import Users from '@/pages/admin/Users'
 import AdminDashboard from '@/pages/admin/Dashboard'
 import Residents from '@/pages/admin/Residents'
@@ -53,6 +54,7 @@ export const AppRoutes = () => {
                 <Route path="floors" element={<Floors />} />
                 <Route path="units" element={<Units />} />
                 <Route path="users" element={<Users />} />
+                <Route path="admins" element={<Admins />} />
                 <Route path="profile" element={<SuperAdminProfile />} />
                 <Route path="reports" element={<GlobalReports />} />
               </Routes>

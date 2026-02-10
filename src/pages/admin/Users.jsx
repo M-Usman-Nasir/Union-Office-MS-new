@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Container,
   Typography,
@@ -30,6 +30,22 @@ import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
+
+// Common areas per city (shown in Area dropdown when API has none; Pakistan)
+const AREAS_BY_CITY = {
+  Karachi: ['DHA', 'Clifton', 'Gulshan-e-Iqbal', 'Defence', 'Saddar', 'Korangi', 'North Nazimabad', 'Malir', 'Landhi', 'Gulistan-e-Jauhar', 'Bahria Town'],
+  Lahore: ['DHA', 'Gulberg', 'Model Town', 'Johar Town', 'Bahria Town', 'Wapda Town', 'Ferozepur Road', 'Cantt', 'Garden Town', 'Iqbal Town'],
+  Islamabad: ['F-6', 'F-7', 'F-8', 'E-11', 'DHA', 'Bahria Town', 'Blue Area', 'Sector G-9', 'Sector I-8', 'Margalla'],
+  Rawalpindi: ['DHA', 'Bahria Town', 'Satellite Town', 'Raja Bazaar', 'Saddar', 'Westridge', 'Lalazar'],
+  Faisalabad: ['DHA', 'Satellite Town', 'Madina Town', 'Jinnah Colony', 'Lyallpur Town', 'Samanabad'],
+  Multan: ['DHA', 'Bosan Road', 'Shah Rukn-e-Alam', 'Housing Scheme', 'Gulgasht'],
+  Peshawar: ['University Town', 'Hayatabad', 'Cantonment', 'Saddar', 'Gulbahar'],
+  Quetta: ['Jinnah Town', 'Satellite Town', 'Sariab Road', 'Cantonment'],
+  Hyderabad: ['Qasimabad', 'Latifabad', 'Hirabad', 'Saddar'],
+  Gujranwala: ['DHA', 'Satellite Town', 'Model Town', 'Nandipura'],
+  Sialkot: ['DHA', 'Satellite Town', 'Cantt'],
+  Other: ['Central', 'North', 'South', 'East', 'West'],
+}
 
 const getValidationSchema = (isEdit, currentUserRole) => {
   const baseSchema = {
@@ -76,15 +92,53 @@ const Users = () => {
   const [editingUser, setEditingUser] = useState(null)
   const [selectedUser, setSelectedUser] = useState(null)
   const [selectedSocietyId, setSelectedSocietyId] = useState(null)
+  const [selectedCity, setSelectedCity] = useState('')
+  const [selectedArea, setSelectedArea] = useState('')
+  const [selectedBlockId, setSelectedBlockId] = useState('')
 
   const { data, isLoading, mutate } = useSWR(
     ['/users', page, limit, search, roleFilter],
     () => userApi.getAll({ page, limit, search, role: roleFilter }).then(res => res.data)
   )
 
-  // Fetch societies (for Super Admin - all societies, for Union Admin - their own society)
+  // Cities list (Super Admin - for City → Area → Apartment cascading)
+  const { data: citiesData } = useSWR(
+    currentUser?.role === 'super_admin' ? '/societies/cities' : null,
+    () => apartmentApi.getCities().then(res => res.data)
+  )
+  const cities = citiesData?.data ?? []
+
+  // Areas list (Super Admin - filtered by selected city)
+  const { data: areasData } = useSWR(
+    currentUser?.role === 'super_admin' && selectedCity ? ['/societies/areas', selectedCity] : null,
+    () => apartmentApi.getAreas(selectedCity).then(res => res.data)
+  )
+  const areasFromApi = areasData?.data ?? []
+  // Merge API areas with static areas for this city so dropdown always has options
+  const areas = selectedCity
+    ? [...new Set([...areasFromApi, ...(AREAS_BY_CITY[selectedCity] || AREAS_BY_CITY.Other || [])])].sort((a, b) => a.localeCompare(b))
+    : areasFromApi
+
+  // Blocks by city/area (for City → Area → Block → Apartment flow)
+  const { data: blocksByLocationData } = useSWR(
+    currentUser?.role === 'super_admin' && selectedCity && selectedArea !== undefined
+      ? ['/properties/blocks-by-location', selectedCity, selectedArea]
+      : null,
+    () =>
+      propertyApi.getBlocks({ city: selectedCity, area: selectedArea || '' }).then(res => res.data)
+  )
+  const blocksByLocation = blocksByLocationData?.data ?? []
+
+  // Apartments by city/area (fallback when no blocks; Super Admin)
+  const { data: apartmentsByLocationData } = useSWR(
+    currentUser?.role === 'super_admin' && selectedCity ? ['/societies/by-location', selectedCity, selectedArea] : null,
+    () => apartmentApi.getAll({ city: selectedCity, area: selectedArea || undefined, limit: 200 }).then(res => res.data)
+  )
+  const apartmentsByLocation = apartmentsByLocationData?.data ?? []
+
+  // Fetch societies (for Union Admin - their own society; for Super Admin fallback when no cascading)
   const { data: societiesData } = useSWR(
-    currentUser?.role === 'super_admin' ? '/societies' : 
+    currentUser?.role === 'super_admin' ? (selectedCity ? null : '/societies') : 
     (currentUser?.role === 'union_admin' && currentUser?.society_apartment_id ? `/societies/${currentUser.society_apartment_id}` : null),
     () => {
       if (currentUser?.role === 'super_admin') {
@@ -110,6 +164,24 @@ const Users = () => {
     () => propertyApi.getUnits({ society_id: selectedSocietyId }).then(res => res.data)
   )
 
+  // When editing a user with an apartment, set City/Area/Block for cascading (Super Admin)
+  useEffect(() => {
+    if (!openDialog || !editingUser?.society_apartment_id || currentUser?.role !== 'super_admin') return
+    const list = allSocietiesData?.data ?? societiesData?.data ?? []
+    const apartment = (Array.isArray(list) ? list : []).find(a => a.id === editingUser.society_apartment_id)
+    if (apartment) {
+      if (apartment.city) setSelectedCity(apartment.city)
+      if (apartment.area) setSelectedArea(apartment.area)
+    }
+  }, [openDialog, editingUser?.society_apartment_id, currentUser?.role, allSocietiesData?.data, societiesData?.data])
+
+  // When blocks load and we're editing, select the block that matches user's apartment
+  useEffect(() => {
+    if (!editingUser?.society_apartment_id || blocksByLocation.length === 0) return
+    const block = blocksByLocation.find(b => b.society_apartment_id === editingUser.society_apartment_id)
+    if (block) setSelectedBlockId(String(block.id))
+  }, [editingUser?.society_apartment_id, blocksByLocation])
+
   const handleOpenDialog = (user = null) => {
     setEditingUser(user)
     setOpenDialog(true)
@@ -119,6 +191,9 @@ const Users = () => {
     setOpenDialog(false)
     setEditingUser(null)
     setSelectedSocietyId(null)
+    setSelectedCity('')
+    setSelectedArea('')
+    setSelectedBlockId('')
   }
 
   const handleOpenPasswordDialog = (user) => {
@@ -394,6 +469,8 @@ const Users = () => {
             const showSocietyField = values.role === 'union_admin' || values.role === 'resident' || values.role === 'staff'
             const isSocietyEditable = currentUser?.role === 'super_admin' || !editingUser
             const isSocietyDisabled = currentUser?.role === 'union_admin' && !editingUser
+            const useCascading = currentUser?.role === 'super_admin' && showSocietyField
+            const apartmentOptions = useCascading ? apartmentsByLocation : (societiesData?.data ?? [])
 
             return (
               <Form>
@@ -457,6 +534,8 @@ const Users = () => {
                             setFieldValue('society_apartment_id', null)
                             setFieldValue('unit_id', null)
                             setSelectedSocietyId(null)
+                            setSelectedCity('')
+                            setSelectedArea('')
                           }
                         }}
                         onBlur={handleBlur}
@@ -471,7 +550,121 @@ const Users = () => {
                           )}
                         </TextField>
                     </Grid>
-                    {showSocietyField && (
+                    {showSocietyField && useCascading && (
+                      <>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            select
+                            label="City"
+                            value={selectedCity}
+                            onChange={(e) => {
+                              setSelectedCity(e.target.value)
+                              setSelectedArea('')
+                              setSelectedBlockId('')
+                              setFieldValue('society_apartment_id', null)
+                              setSelectedSocietyId(null)
+                            }}
+                            disabled={isSocietyDisabled || !isSocietyEditable}
+                          >
+                            <MenuItem value="">Select City</MenuItem>
+                            {cities.map((city) => (
+                              <MenuItem key={city} value={city}>{city}</MenuItem>
+                            ))}
+                          </TextField>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            select
+                            label="Area"
+                            value={areas.length > 0 ? selectedArea : ''}
+                            onChange={(e) => {
+                              setSelectedArea(e.target.value)
+                              setSelectedBlockId('')
+                              setFieldValue('society_apartment_id', null)
+                              setSelectedSocietyId(null)
+                            }}
+                            disabled={!selectedCity || isSocietyDisabled || !isSocietyEditable}
+                            helperText={
+                              areas.length > 0
+                                ? "Select an area or leave 'All areas' to see all apartments in this city."
+                                : 'No areas in this city yet; all apartments listed below.'
+                            }
+                          >
+                            <MenuItem value="">All areas</MenuItem>
+                            {areas.map((area) => (
+                              <MenuItem key={area} value={area}>{area}</MenuItem>
+                            ))}
+                          </TextField>
+                        </Grid>
+                        {blocksByLocation.length > 0 && (
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              select
+                              label="Block"
+                              value={selectedBlockId}
+                              onChange={(e) => {
+                                const blockId = e.target.value
+                                setSelectedBlockId(blockId)
+                                const block = blocksByLocation.find((b) => String(b.id) === blockId)
+                                if (block) {
+                                  setFieldValue('society_apartment_id', block.society_apartment_id)
+                                  setSelectedSocietyId(block.society_apartment_id)
+                                }
+                              }}
+                              disabled={!selectedCity || isSocietyDisabled || !isSocietyEditable}
+                              helperText="Select a block; apartment is set automatically."
+                            >
+                              <MenuItem value="">Select Block</MenuItem>
+                              {blocksByLocation.map((block) => (
+                                <MenuItem key={block.id} value={String(block.id)}>
+                                  {block.name} ({block.society_name})
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          </Grid>
+                        )}
+                        <Grid item xs={12} sm={blocksByLocation.length > 0 ? 6 : 4}>
+                          {blocksByLocation.length > 0 ? (
+                            <TextField
+                              fullWidth
+                              label="Apartment"
+                              value={
+                                selectedBlockId
+                                  ? (blocksByLocation.find((b) => String(b.id) === selectedBlockId)?.society_name || '')
+                                  : ''
+                              }
+                              disabled
+                              helperText="Set by selected block."
+                            />
+                          ) : (
+                            <TextField
+                              fullWidth
+                              select
+                              label="Apartment"
+                              name="society_apartment_id"
+                              value={values.society_apartment_id || ''}
+                              onChange={handleSocietyChange}
+                              onBlur={handleBlur}
+                              error={touched.society_apartment_id && !!errors.society_apartment_id}
+                              helperText={touched.society_apartment_id && errors.society_apartment_id}
+                              disabled={!selectedCity || isSocietyDisabled || !isSocietyEditable}
+                              required
+                            >
+                              <MenuItem value="">Select Apartment</MenuItem>
+                              {apartmentOptions.map((society) => (
+                                <MenuItem key={society.id} value={society.id}>
+                                  {society.name}{society.area ? ` (${society.area})` : ''}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          )}
+                        </Grid>
+                      </>
+                    )}
+                    {showSocietyField && !useCascading && (
                       <Grid item xs={12}>
                         <TextField
                           fullWidth
@@ -487,12 +680,7 @@ const Users = () => {
                           required
                         >
                           <MenuItem value="">Select Apartment</MenuItem>
-                          {currentUser?.role === 'super_admin' && societiesData?.data?.map((society) => (
-                            <MenuItem key={society.id} value={society.id}>
-                              {society.name}
-                            </MenuItem>
-                          ))}
-                          {currentUser?.role === 'union_admin' && societiesData?.data?.map((society) => (
+                          {(societiesData?.data ?? []).map((society) => (
                             <MenuItem key={society.id} value={society.id}>
                               {society.name}
                             </MenuItem>

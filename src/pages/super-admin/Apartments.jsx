@@ -23,6 +23,7 @@ import useSWR from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import DataTable from '@/components/common/DataTable'
+import AddressAutocomplete from '@/components/common/AddressAutocomplete'
 
 // Pakistan cities for dropdown (Pakistan only)
 const PAKISTAN_CITIES = [
@@ -75,6 +76,7 @@ const Apartments = () => {
           name: values.name,
           address: values.address,
           city: values.city,
+          area: values.area || null,
           total_blocks: values.total_blocks || 0,
           total_floors: values.total_floors || 0,
           total_units: values.total_units || 0,
@@ -125,6 +127,7 @@ const Apartments = () => {
     { id: 'name', label: 'Name' },
     { id: 'address', label: 'Address' },
     { id: 'city', label: 'City' },
+    { id: 'area', label: 'Area' },
     { id: 'total_blocks', label: 'Blocks' },
     { id: 'total_floors', label: 'Floors' },
     { id: 'total_units', label: 'Units' },
@@ -154,6 +157,7 @@ const Apartments = () => {
         name: editingSociety.name || '',
         address: editingSociety.address || '',
         city: editingSociety.city || '',
+        area: editingSociety.area || '',
         total_blocks: editingSociety.total_blocks || 0,
         total_floors: editingSociety.total_floors ?? 0,
         total_units: editingSociety.total_units || 0,
@@ -163,6 +167,7 @@ const Apartments = () => {
         name: '',
         address: '',
         city: '',
+        area: '',
         total_blocks: 0,
         total_floors: 0,
         total_units: 0,
@@ -239,15 +244,19 @@ const Apartments = () => {
                     />
                   </Grid>
                   <Grid item xs={12}>
-                    <TextField
+                    <AddressAutocomplete
                       fullWidth
-                      label="Address"
+                      label="Address (from map or type manually)"
                       name="address"
-                      multiline
-                      rows={2}
-                      value={values.address}
-                      onChange={handleChange}
+                      value={values.address || ''}
+                      onChange={(e) => handleChange({ target: { name: 'address', value: e.target.value } })}
                       onBlur={handleBlur}
+                      onPlaceSelect={({ address, city, area, name: placeName }) => {
+                        setFieldValue('address', address || '')
+                        setFieldValue('city', city || '')
+                        setFieldValue('area', area || '')
+                        setFieldValue('name', placeName != null && placeName !== '' ? placeName : (address ? address.split(',')[0].trim() : ''))
+                      }}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -267,6 +276,17 @@ const Apartments = () => {
                         </MenuItem>
                       ))}
                     </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Area (e.g. DHA, Clifton)"
+                      name="area"
+                      placeholder="Optional"
+                      value={values.area || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
                   </Grid>
                   <Grid item xs={6}>
                     <TextField
