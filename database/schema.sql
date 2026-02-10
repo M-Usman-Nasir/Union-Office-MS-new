@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS maintenance_config (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Finance Table (Expenses and Income)
+-- Finance Table (Expenses and Income) – all columns used for saving transaction details
 CREATE TABLE IF NOT EXISTS finance (
     id SERIAL PRIMARY KEY,
     society_apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
@@ -114,11 +114,11 @@ CREATE TABLE IF NOT EXISTS finance (
     income_type VARCHAR(50),
     description TEXT,
     amount DECIMAL(10, 2) NOT NULL,
-    payment_mode VARCHAR(50),
-    remarks TEXT,
-    month INTEGER,
-    year INTEGER,
-    status VARCHAR(20) DEFAULT 'paid',
+    payment_mode VARCHAR(50),       -- Cash, Online, Bank Transfer, Check, etc.
+    remarks TEXT,                   -- Extra notes / additional remarks
+    month INTEGER,                  -- 1-12 for reporting
+    year INTEGER,                  -- For reporting and filters
+    status VARCHAR(20) DEFAULT 'paid',  -- paid, pending, cancelled
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

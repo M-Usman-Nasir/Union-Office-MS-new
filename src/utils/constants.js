@@ -100,6 +100,12 @@ export const API_ENDPOINTS = {
   SETTINGS: (societyId) => `/settings/${societyId}`,
   MAINTENANCE_CONFIG: (societyId) => `/settings/${societyId}/maintenance-config`,
   
+  // Messages (admin-resident chat)
+  MESSAGES_CONVERSATIONS: '/messages/conversations',
+  MESSAGES_PARTNERS: '/messages/partners',
+  MESSAGES_WITH: (userId) => `/messages/with/${userId}`,
+  MESSAGES_SEND: '/messages',
+
   // Notifications (push + vapid)
   NOTIFICATIONS_VAPID_PUBLIC: '/notifications/vapid-public',
   NOTIFICATIONS_SUBSCRIBE: '/notifications/subscribe',
@@ -150,9 +156,11 @@ export const ROUTES = {
   ADMIN_SETTINGS: '/admin/settings',
   ADMIN_USERS: '/admin/users',
   ADMIN_PROFILE: '/admin/profile',
+  ADMIN_MESSAGES: '/admin/messages',
   
   // Resident
   RESIDENT_DASHBOARD: '/resident/dashboard',
+  RESIDENT_MESSAGES: '/resident/messages',
   RESIDENT_COMPLAINTS: '/resident/complaints',
   RESIDENT_MAINTENANCE: '/resident/maintenance',
   RESIDENT_PROFILE: '/resident/profile',
@@ -194,6 +202,52 @@ export const INCOME_TYPE_LABELS = {
   [INCOME_TYPES.FINES]: 'Fines',
   [INCOME_TYPES.ADDITIONAL_CHARGES]: 'Additional Charges',
   [INCOME_TYPES.OTHER_INCOME]: 'Other Income',
+}
+
+// Payment Modes
+export const PAYMENT_MODES = {
+  CASH: 'Cash',
+  ONLINE: 'Online',
+  BANK_TRANSFER: 'Bank Transfer',
+  CHECK: 'Check',
+  CARD: 'Card',
+  MOBILE_BANKING: 'Mobile Banking',
+  OTHER: 'Other',
+}
+
+// Payment mode options for dropdowns (value + label)
+export const PAYMENT_MODE_OPTIONS = Object.entries(PAYMENT_MODES).map(([key, value]) => ({
+  value,
+  label: value,
+}))
+
+// Month options (1–12) for finance/reports
+export const MONTH_OPTIONS = [
+  { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
+  { value: 4, label: 'April' }, { value: 5, label: 'May' }, { value: 6, label: 'June' },
+  { value: 7, label: 'July' }, { value: 8, label: 'August' }, { value: 9, label: 'September' },
+  { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' },
+]
+
+// Finance transaction status
+export const FINANCE_STATUS = {
+  PAID: 'paid',
+  PENDING: 'pending',
+  CANCELLED: 'cancelled',
+}
+
+export const FINANCE_STATUS_OPTIONS = [
+  { value: FINANCE_STATUS.PAID, label: 'Paid' },
+  { value: FINANCE_STATUS.PENDING, label: 'Pending' },
+  { value: FINANCE_STATUS.CANCELLED, label: 'Cancelled' },
+]
+
+// Helper: year options for dropdown (e.g. last 5 years, current + 1)
+export const getFinanceYearOptions = () => {
+  const currentYear = new Date().getFullYear()
+  const years = []
+  for (let y = currentYear - 5; y <= currentYear + 1; y++) years.push({ value: y, label: String(y) })
+  return years.reverse()
 }
 
 // Helper function to get base URL for static files (without /api)

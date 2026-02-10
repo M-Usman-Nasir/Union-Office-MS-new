@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { sendNewComplaintNotificationToAdmin } from '../services/emailService.js';
 
 // Get all complaints
 export const getAll = async (req, res) => {
@@ -157,12 +158,13 @@ export const getById = async (req, res) => {
 // Create complaint
 export const create = async (req, res) => {
   try {
-    const { unit_id, society_apartment_id, title, description, priority, is_public } = req.body;
+    const { unit_id, society_apartment_id, title, subject, description, priority, is_public } = req.body;
+    const complaintTitle = title || subject;
 
-    if (!society_apartment_id || !title || !description) {
+    if (!society_apartment_id || !complaintTitle || !description) {
       return res.status(400).json({
         success: false,
-        message: 'Society ID, title, and description are required',
+        message: 'Society ID, title (or subject), and description are required',
       });
     }
 
@@ -174,12 +176,35 @@ export const create = async (req, res) => {
         unit_id || null,
         society_apartment_id,
         req.user.id,
-        title,
+        complaintTitle,
         description,
         priority || 'medium',
         is_public || false,
       ]
     );
+
+    // Notify union admin(s) by email (do not block response)
+    (async () => {
+      try {
+        const admins = await query(
+          'SELECT email FROM users WHERE society_apartment_id = $1 AND role = $2 AND is_active = true',
+          [society_apartment_id, 'union_admin']
+        );
+        const society = await query('SELECT name FROM apartments WHERE id = $1', [society_apartment_id]);
+        const toEmails = admins.rows.map((r) => r.email).filter(Boolean);
+        if (toEmails.length > 0) {
+          await sendNewComplaintNotificationToAdmin({
+            toEmails,
+            residentName: req.user.name || req.user.email,
+            complaintTitle,
+            complaintId: result.rows[0].id,
+            societyName: society.rows[0]?.name,
+          });
+        }
+      } catch (e) {
+        console.warn('Complaint notification email failed:', e.message);
+      }
+    })();
 
     res.status(201).json({
       success: true,
@@ -199,12 +224,13 @@ export const create = async (req, res) => {
 // Create complaint with file attachments (multipart/form-data)
 export const createWithAttachments = async (req, res) => {
   try {
-    const { unit_id, society_apartment_id, title, description, priority, is_public } = req.body;
+    const { unit_id, society_apartment_id, title, subject, description, priority, is_public } = req.body;
+    const complaintTitle = title || subject;
 
-    if (!society_apartment_id || !title || !description) {
+    if (!society_apartment_id || !complaintTitle || !description) {
       return res.status(400).json({
         success: false,
-        message: 'Society ID, title, and description are required',
+        message: 'Society ID, title (or subject), and description are required',
       });
     }
 
@@ -218,13 +244,36 @@ export const createWithAttachments = async (req, res) => {
         unit_id || null,
         society_apartment_id,
         req.user.id,
-        title,
+        complaintTitle,
         description,
         priority || 'medium',
         is_public === 'true' || is_public === true,
         attachmentPaths.length > 0 ? attachmentPaths : null,
       ]
     );
+
+    // Notify union admin(s) by email
+    (async () => {
+      try {
+        const admins = await query(
+          'SELECT email FROM users WHERE society_apartment_id = $1 AND role = $2 AND is_active = true',
+          [society_apartment_id, 'union_admin']
+        );
+        const society = await query('SELECT name FROM apartments WHERE id = $1', [society_apartment_id]);
+        const toEmails = admins.rows.map((r) => r.email).filter(Boolean);
+        if (toEmails.length > 0) {
+          await sendNewComplaintNotificationToAdmin({
+            toEmails,
+            residentName: req.user.name || req.user.email,
+            complaintTitle,
+            complaintId: result.rows[0].id,
+            societyName: society.rows[0]?.name,
+          });
+        }
+      } catch (e) {
+        console.warn('Complaint notification email failed:', e.message);
+      }
+    })();
 
     res.status(201).json({
       success: true,

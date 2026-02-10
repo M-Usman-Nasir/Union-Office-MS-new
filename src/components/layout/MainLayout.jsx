@@ -31,6 +31,7 @@ import FeedbackIcon from '@mui/icons-material/Feedback'
 import AnnouncementIcon from '@mui/icons-material/Announcement'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ApartmentIcon from '@mui/icons-material/Apartment'
+import MessageIcon from '@mui/icons-material/Message'
 import LogoutIcon from '@mui/icons-material/Logout'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
@@ -105,6 +106,7 @@ const MainLayout = ({ children }) => {
         { text: 'Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_DEFAULTERS },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.ADMIN_COMPLAINTS },
         { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
+        { text: 'Messages', icon: <MessageIcon />, path: ROUTES.ADMIN_MESSAGES },
         { text: 'Users', icon: <PeopleIcon />, path: ROUTES.ADMIN_USERS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.ADMIN_PROFILE },
@@ -118,6 +120,7 @@ const MainLayout = ({ children }) => {
     } else {
       return [
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.RESIDENT_DASHBOARD },
+        { text: 'Messages', icon: <MessageIcon />, path: ROUTES.RESIDENT_MESSAGES },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.RESIDENT_COMPLAINTS },
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.RESIDENT_MAINTENANCE },
         { text: 'Financial Summary', icon: <AssessmentIcon />, path: ROUTES.RESIDENT_FINANCIAL_SUMMARY },

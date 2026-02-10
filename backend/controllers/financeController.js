@@ -203,7 +203,7 @@ export const getById = async (req, res) => {
 // Create finance record
 export const create = async (req, res) => {
   try {
-    const { society_apartment_id, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year } = req.body;
+    const { society_apartment_id, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status } = req.body;
 
     if (!society_apartment_id || !transaction_date || !transaction_type || !amount) {
       return res.status(400).json({
@@ -213,8 +213,8 @@ export const create = async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO finance (society_apartment_id, added_by, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO finance (society_apartment_id, added_by, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         society_apartment_id,
@@ -229,6 +229,7 @@ export const create = async (req, res) => {
         remarks || null,
         month || new Date(transaction_date).getMonth() + 1,
         year || new Date(transaction_date).getFullYear(),
+        status || 'paid',
       ]
     );
 
@@ -251,7 +252,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year } = req.body;
+    const { transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status } = req.body;
 
     const existing = await query('SELECT id FROM finance WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
@@ -273,10 +274,11 @@ export const update = async (req, res) => {
            remarks = COALESCE($8, remarks),
            month = COALESCE($9, month),
            year = COALESCE($10, year),
+           status = COALESCE($11, status),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $11
+       WHERE id = $12
        RETURNING *`,
-      [transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, id]
+      [transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, id]
     );
 
     res.json({

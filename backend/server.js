@@ -21,6 +21,7 @@ import superAdminRoutes from './routes/superAdmin.js';
 import settingsRoutes from './routes/settings.js';
 import staffRoutes from './routes/staff.js';
 import notificationRoutes from './routes/notifications.js';
+import messageRoutes from './routes/messages.js';
 
 // Load environment variables
 dotenv.config();
@@ -87,6 +88,7 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Database connection test endpoint
 app.get('/api/test/db', async (req, res) => {

@@ -85,7 +85,8 @@ export const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    // Return user data (without password) and access token
+    // Return user data (without password) and access token.
+    // refreshToken is also returned so mobile clients can store it and send in body for /auth/refresh (cookies not reliable in RN).
     const { password: _, ...userWithoutPassword } = user;
 
     res.json({
@@ -94,6 +95,7 @@ export const login = async (req, res) => {
       data: {
         user: userWithoutPassword,
         accessToken,
+        refreshToken,
       },
     });
   } catch (error) {

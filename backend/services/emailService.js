@@ -78,3 +78,19 @@ export async function sendPendingDuesReminderEmail({ toEmails, unitNumber, socie
   if (!toEmails || toEmails.length === 0) return false;
   return sendEmail({ to: toEmails, subject, text, html });
 }
+
+/**
+ * Notify union admin(s) when a resident submits a new complaint.
+ */
+export async function sendNewComplaintNotificationToAdmin({ toEmails, residentName, complaintTitle, complaintId, societyName }) {
+  if (!toEmails || toEmails.length === 0) return false;
+  const subject = `New complaint submitted – ${societyName || 'Union'}`;
+  const text = `A resident has submitted a new complaint.\n\nResident: ${residentName}\nTitle: ${complaintTitle}\n\nPlease check the admin panel to view and respond.`;
+  const html = `
+    <p>A resident has submitted a <strong>new complaint</strong>.</p>
+    <p><strong>Resident:</strong> ${residentName}<br/>
+    <strong>Title:</strong> ${complaintTitle}</p>
+    <p>Please check the admin panel to view and respond.</p>
+  `;
+  return sendEmail({ to: toEmails, subject, text, html });
+}

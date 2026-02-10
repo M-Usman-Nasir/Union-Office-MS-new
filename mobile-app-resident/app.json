@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Union Resident",
+    "slug": "union-office-resident",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "unionresident",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f1f5f9"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.unionoffice.resident"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f1f5f9"
+      },
+      "package": "com.unionoffice.resident"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

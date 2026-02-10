@@ -1,0 +1,7 @@
+import client from './client';
+import { API_ENDPOINTS } from '../constants';
+
+export const propertyApi = {
+  getBlocks: (params) => client.get(API_ENDPOINTS.PROPERTIES_BLOCKS, { params }),
+  getUnits: (params) => client.get(API_ENDPOINTS.PROPERTIES_UNITS, { params }),
+};

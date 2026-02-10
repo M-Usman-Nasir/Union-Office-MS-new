@@ -35,7 +35,14 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
-import { INCOME_TYPES, INCOME_TYPE_LABELS } from '@/utils/constants'
+import {
+  INCOME_TYPES,
+  INCOME_TYPE_LABELS,
+  PAYMENT_MODE_OPTIONS,
+  MONTH_OPTIONS,
+  FINANCE_STATUS_OPTIONS,
+  getFinanceYearOptions,
+} from '@/utils/constants'
 import FinancialReports from '@/components/finance/FinancialReports'
 
 const validationSchema = Yup.object({
@@ -74,7 +81,7 @@ const Finance = () => {
     })
   )
 
-  const { data: summary, error: summaryError } = useSWR(
+  const { data: summary, mutate: mutateSummary } = useSWR(
     ['/finance/summary', societyId],
     () => financeApi.getSummary({ society_id: societyId }).then(res => res.data.data).catch(err => {
       console.error('Finance summary error:', err)
@@ -94,14 +101,20 @@ const Finance = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      const payload = {
+        ...values,
+        month: Number(values.month),
+        year: Number(values.year),
+        status: values.status || 'paid',
+      }
       if (editingFinance) {
-        await financeApi.update(editingFinance.id, values)
+        await financeApi.update(editingFinance.id, payload)
         toast.success('Finance record updated successfully')
       } else {
-        await financeApi.create({ ...values, society_apartment_id: societyId, added_by: user.id })
+        await financeApi.create({ ...payload, society_apartment_id: societyId, added_by: user.id })
         toast.success('Finance record created successfully')
       }
-      mutate()
+      await Promise.all([mutate(), mutateSummary(undefined, { revalidate: true })])
       handleCloseDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Operation failed')
@@ -115,7 +128,7 @@ const Finance = () => {
       try {
         await financeApi.remove(id)
         toast.success('Finance record deleted successfully')
-        mutate()
+        await Promise.all([mutate(), mutateSummary(undefined, { revalidate: true })])
       } catch (error) {
         toast.error(error.response?.data?.message || 'Delete failed')
       }
@@ -134,8 +147,18 @@ const Finance = () => {
     return dayjs(dateString).format('DD/MM/YYYY')
   }
 
+  const yearOptions = getFinanceYearOptions()
+
   const columns = [
     { id: 'transaction_date', label: 'Date', render: (row) => formatDate(row.transaction_date) },
+    {
+      id: 'month_year',
+      label: 'Month / Year',
+      render: (row) => {
+        const monthName = MONTH_OPTIONS.find((m) => m.value === row.month)?.label || row.month
+        return `${monthName || '-'} ${row.year || ''}`.trim() || '-'
+      },
+    },
     { id: 'transaction_type', label: 'Type', render: (row) => (
       <Chip
         label={row.transaction_type}
@@ -147,6 +170,32 @@ const Finance = () => {
     { id: 'income_type', label: 'Income Type', render: (row) => row.income_type || '-' },
     { id: 'expense_type', label: 'Expense Type', render: (row) => row.expense_type || '-' },
     { id: 'description', label: 'Description' },
+    { id: 'payment_mode', label: 'Payment Mode', render: (row) => row.payment_mode || '-' },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row) => (
+        <Chip
+          label={(row.status || 'paid').charAt(0).toUpperCase() + (row.status || 'paid').slice(1)}
+          size="small"
+          color={row.status === 'paid' ? 'success' : row.status === 'pending' ? 'warning' : 'default'}
+        />
+      ),
+    },
+    {
+      id: 'remarks',
+      label: 'Remarks',
+      render: (row) =>
+        row.remarks ? (
+          <Tooltip title={row.remarks} placement="top-start">
+            <Typography variant="body2" sx={{ maxWidth: 160 }} noWrap>
+              {row.remarks}
+            </Typography>
+          </Tooltip>
+        ) : (
+          '-'
+        ),
+    },
     { id: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount) },
     {
       id: 'actions',
@@ -176,6 +225,12 @@ const Finance = () => {
   ]
   const expenseTypes = ['Utility Payment', 'Salary', 'Repairs', 'Security', 'Cleaning', 'Maintenance']
 
+  const defaultDate = editingFinance?.transaction_date
+    ? dayjs(editingFinance.transaction_date)
+    : dayjs()
+  const defaultMonth = editingFinance?.month ?? defaultDate.month() + 1
+  const defaultYear = editingFinance?.year ?? defaultDate.year()
+
   const initialValues = editingFinance
     ? {
         transaction_type: editingFinance.transaction_type || 'income',
@@ -185,6 +240,10 @@ const Finance = () => {
         description: editingFinance.description || '',
         transaction_date: editingFinance.transaction_date ? dayjs(editingFinance.transaction_date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
         payment_mode: editingFinance.payment_mode || '',
+        month: editingFinance.month ?? defaultMonth,
+        year: editingFinance.year ?? defaultYear,
+        status: editingFinance.status || 'paid',
+        remarks: editingFinance.remarks || '',
       }
     : {
         transaction_type: 'income',
@@ -194,6 +253,10 @@ const Finance = () => {
         description: '',
         transaction_date: dayjs().format('YYYY-MM-DD'),
         payment_mode: '',
+        month: defaultDate.month() + 1,
+        year: defaultDate.year(),
+        status: 'paid',
+        remarks: '',
       }
 
   return (
@@ -220,14 +283,14 @@ const Finance = () => {
         </Box>
       )}
 
-      {/* Summary Cards */}
+      {/* Summary Cards - backend returns income, expense, balance, income_count, expense_count */}
       {summary && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Typography variant="h6" color="success.main">
-                  {formatCurrency(summary.total_income)}
+                  {formatCurrency(summary.income)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Total Income
@@ -239,7 +302,7 @@ const Finance = () => {
             <Card>
               <CardContent>
                 <Typography variant="h6" color="error.main">
-                  {formatCurrency(summary.total_expense)}
+                  {formatCurrency(summary.expense)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Total Expense
@@ -263,7 +326,7 @@ const Finance = () => {
             <Card>
               <CardContent>
                 <Typography variant="h6">
-                  {summary.total_transactions || 0}
+                  {(summary.income_count || 0) + (summary.expense_count || 0)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Total Transactions
@@ -450,19 +513,98 @@ const Finance = () => {
                       name="transaction_date"
                       type="date"
                       value={values.transaction_date}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        handleChange(e)
+                        const d = dayjs(e.target.value)
+                        if (d.isValid()) {
+                          setFieldValue('month', d.month() + 1)
+                          setFieldValue('year', d.year())
+                        }
+                      }}
                       onBlur={handleBlur}
                       error={touched.transaction_date && !!errors.transaction_date}
                       helperText={touched.transaction_date && errors.transaction_date}
                       InputLabelProps={{ shrink: true }}
                     />
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Month"
+                      name="month"
+                      value={values.month}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      {MONTH_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Year"
+                      name="year"
+                      value={values.year}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      {yearOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
+                      select
+                      label="Status"
+                      name="status"
+                      value={values.status}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      {FINANCE_STATUS_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
                       label="Payment Mode"
                       name="payment_mode"
                       value={values.payment_mode}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      <MenuItem value="">Select Payment Mode</MenuItem>
+                      {PAYMENT_MODE_OPTIONS.map((mode) => (
+                        <MenuItem key={mode.value} value={mode.value}>
+                          {mode.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Remarks"
+                      name="remarks"
+                      placeholder="Extra notes, additional comments..."
+                      multiline
+                      rows={2}
+                      value={values.remarks}
                       onChange={handleChange}
                       onBlur={handleBlur}
                     />

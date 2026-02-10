@@ -23,6 +23,7 @@ import Defaulters from '@/pages/admin/Defaulters'
 import Announcements from '@/pages/admin/Announcements'
 import Settings from '@/pages/admin/Settings'
 import AdminProfile from '@/pages/admin/Profile'
+import Messages from '@/pages/admin/Messages'
 import ResidentDashboard from '@/pages/resident/Dashboard'
 import ResidentComplaints from '@/pages/resident/Complaints'
 import ResidentMaintenance from '@/pages/resident/Maintenance'
@@ -77,6 +78,7 @@ export const AppRoutes = () => {
                 <Route path="defaulters" element={<Defaulters />} />
                 <Route path="complaints" element={<Complaints />} />
                 <Route path="announcements" element={<Announcements />} />
+                <Route path="messages" element={<Messages />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="users" element={<Users />} />
                 <Route path="profile" element={<AdminProfile />} />
@@ -94,6 +96,7 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<ResidentDashboard />} />
+                <Route path="messages" element={<Messages />} />
                 <Route path="complaints" element={<ResidentComplaints />} />
                 <Route path="maintenance" element={<ResidentMaintenance />} />
                 <Route path="union-info" element={<UnionInfo />} />
