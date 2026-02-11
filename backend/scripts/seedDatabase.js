@@ -37,19 +37,29 @@ try {
   const adminPassword = await bcrypt.hash('admin123', 10)
   const residentPassword = await bcrypt.hash('resident123', 10)
 
-  const existingAdmin = await query('SELECT id FROM users WHERE email = $1', ['admin@homelandunion.com'])
+  const superAdminEmail = 'hasanshkh17@gmail.com'
+  const existingAdmin = await query('SELECT id FROM users WHERE email = $1', [superAdminEmail])
+  const oldAdmin = await query('SELECT id FROM users WHERE email = $1 AND role = $2', ['admin@homelandunion.com', 'super_admin'])
   const existingUnionAdmin = await query('SELECT id FROM users WHERE email = $1', ['unionadmin@homelandunion.com'])
   const existingResident = await query('SELECT id FROM users WHERE email = $1', ['resident@homelandunion.com'])
 
   let unionAdminId, residentId
 
   if (existingAdmin.rows.length === 0) {
-    await query(
-      `INSERT INTO users (email, password, name, role, is_active) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      ['admin@homelandunion.com', adminPassword, 'Super Admin User', 'super_admin', true]
-    )
-    console.log('✅ Created Super Admin user')
+    if (oldAdmin.rows.length > 0) {
+      await query(
+        `UPDATE users SET email = $1, name = $2 WHERE id = $3`,
+        [superAdminEmail, 'Sheikh Hasan', oldAdmin.rows[0].id]
+      )
+      console.log('✅ Updated existing Super Admin to Sheikh Hasan / hasanshkh17@gmail.com')
+    } else {
+      await query(
+        `INSERT INTO users (email, password, name, role, is_active) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [superAdminEmail, adminPassword, 'Sheikh Hasan', 'super_admin', true]
+      )
+      console.log('✅ Created Super Admin user (Sheikh Hasan)')
+    }
   } else {
     console.log('ℹ️  Super Admin user already exists')
   }
@@ -376,7 +386,7 @@ try {
 
   console.log('\n✅ Database seeding completed successfully!')
   console.log('\n📋 Test Users:')
-  console.log('   Super Admin: admin@homelandunion.com / admin123')
+  console.log('   Super Admin: hasanshkh17@gmail.com / admin123 (Sheikh Hasan)')
   console.log('   Union Admin (Apt 1): unionadmin@homelandunion.com / admin123')
   console.log('   Union Admin (Apt 2): unionadmin2@homelandunion.com / admin123')
   console.log('   Union Admin (Apt 3): unionadmin3@homelandunion.com / admin123')

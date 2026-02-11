@@ -20,7 +20,10 @@ const DataTable = ({
   onPageChange,
   onRowsPerPageChange,
   emptyMessage = 'No data available',
+  dense = false,
 }) => {
+  const headerPy = dense ? 0.5 : 1.5
+  const cellPy = dense ? 0.5 : 1.25
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" p={4}>
@@ -36,7 +39,7 @@ const DataTable = ({
           <TableHead>
             <TableRow>
               {columns.map((column) => (
-                <TableCell key={column.id} align={column.align || 'left'}>
+                <TableCell key={column.id} align={column.align || 'left'} sx={{ fontWeight: 600, py: headerPy }}>
                   {column.label}
                 </TableCell>
               ))}
@@ -45,9 +48,21 @@ const DataTable = ({
           <TableBody>
             {data && data.length > 0 ? (
               data.map((row, index) => (
-                <TableRow key={row.id || index} hover>
+                <TableRow
+                  key={row.id || index}
+                  hover
+                  sx={{
+                    backgroundColor: (theme) =>
+                      index % 2 === 1
+                        ? theme.palette.mode === 'dark'
+                          ? 'rgba(255,255,255,0.03)'
+                          : 'rgba(0,0,0,0.02)'
+                        : 'transparent',
+                    '&:not(:last-child) td': { borderBottom: 1, borderColor: 'divider' },
+                  }}
+                >
                   {columns.map((column) => (
-                    <TableCell key={column.id} align={column.align || 'left'}>
+                    <TableCell key={column.id} align={column.align || 'left'} sx={{ py: cellPy }}>
                       {column.render ? column.render(row) : row[column.id]}
                     </TableCell>
                   ))}

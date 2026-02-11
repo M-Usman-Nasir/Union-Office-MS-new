@@ -121,6 +121,14 @@ export const register = async (req, res) => {
       });
     }
 
+    // Only one Super Admin exists; creating another is not allowed
+    if (role === 'super_admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Creating a new Super Admin is not allowed. There is only one Super Admin in the system.',
+      });
+    }
+
     // Check if user already exists
     const existingUser = await query(
       'SELECT id FROM users WHERE email = $1',

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -35,12 +36,18 @@ const validationSchema = Yup.object({
 })
 
 const Units = () => {
+  const [searchParams] = useSearchParams()
   const [societyFilter, setSocietyFilter] = useState('')
   const [blockFilter, setBlockFilter] = useState('')
   const [floorFilter, setFloorFilter] = useState('')
   const [search, setSearch] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingUnit, setEditingUnit] = useState(null)
+
+  useEffect(() => {
+    const societyId = searchParams.get('society_id')
+    if (societyId) setSocietyFilter(societyId)
+  }, [searchParams])
 
   const { data: societiesData } = useSWR(
     '/societies',

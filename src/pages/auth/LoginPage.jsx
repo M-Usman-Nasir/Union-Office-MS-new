@@ -34,7 +34,7 @@ import logo from '@/assets/images/logo.png'
 const TEST_USERS = [
   {
     role: 'Super Admin',
-    email: 'admin@homelandunion.com',
+    email: 'hasanshkh17@gmail.com',
     password: 'admin123',
     color: 'primary',
   },

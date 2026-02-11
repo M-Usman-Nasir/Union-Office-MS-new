@@ -545,9 +545,6 @@ const Users = () => {
                           <MenuItem value="resident">Resident</MenuItem>
                           <MenuItem value="union_admin">Union Admin</MenuItem>
                           <MenuItem value="staff">Staff</MenuItem>
-                          {currentUser?.role === 'super_admin' && (
-                            <MenuItem value="super_admin">Super Admin</MenuItem>
-                          )}
                         </TextField>
                     </Grid>
                     {showSocietyField && useCascading && (

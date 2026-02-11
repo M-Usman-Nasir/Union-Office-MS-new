@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -11,14 +12,22 @@ import {
   DialogContent,
   DialogActions,
   Grid,
-  IconButton,
   Tooltip,
   MenuItem,
+  Menu,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  IconButton,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import LayersIcon from '@mui/icons-material/Layers'
+import DomainIcon from '@mui/icons-material/Domain'
 import useSWR from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
@@ -45,11 +54,19 @@ const validationSchema = Yup.object({
 })
 
 const Apartments = () => {
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingSociety, setEditingSociety] = useState(null)
+  const [actionMenu, setActionMenu] = useState({ anchorEl: null, row: null })
+
+  const openActionMenu = (e, row) => {
+    e.stopPropagation()
+    setActionMenu({ anchorEl: e.currentTarget, row })
+  }
+  const closeActionMenu = () => setActionMenu({ anchorEl: null, row: null })
 
   const { data, isLoading, mutate } = useSWR(
     ['/societies', page, limit, search],
@@ -136,17 +153,76 @@ const Apartments = () => {
       label: 'Actions',
       align: 'right',
       render: (row) => (
-        <Box>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => handleOpenDialog(row)}>
-              <EditIcon fontSize="small" />
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Tooltip title="Actions">
+            <IconButton
+              size="small"
+              onClick={(e) => openActionMenu(e, row)}
+              aria-label="Open actions menu"
+              sx={{ p: 0.5 }}
+            >
+              <MoreVertIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Menu
+            anchorEl={actionMenu.anchorEl}
+            open={Boolean(actionMenu.anchorEl)}
+            onClose={closeActionMenu}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            {actionMenu.row && (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    navigate(`/super-admin/blocks?society_id=${actionMenu.row.id}`)
+                    closeActionMenu()
+                  }}
+                >
+                  <ListItemIcon><AccountTreeIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Blocks</ListItemText>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    navigate(`/super-admin/floors?society_id=${actionMenu.row.id}`)
+                    closeActionMenu()
+                  }}
+                >
+                  <ListItemIcon><LayersIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Floors</ListItemText>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    navigate(`/super-admin/units?society_id=${actionMenu.row.id}`)
+                    closeActionMenu()
+                  }}
+                >
+                  <ListItemIcon><DomainIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Units</ListItemText>
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  onClick={() => {
+                    handleOpenDialog(actionMenu.row)
+                    closeActionMenu()
+                  }}
+                >
+                  <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Edit apartment</ListItemText>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    handleDelete(actionMenu.row.id)
+                    closeActionMenu()
+                  }}
+                  sx={{ color: 'error.main' }}
+                >
+                  <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+                  <ListItemText>Delete apartment</ListItemText>
+                </MenuItem>
+              </>
+            )}
+          </Menu>
         </Box>
       ),
     },
@@ -174,12 +250,19 @@ const Apartments = () => {
         blockNames: [],
       }
 
+  const totalLeads = data?.pagination?.total ?? (data?.data?.length ?? 0)
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" component="h1">
-          Apartments Management
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Apartments Management
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Total leads: {isLoading ? '—' : totalLeads}
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -206,6 +289,7 @@ const Apartments = () => {
       </Box>
 
       <DataTable
+        dense
         columns={columns}
         data={data?.data || []}
         loading={isLoading}

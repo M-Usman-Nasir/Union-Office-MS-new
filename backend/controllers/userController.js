@@ -139,6 +139,13 @@ export const update = async (req, res) => {
     }
 
     const targetUser = existing.rows[0];
+    // Assigning the Super Admin role is not allowed (only one fixed Super Admin in the system)
+    if (role === 'super_admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Assigning the Super Admin role is not allowed. There is only one Super Admin in the system.',
+      });
+    }
     // Union Admin can only update users in their society (or themselves)
     if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
       if (parseInt(id) !== req.user.id && targetUser.society_apartment_id !== req.user.society_apartment_id) {

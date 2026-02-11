@@ -67,7 +67,7 @@ const ResidentMaintenance = () => {
   const totalPaid = data?.data?.filter(m => m.status === 'paid').reduce((sum, m) => sum + parseFloat(m.total_amount || 0), 0) || 0
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1">
           My Maintenance
