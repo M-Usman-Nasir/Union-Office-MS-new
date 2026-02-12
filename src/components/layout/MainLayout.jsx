@@ -112,7 +112,7 @@ const MainLayout = ({ children }) => {
       return [
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.SUPER_ADMIN_DASHBOARD },
         { text: 'Leads', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
-        { text: 'clients', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
+        { text: 'Clients', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
         { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
       ]

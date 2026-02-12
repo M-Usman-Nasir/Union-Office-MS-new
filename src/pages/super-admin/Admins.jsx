@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Container,
   Typography,
@@ -13,11 +14,14 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Button,
 } from '@mui/material'
 import PeopleIcon from '@mui/icons-material/People'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import useSWR from 'swr'
 import { superAdminApi } from '@/api/superAdminApi'
 import dayjs from 'dayjs'
+import toast from 'react-hot-toast'
 
 const subscriptionStatusColor = (status) => {
   switch (status) {
@@ -37,12 +41,27 @@ const subscriptionStatusColor = (status) => {
 }
 
 const Admins = () => {
+  const [activatingId, setActivatingId] = useState(null)
   const { data, isLoading, mutate } = useSWR(
     '/super-admin/subscription/admins',
     () => superAdminApi.getAdminsWithSubscriptions().then(res => res.data)
   )
 
   const admins = data?.data ?? []
+
+  const handleActivate = async (subscriptionId) => {
+    if (!subscriptionId) return
+    setActivatingId(subscriptionId)
+    try {
+      await superAdminApi.updateSubscriptionStatus(subscriptionId, { status: 'active' })
+      toast.success('Subscription activated. Client can now log in.')
+      mutate()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Activation failed')
+    } finally {
+      setActivatingId(null)
+    }
+  }
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -102,11 +121,25 @@ const Admins = () => {
                       : '—'}
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={row.subscription_status || '—'}
-                      color={subscriptionStatusColor(row.subscription_status)}
-                      size="small"
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <Chip
+                        label={row.subscription_status || '—'}
+                        color={subscriptionStatusColor(row.subscription_status)}
+                        size="small"
+                      />
+                      {row.subscription_id && (row.subscription_status || '').toLowerCase() === 'pending' && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="success"
+                          startIcon={<PlayArrowIcon />}
+                          onClick={() => handleActivate(row.subscription_id)}
+                          disabled={activatingId === row.subscription_id}
+                        >
+                          Activate
+                        </Button>
+                      )}
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Union Resident",
-    "slug": "union-office-resident",
+    "slug": "homeland-union-office-management",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.unionoffice.resident"
+      "bundleIdentifier": "com.unionoffice.resident",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +29,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5dffc3a6-68ef-45fd-964b-b12a20bea300"
+      }
+    },
+    "owner": "usman_nasir"
   }
 }

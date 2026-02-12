@@ -28,9 +28,12 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import LayersIcon from '@mui/icons-material/Layers'
 import DomainIcon from '@mui/icons-material/Domain'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import useSWR from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
+import { authApi } from '@/api/authApi'
+import { superAdminApi } from '@/api/superAdminApi'
 import DataTable from '@/components/common/DataTable'
 import AddressAutocomplete from '@/components/common/AddressAutocomplete'
 
@@ -46,12 +49,20 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
-const validationSchema = Yup.object({
-  name: Yup.string().required('Name is required'),
-  address: Yup.string(),
-  city: Yup.string(),
-  total_floors: Yup.number().min(0).nullable(),
-})
+const getValidationSchema = (isEdit) =>
+  Yup.object({
+    name: Yup.string().required('Name is required'),
+    address: Yup.string(),
+    city: Yup.string(),
+    total_floors: Yup.number().min(0).nullable(),
+    ...(!isEdit && {
+      client_name: Yup.string().required('Client name is required'),
+      client_email: Yup.string().email('Invalid email').required('Client email is required'),
+      client_password: Yup.string().min(6, 'At least 6 characters').required('Client password is required'),
+      client_contact_number: Yup.string().nullable(),
+      plan_id: Yup.number().nullable(),
+    }),
+  })
 
 const Apartments = () => {
   const navigate = useNavigate()
@@ -72,6 +83,34 @@ const Apartments = () => {
     ['/societies', page, limit, search],
     () => apartmentApi.getAll({ page, limit, search }).then(res => res.data)
   )
+
+  const { data: plansData } = useSWR(
+    openDialog && !editingSociety ? '/super-admin/subscription/plans' : null,
+    () => superAdminApi.getSubscriptionPlans().then(res => res.data)
+  )
+  const subscriptionPlans = plansData?.data ?? []
+
+  const { data: adminsData, mutate: mutateAdmins } = useSWR(
+    '/super-admin/subscription/admins',
+    () => superAdminApi.getAdminsWithSubscriptions().then(res => res.data)
+  )
+  const admins = adminsData?.data ?? []
+  const [activatingId, setActivatingId] = useState(null)
+
+  const handleActivateSubscription = async (subscriptionId) => {
+    if (!subscriptionId) return
+    setActivatingId(subscriptionId)
+    try {
+      await superAdminApi.updateSubscriptionStatus(subscriptionId, { status: 'active' })
+      toast.success('Subscription activated. Client can now log in.')
+      mutate()
+      mutateAdmins()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Activation failed')
+    } finally {
+      setActivatingId(null)
+    }
+  }
 
   const handleOpenDialog = (society = null) => {
     setEditingSociety(society)
@@ -117,7 +156,20 @@ const Apartments = () => {
             })
           }
         }
-        toast.success('Apartment created successfully')
+        // Create client (Union Admin) for this apartment with pending subscription; super admin activates later
+        if (newId && values.client_email && values.client_name && values.client_password) {
+          await authApi.register({
+            name: values.client_name,
+            email: values.client_email,
+            password: values.client_password,
+            role: 'union_admin',
+            society_apartment_id: newId,
+            contact_number: values.client_contact_number || null,
+            plan_id: values.plan_id ? Number(values.plan_id) : null,
+            subscription_status: 'pending',
+          })
+        }
+        toast.success('Apartment and client created. Activate the client subscription from Admins to allow login.')
       }
       mutate()
       handleCloseDialog()
@@ -128,16 +180,55 @@ const Apartments = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this apartment?')) {
-      try {
-        await apartmentApi.remove(id)
-        toast.success('Apartment deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
+  const handleDelete = async (id, dismissToastId) => {
+    if (dismissToastId) toast.dismiss(dismissToastId)
+    try {
+      await apartmentApi.remove(id)
+      toast.success('Apartment deleted successfully')
+      mutate()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Delete failed')
     }
+  }
+
+  const confirmDelete = (id) => {
+    closeActionMenu()
+    const toastId = toast.custom(
+      (t) => (
+        <Box
+          sx={{
+            background: (theme) => theme.palette.background.paper,
+            color: (theme) => theme.palette.text.primary,
+            p: 2,
+            borderRadius: 2,
+            boxShadow: 3,
+            minWidth: 280,
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+            Delete this apartment?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            This action cannot be undone.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+            <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
+              Cancel
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="error"
+              onClick={() => handleDelete(id, t.id)}
+            >
+              Delete
+            </Button>
+          </Box>
+        </Box>
+      ),
+      { duration: Infinity }
+    )
   }
 
   const columns = [
@@ -201,6 +292,24 @@ const Apartments = () => {
                   <ListItemText>Units</ListItemText>
                 </MenuItem>
                 <Divider />
+                {(() => {
+                  const pendingAdmin = admins.find(
+                    (a) => a.society_apartment_id === actionMenu.row.id && (a.subscription_status || '').toLowerCase() === 'pending'
+                  )
+                  return pendingAdmin?.subscription_id ? (
+                    <MenuItem
+                      onClick={() => {
+                        handleActivateSubscription(pendingAdmin.subscription_id)
+                        closeActionMenu()
+                      }}
+                      disabled={activatingId === pendingAdmin.subscription_id}
+                      sx={{ color: 'success.main' }}
+                    >
+                      <ListItemIcon><PlayArrowIcon fontSize="small" color="success" /></ListItemIcon>
+                      <ListItemText>Activate subscription</ListItemText>
+                    </MenuItem>
+                  ) : null
+                })()}
                 <MenuItem
                   onClick={() => {
                     handleOpenDialog(actionMenu.row)
@@ -211,10 +320,7 @@ const Apartments = () => {
                   <ListItemText>Edit apartment</ListItemText>
                 </MenuItem>
                 <MenuItem
-                  onClick={() => {
-                    handleDelete(actionMenu.row.id)
-                    closeActionMenu()
-                  }}
+                  onClick={() => confirmDelete(actionMenu.row.id)}
                   sx={{ color: 'error.main' }}
                 >
                   <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
@@ -248,6 +354,11 @@ const Apartments = () => {
         total_floors: 0,
         total_units: 0,
         blockNames: [],
+        client_name: '',
+        client_email: '',
+        client_password: '',
+        client_contact_number: '',
+        plan_id: '',
       }
 
   const totalLeads = data?.pagination?.total ?? (data?.data?.length ?? 0)
@@ -304,7 +415,7 @@ const Apartments = () => {
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik
           initialValues={initialValues}
-          validationSchema={validationSchema}
+          validationSchema={getValidationSchema(!!editingSociety)}
           onSubmit={handleSubmit}
           enableReinitialize
         >
@@ -327,7 +438,7 @@ const Apartments = () => {
                       helperText={touched.name && errors.name}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sx={{ position: 'relative', zIndex: 10 }}>
                     <AddressAutocomplete
                       fullWidth
                       label="Address (from map or type manually)"
@@ -335,11 +446,10 @@ const Apartments = () => {
                       value={values.address || ''}
                       onChange={(e) => handleChange({ target: { name: 'address', value: e.target.value } })}
                       onBlur={handleBlur}
-                      onPlaceSelect={({ address, city, area, name: placeName }) => {
+                      onPlaceSelect={({ address, city, area }) => {
                         setFieldValue('address', address || '')
                         setFieldValue('city', city || '')
                         setFieldValue('area', area || '')
-                        setFieldValue('name', placeName != null && placeName !== '' ? placeName : (address ? address.split(',')[0].trim() : ''))
                       }}
                     />
                   </Grid>
@@ -458,6 +568,86 @@ const Apartments = () => {
                         ))}
                       </Grid>
                     </Grid>
+                  )}
+                  {!editingSociety && (
+                    <>
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle1" sx={{ mt: 1, mb: 0.5, fontWeight: 600 }}>
+                          Client (Union Admin)
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Create the apartment client. Subscription will be pending until you activate it from Admins.
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Client name"
+                          name="client_name"
+                          value={values.client_name || ''}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={touched.client_name && !!errors.client_name}
+                          helperText={touched.client_name && errors.client_name}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Client email"
+                          name="client_email"
+                          type="email"
+                          value={values.client_email || ''}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={touched.client_email && !!errors.client_email}
+                          helperText={touched.client_email && errors.client_email}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Client password"
+                          name="client_password"
+                          type="password"
+                          value={values.client_password || ''}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={touched.client_password && !!errors.client_password}
+                          helperText={touched.client_password && errors.client_password}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Contact number"
+                          name="client_contact_number"
+                          value={values.client_contact_number || ''}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          select
+                          label="Package"
+                          name="plan_id"
+                          value={values.plan_id || ''}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={touched.plan_id && !!errors.plan_id}
+                          helperText={touched.plan_id && errors.plan_id}
+                        >
+                          <MenuItem value="">Select package</MenuItem>
+                          {subscriptionPlans.map((plan) => (
+                            <MenuItem key={plan.id} value={plan.id}>
+                              {plan.name} — {plan.amount} / {plan.interval_months} mo
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                    </>
                   )}
                 </Grid>
               </DialogContent>

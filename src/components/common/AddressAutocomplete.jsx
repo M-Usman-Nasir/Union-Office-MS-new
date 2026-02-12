@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import PropTypes from 'prop-types'
 import { TextField, Box } from '@mui/material'
 
 const GOOGLE_SCRIPT_ID = 'google-maps-bootstrap'
@@ -64,7 +65,7 @@ async function loadPlacesLibrary(apiKey) {
   return places
 }
 
-export default function AddressAutocomplete({
+function AddressAutocomplete({
   value = '',
   onChange,
   onPlaceSelect,
@@ -80,12 +81,13 @@ export default function AddressAutocomplete({
 
   // Load Maps API with async pattern (bootstrap + importLibrary) and create PlaceAutocompleteElement
   useEffect(() => {
+    const container = containerRef.current
     if (!apiKeyValue) return
     let cancelled = false
     setLoadError(null)
     loadPlacesLibrary(apiKeyValue)
       .then((places) => {
-        if (cancelled || !containerRef.current) return
+        if (cancelled || !container) return
         if (elementRef.current) return
         const PlaceAutocompleteElement = places.PlaceAutocompleteElement || window.google?.maps?.places?.PlaceAutocompleteElement
         if (!PlaceAutocompleteElement) {
@@ -96,8 +98,12 @@ export default function AddressAutocomplete({
           // optional: restrict to addresses
         })
         el.id = 'place-autocomplete-address'
-        containerRef.current.innerHTML = ''
-        containerRef.current.appendChild(el)
+        // Force light theme so input background is white in light-themed modals
+        el.style.colorScheme = 'light'
+        el.style.setProperty('--gmp-mat-color-surface', '#fff')
+        el.style.setProperty('--gmp-mat-color-on-surface', 'rgba(0, 0, 0, 0.87)')
+        container.innerHTML = ''
+        container.appendChild(el)
         el.addEventListener('gmp-select', async (event) => {
           const placePrediction = event.placePrediction
           if (!placePrediction?.toPlace) return
@@ -120,12 +126,13 @@ export default function AddressAutocomplete({
       })
     return () => {
       cancelled = true
-      if (elementRef.current && containerRef.current?.contains(elementRef.current)) {
-        containerRef.current.removeChild(elementRef.current)
+      const el = elementRef.current
+      if (el && container?.contains(el)) {
+        container.removeChild(el)
       }
       elementRef.current = null
     }
-  }, [apiKeyValue])
+  }, [apiKeyValue, onPlaceSelectRef])
 
   const hasGoogle = Boolean(apiKeyValue)
 
@@ -155,15 +162,16 @@ export default function AddressAutocomplete({
   }
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', position: 'relative', zIndex: 10 }}>
       <div
         ref={containerRef}
         style={{
           width: '100%',
           minHeight: 56,
-          border: '1px solid rgba(0, 0, 0, 0.23)',
           borderRadius: 4,
-          overflow: 'hidden',
+          overflow: 'visible',
+          position: 'relative',
+          zIndex: 10,
         }}
       />
       <Box component="p" sx={{ m: 0, mt: 0.5, fontSize: '0.75rem', color: 'text.secondary' }}>
@@ -172,3 +180,16 @@ export default function AddressAutocomplete({
     </Box>
   )
 }
+
+AddressAutocomplete.propTypes = {
+  value: PropTypes.string,
+  onChange: PropTypes.func,
+  onPlaceSelect: PropTypes.func,
+  apiKey: PropTypes.string,
+}
+
+AddressAutocomplete.defaultProps = {
+  value: '',
+}
+
+export default AddressAutocomplete

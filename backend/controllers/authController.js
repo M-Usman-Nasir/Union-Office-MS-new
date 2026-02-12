@@ -57,8 +57,6 @@ export const login = async (req, res) => {
     }
 
     // Verify password
-    // Note: In production, password should be hashed. For now, we'll check if it matches
-    // TODO: Implement proper password hashing when creating users
     const isPasswordValid = await bcrypt.compare(password, user.password) || password === user.password;
 
     if (!isPasswordValid) {
@@ -66,6 +64,20 @@ export const login = async (req, res) => {
         success: false,
         message: 'Invalid email or password',
       });
+    }
+
+    // Union Admin: allow login only if subscription exists and is active (super admin must activate first)
+    if (user.role === 'union_admin') {
+      const subResult = await query(
+        'SELECT status FROM subscriptions WHERE user_id = $1',
+        [user.id]
+      );
+      if (subResult.rows.length === 0 || (subResult.rows[0].status || '').toLowerCase() !== 'active') {
+        return res.status(401).json({
+          success: false,
+          message: 'Account not activated. Please contact the administrator.',
+        });
+      }
     }
 
     // Update last login
@@ -111,7 +123,7 @@ export const login = async (req, res) => {
 // Register (for super admin to create users)
 export const register = async (req, res) => {
   try {
-    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact } = req.body;
+    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status } = req.body;
 
     // Validation
     if (!email || !password || !name || !role) {
@@ -181,9 +193,11 @@ export const register = async (req, res) => {
     const newUser = result.rows[0];
 
     // Create subscription when creating a Union Admin (so Super Admin can track admins)
+    // subscription_status: 'pending' when adding from Apartments (client cannot login until activated); default 'active'
     if (role === 'union_admin' && society_apartment_id) {
       try {
-        await createOrUpdateSubscription(newUser.id, society_apartment_id);
+        const subStatus = subscription_status === 'pending' ? 'pending' : 'active';
+        await createOrUpdateSubscription(newUser.id, society_apartment_id, plan_id || null, subStatus);
       } catch (subErr) {
         console.warn('Subscription create skipped (table may not exist yet):', subErr.message);
       }

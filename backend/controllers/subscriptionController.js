@@ -45,7 +45,8 @@ export const getAdminsWithSubscriptions = async (req, res) => {
 };
 
 // Create subscription when assigning Union Admin to apartment (called after user create/update)
-export const createOrUpdateSubscription = async (userId, societyApartmentId, planId = null) => {
+// initialStatus: 'active' (default) or 'pending' - use 'pending' when adding client from Apartments until super admin activates
+export const createOrUpdateSubscription = async (userId, societyApartmentId, planId = null, initialStatus = 'active') => {
   const planIdRes = planId
     ? planId
     : (await query('SELECT id FROM subscription_plans WHERE is_active = true LIMIT 1')).rows[0]?.id;
@@ -60,10 +61,11 @@ export const createOrUpdateSubscription = async (userId, societyApartmentId, pla
       [societyApartmentId, planIdRes, startDate, nextBilling.toISOString().slice(0, 10), userId]
     );
   } else {
+    const status = initialStatus === 'pending' ? 'pending' : 'active';
     await query(
       `INSERT INTO subscriptions (user_id, society_apartment_id, plan_id, status, start_date, next_billing_date)
-       VALUES ($1, $2, $3, 'active', $4, $5)`,
-      [userId, societyApartmentId, planIdRes, startDate, nextBilling.toISOString().slice(0, 10)]
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, societyApartmentId, planIdRes, status, startDate, nextBilling.toISOString().slice(0, 10)]
     );
   }
 };
