@@ -14,7 +14,6 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
-  Chip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -33,7 +32,13 @@ const validationSchema = Yup.object({
   title: Yup.string().required('Title is required'),
   description: Yup.string().required('Description is required'),
   type: Yup.string(),
+  audience: Yup.string(),
 })
+
+const audienceOptions = [
+  { value: 'all_residents', label: 'All residents' },
+  { value: 'selected_residents', label: 'Selected residents' },
+]
 
 const Announcements = () => {
   const { user } = useAuth()
@@ -42,11 +47,18 @@ const Announcements = () => {
   const [search, setSearch] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingAnnouncement, setEditingAnnouncement] = useState(null)
-  const [societyId] = useState(user?.society_apartment_id)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [idToDelete, setIdToDelete] = useState(null)
+
+  const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
+  const fetchParams = { page, limit, search }
+  if (societyId != null && Number.isFinite(societyId)) {
+    fetchParams.society_id = societyId
+  }
 
   const { data, isLoading, mutate } = useSWR(
-    ['/announcements', page, limit, search, societyId],
-    () => announcementApi.getAll({ page, limit, search, society_id: societyId }).then(res => res.data)
+    user ? ['/announcements', page, limit, search, societyId] : null,
+    () => announcementApi.getAll(fetchParams).then(res => res.data)
   )
 
   const handleOpenDialog = (announcement = null) => {
@@ -77,16 +89,27 @@ const Announcements = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this announcement?')) {
-      try {
-        await announcementApi.remove(id)
-        toast.success('Announcement deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
+  const handleDeleteClick = (id) => {
+    setIdToDelete(id)
+    setDeleteConfirmOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!idToDelete) return
+    try {
+      await announcementApi.remove(idToDelete)
+      toast.success('Announcement deleted successfully')
+      mutate()
+      setDeleteConfirmOpen(false)
+      setIdToDelete(null)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Delete failed')
     }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false)
+    setIdToDelete(null)
   }
 
   const formatDate = (dateString) => {
@@ -96,8 +119,12 @@ const Announcements = () => {
 
   const columns = [
     { id: 'title', label: 'Title' },
+    { id: 'audience', label: 'Audience', render: (row) => {
+      const opt = audienceOptions.find(o => o.value === row.audience)
+      return opt ? opt.label : (row.audience || '-')
+    }},
     { id: 'description', label: 'Description', render: (row) => (
-      <Typography variant="body2" noWrap sx={{ maxWidth: 400 }}>
+      <Typography variant="body2" noWrap sx={{ maxWidth: '100%', display: 'block' }} title={row.description}>
         {row.description}
       </Typography>
     )},
@@ -115,7 +142,7 @@ const Announcements = () => {
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+            <IconButton size="small" color="error" onClick={() => handleDeleteClick(row.id)}>
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -131,15 +158,17 @@ const Announcements = () => {
         title: editingAnnouncement.title || '',
         description: editingAnnouncement.description || '',
         type: editingAnnouncement.type || '',
+        audience: editingAnnouncement.audience || 'all_residents',
       }
     : {
         title: '',
         description: '',
         type: '',
+        audience: 'all_residents',
       }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4, overflowX: 'hidden' }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
           Announcements Management
@@ -181,6 +210,19 @@ const Announcements = () => {
         }}
       />
 
+      <Dialog open={deleteConfirmOpen} onClose={handleDeleteCancel}>
+        <DialogTitle>Delete announcement?</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete this announcement? This cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <Formik
           initialValues={initialValues}
@@ -221,6 +263,24 @@ const Announcements = () => {
                       {announcementTypes.map((type) => (
                         <MenuItem key={type} value={type}>
                           {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Audience"
+                      name="audience"
+                      value={values.audience}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      helperText="Who should see this announcement"
+                    >
+                      {audienceOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
                         </MenuItem>
                       ))}
                     </TextField>

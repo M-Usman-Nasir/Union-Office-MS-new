@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -14,43 +15,104 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  IconButton,
+  Button,
   Paper,
+  Collapse,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material'
+import dayjs from 'dayjs'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
-import { dashboardApi } from '@/api/dashboardApi'
 import { financeApi } from '@/api/financeApi'
 import { defaulterApi } from '@/api/defaulterApi'
 import { complaintApi } from '@/api/complaintApi'
 import { maintenanceApi } from '@/api/maintenanceApi'
 import { announcementApi } from '@/api/announcementApi'
 import { residentApi } from '@/api/residentApi'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import PeopleIcon from '@mui/icons-material/People'
+import { apartmentApi } from '@/api/apartmentApi'
+import { propertyApi } from '@/api/propertyApi'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import WarningIcon from '@mui/icons-material/Warning'
-import FeedbackIcon from '@mui/icons-material/Feedback'
+import AnnouncementIcon from '@mui/icons-material/Campaign'
 import PaymentIcon from '@mui/icons-material/Payment'
+import PendingActionsIcon from '@mui/icons-material/PendingActions'
+import PercentIcon from '@mui/icons-material/Percent'
+import ReportIcon from '@mui/icons-material/Report'
+import ScheduleIcon from '@mui/icons-material/Schedule'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import TrendingDownIcon from '@mui/icons-material/TrendingDown'
+import ApartmentIcon from '@mui/icons-material/Apartment'
+import HomeIcon from '@mui/icons-material/Home'
 import FinanceChart from '@/components/charts/FinanceChart'
 import PieChart from '@/components/charts/PieChart'
 import BarChart from '@/components/charts/BarChart'
-import earningIcon from '@/assets/images/icons/earning.svg'
+import { ROUTES } from '@/utils/constants'
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+]
 
 const AdminDashboard = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const [announcementsOpen, setAnnouncementsOpen] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState(() => dayjs().month() + 1)
+  const [selectedYear, setSelectedYear] = useState(() => dayjs().year())
+
+  const societyId = user?.society_apartment_id
 
   // Fetch dashboard data
-  const { data: financeSummary, isLoading: financeLoading } = useSWR(
+  const { isLoading: financeLoading } = useSWR(
     '/finance/summary',
     () => financeApi.getSummary().then(res => res.data.data)
   )
 
-  const { data: defaulterStats, isLoading: defaulterLoading } = useSWR(
-    '/defaulters/statistics',
-    () => defaulterApi.getStatistics().then(res => res.data.data)
+  // Month-based finance summary for new cards
+  const { data: monthlyFinance, isLoading: monthlyFinanceLoading } = useSWR(
+    societyId ? ['/finance/summary', selectedMonth, selectedYear, societyId] : null,
+    () => financeApi.getSummary({
+      month: selectedMonth,
+      year: selectedYear,
+      society_id: societyId,
+    }).then(res => res.data.data)
   )
 
-  const { data: residentsData, isLoading: residentsLoading } = useSWR(
+  // Complaints list for summary counts (total, pending, solved)
+  const { data: complaintsSummaryRes } = useSWR(
+    societyId ? ['/complaints/summary', societyId] : null,
+    () => complaintApi.getAll({ society_id: societyId, limit: 500, page: 1 }).then(res => res.data)
+  )
+
+  // Units for occupied count (apartment summary)
+  const { data: unitsData } = useSWR(
+    societyId ? ['/properties/units', societyId] : null,
+    () => propertyApi.getUnits({ society_id: societyId }).then(res => res.data)
+  )
+
+  // Maintenance for selected month (payments received / pending)
+  const { data: maintenanceMonthRes } = useSWR(
+    societyId ? ['/maintenance/month', selectedMonth, selectedYear, societyId] : null,
+    () => maintenanceApi.getAll({
+      society_id: societyId,
+      month: selectedMonth,
+      year: selectedYear,
+      limit: 1000,
+      page: 1,
+    }).then(res => res.data)
+  )
+
+  const { data: defaulterStats, isLoading: defaulterLoading } = useSWR(
+    societyId ? ['/defaulters/statistics', societyId] : null,
+    () => defaulterApi.getStatistics({ society_id: societyId }).then(res => res.data.data)
+  )
+
+  const { isLoading: residentsLoading } = useSWR(
     '/residents',
     () => residentApi.getAll({ limit: 1, page: 1 }).then(res => res.data)
   )
@@ -69,6 +131,12 @@ const AdminDashboard = () => {
     '/announcements/recent',
     () => announcementApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
   )
+
+  const { data: apartmentData } = useSWR(
+    user?.society_apartment_id ? ['/society', user.society_apartment_id] : null,
+    () => apartmentApi.getById(user.society_apartment_id).then(res => res.data)
+  )
+  const apartmentName = apartmentData?.data?.name
 
   const { data: financeData } = useSWR(
     '/finance/all',
@@ -116,15 +184,152 @@ const AdminDashboard = () => {
     }).format(amount)
   }
 
+  const latestAnnouncements = announcementsData?.data?.slice(0, 3) || []
+
+  // Derived data for new summary cards
+  const complaintsList = complaintsSummaryRes?.data || []
+  const totalComplaints = complaintsList.length
+  const pendingComplaints = complaintsList.filter(
+    c => c.status === 'pending' || c.status === 'in_progress'
+  ).length
+  const solvedComplaints = complaintsList.filter(
+    c => c.status === 'resolved' || c.status === 'closed'
+  ).length
+  const resolveRate = totalComplaints > 0
+    ? Math.round((solvedComplaints / totalComplaints) * 100)
+    : 0
+
+  const totalFlats = apartmentData?.data?.total_units ?? 0
+  const unitsList = unitsData?.data || []
+  const occupiedFlats = unitsList.filter(u => u.is_occupied).length
+
+  const maintenanceMonthList = maintenanceMonthRes?.data || []
+  const paymentsReceivedMonth = maintenanceMonthList.reduce(
+    (sum, m) => sum + (parseFloat(m.amount_paid) || 0),
+    0
+  )
+  const pendingPaymentsMonth = maintenanceMonthList.reduce(
+    (sum, m) => sum + (parseFloat(m.total_amount) || 0) - (parseFloat(m.amount_paid) || 0),
+    0
+  )
+
+  const defaultersCount = defaulterStats?.total_defaulters ?? 0
+  const defaultersAmount = parseFloat(defaulterStats?.total_amount_due || 0) || 0
+  const defaultersRate = totalFlats > 0 ? Math.round((defaultersCount / totalFlats) * 100) : 0
+
+  const monthlyIncome = monthlyFinance?.income ?? 0
+  const monthlyExpense = monthlyFinance?.expense ?? 0
+  const monthlyBalance = monthlyFinance?.balance ?? 0
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Admin Dashboard
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Welcome, {user?.name || user?.email}
-        </Typography>
+      <Box sx={{ mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+          <Box>
+            <Typography variant="h4" component="h1" gutterBottom>
+              Admin Dashboard
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2, flexWrap: 'wrap' }}>
+                <Typography component="span" variant="body1" color="text.secondary">
+                  Welcome back,
+                </Typography>
+                <Typography
+                  component="span"
+                  variant="body1"
+                  fontWeight={600}
+                  sx={{
+                    color: 'primary.main',
+                    px: 1.25,
+                    py: 0.25,
+                    borderRadius: 1,
+                    bgcolor: (theme) =>
+                      theme.palette.mode === 'dark'
+                        ? 'rgba(255, 255, 255, 0.08)'
+                        : 'rgba(25, 118, 210, 0.08)',
+                  }}
+                >
+                  {user?.name || user?.email}
+                </Typography>
+                {apartmentName && (
+                  <>
+                    <Typography component="span" variant="body1" color="text.secondary">
+                      -
+                    </Typography>
+                    <Typography
+                      component="span"
+                      variant="body1"
+                      sx={{
+                        color: 'text.secondary',
+                        fontWeight: 500,
+                        px: 1,
+                        py: 0.25,
+                        borderRadius: 1,
+                        bgcolor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(255, 255, 255, 0.05)'
+                            : 'rgba(0, 0, 0, 0.04)',
+                      }}
+                    >
+                      {apartmentName}
+                    </Typography>
+                  </>
+                )}
+              </Box>
+              <Typography variant="body1" color="text.secondary">
+                {dayjs().format('dddd, D MMMM YYYY')}
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton
+            color="primary"
+            onClick={() => setAnnouncementsOpen((o) => !o)}
+            aria-label={announcementsOpen ? 'Close announcements' : 'Open announcements'}
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              '&:hover': { backgroundColor: 'action.hover' },
+            }}
+          >
+            <AnnouncementIcon />
+          </IconButton>
+        </Box>
+
+        <Collapse in={announcementsOpen}>
+          <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+            <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1.5 }}>
+              Announcements
+            </Typography>
+            {announcementsLoading ? (
+              <Box display="flex" justifyContent="center" py={2}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : latestAnnouncements.length > 0 ? (
+              <>
+                <Box component="ul" sx={{ m: 0, pl: 2.5, '& li': { mb: 1 } }}>
+                  {latestAnnouncements.map((announcement) => (
+                    <Typography key={announcement.id} component="li" variant="body2" color="text.secondary">
+                      <strong>{announcement.title}</strong>
+                      {announcement.description && ` — ${announcement.description}`}
+                    </Typography>
+                  ))}
+                </Box>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => navigate(ROUTES.ADMIN_ANNOUNCEMENTS)}
+                  sx={{ mt: 1, px: 0 }}
+                >
+                  View all
+                </Button>
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No announcements yet.
+              </Typography>
+            )}
+          </Paper>
+        </Collapse>
       </Box>
 
       {isLoading ? (
@@ -133,85 +338,372 @@ const AdminDashboard = () => {
         </Box>
       ) : (
         <>
-          {/* Statistics Cards */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="h4" component="div">
-                        {residentsData?.pagination?.total || 0}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Residents
-                      </Typography>
+          {/* Month/Year selector and monthly summary cards */}
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="dashboard-month-label">Month</InputLabel>
+                <Select
+                  labelId="dashboard-month-label"
+                  value={selectedMonth}
+                  label="Month"
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                >
+                  {MONTHS.map((name, i) => (
+                    <MenuItem key={i} value={i + 1}>{name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel id="dashboard-year-label">Year</InputLabel>
+                <Select
+                  labelId="dashboard-year-label"
+                  value={selectedYear}
+                  label="Year"
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                >
+                  {Array.from({ length: 5 }, (_, i) => dayjs().year() - 2 + i).map((y) => (
+                    <MenuItem key={y} value={y}>{y}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Section A: Monthly summary cards (3 rows x 4) */}
+            <Grid container spacing={2} sx={{ mb: 4 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Payments Received</Typography>
+                        <Typography variant="h6">
+                          {monthlyFinanceLoading ? '—' : formatCurrency(paymentsReceivedMonth)}
+                        </Typography>
+                      </Box>
+                      <PaymentIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
                     </Box>
-                    <PeopleIcon sx={{ fontSize: 40, color: 'primary.main' }} />
-                  </Box>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Pending Payments</Typography>
+                        <Typography variant="h6">
+                          {monthlyFinanceLoading ? '—' : formatCurrency(pendingPaymentsMonth)}
+                        </Typography>
+                      </Box>
+                      <PendingActionsIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Defaulters Rate</Typography>
+                        <Typography variant="h6">{defaultersRate}%</Typography>
+                      </Box>
+                      <PercentIcon sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>No of Defaulters</Typography>
+                        <Typography variant="h6">{defaultersCount}</Typography>
+                      </Box>
+                      <WarningIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Complaints</Typography>
+                        <Typography variant="h6">{totalComplaints}</Typography>
+                      </Box>
+                      <ReportIcon sx={{ fontSize: 20, color: 'info.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Pending Complaints</Typography>
+                        <Typography variant="h6">{pendingComplaints}</Typography>
+                      </Box>
+                      <ScheduleIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Solved Complaints</Typography>
+                        <Typography variant="h6">{solvedComplaints}</Typography>
+                      </Box>
+                      <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Resolve Rate</Typography>
+                        <Typography variant="h6">{resolveRate}%</Typography>
+                      </Box>
+                      <PercentIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Income</Typography>
+                        <Typography variant="h6">
+                          {monthlyFinanceLoading ? '—' : formatCurrency(monthlyIncome)}
+                        </Typography>
+                      </Box>
+                      <TrendingUpIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Expense</Typography>
+                        <Typography variant="h6">
+                          {monthlyFinanceLoading ? '—' : formatCurrency(monthlyExpense)}
+                        </Typography>
+                      </Box>
+                      <TrendingDownIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Net Balance</Typography>
+                        <Typography variant="h6">
+                          {monthlyFinanceLoading ? '—' : formatCurrency(monthlyBalance)}
+                        </Typography>
+                      </Box>
+                      <AccountBalanceIcon sx={{ fontSize: 20, color: 'primary.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined">
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Remaining Dues</Typography>
+                        <Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography>
+                      </Box>
+                      <WarningIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="h4" component="div">
-                        {formatCurrency(financeSummary?.total_income || 0)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Income
-                      </Typography>
+            {/* Section B: Apartment summary (heading from admin's society) */}
+            <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.5, px: 2, mb: 2 }}>
+              <Typography variant="h6" fontWeight="bold" align="center">
+                {apartmentName ? `${apartmentName} Summary` : 'Apartment Summary'}
+              </Typography>
+            </Paper>
+            <Grid container spacing={2} sx={{ mb: 4 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Flats</Typography>
+                        <Typography variant="h6">{totalFlats}</Typography>
+                      </Box>
+                      <ApartmentIcon sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
                     </Box>
-                    <Box
-                      component="img"
-                      src={earningIcon}
-                      alt=""
-                      sx={{ height: 40, width: 40, color: 'success.main' }}
-                    />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="h4" component="div">
-                        {defaulterStats?.total_defaulters || 0}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Defaulters
-                      </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Occupied Flats</Typography>
+                        <Typography variant="h6">{occupiedFlats}</Typography>
+                      </Box>
+                      <HomeIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
                     </Box>
-                    <WarningIcon sx={{ fontSize: 40, color: 'warning.main' }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="h4" component="div">
-                        {formatCurrency(defaulterStats?.total_amount_due || 0)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Amount Due
-                      </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Defaulters</Typography>
+                        <Typography variant="h6">{defaultersCount}</Typography>
+                      </Box>
+                      <WarningIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
                     </Box>
-                    <AccountBalanceIcon sx={{ fontSize: 40, color: 'error.main' }} />
-                  </Box>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Defaulters Amount</Typography>
+                        <Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography>
+                      </Box>
+                      <AccountBalanceIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Complaints</Typography>
+                        <Typography variant="h6">{totalComplaints}</Typography>
+                      </Box>
+                      <ReportIcon sx={{ fontSize: 20, color: 'info.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Pending Complaints</Typography>
+                        <Typography variant="h6">{pendingComplaints}</Typography>
+                      </Box>
+                      <ScheduleIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Solved Complaints</Typography>
+                        <Typography variant="h6">{solvedComplaints}</Typography>
+                      </Box>
+                      <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Resolve Rate</Typography>
+                        <Typography variant="h6">{resolveRate}%</Typography>
+                      </Box>
+                      <PercentIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Income</Typography>
+                        <Typography variant="h6">{formatCurrency(monthlyIncome)}</Typography>
+                      </Box>
+                      <TrendingUpIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Expense</Typography>
+                        <Typography variant="h6">{formatCurrency(monthlyExpense)}</Typography>
+                      </Box>
+                      <TrendingDownIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Net Balance</Typography>
+                        <Typography variant="h6">{formatCurrency(monthlyBalance)}</Typography>
+                      </Box>
+                      <AccountBalanceIcon sx={{ fontSize: 20, color: 'primary.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Remaining Dues</Typography>
+                        <Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography>
+                      </Box>
+                      <WarningIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
             </Grid>
-          </Grid>
+          </Box>
 
           {/* Charts Section */}
           <Grid container spacing={3} sx={{ mb: 4 }}>

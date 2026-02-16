@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Container,
   Typography,
@@ -12,17 +12,27 @@ import {
   DialogActions,
   Grid,
   MenuItem,
-  IconButton,
-  Tooltip,
-  Chip,
   CircularProgress,
+  Tabs,
+  Tab,
+  IconButton,
+  Menu,
+  Checkbox,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
-import EditIcon from '@mui/icons-material/Edit'
-import DeleteIcon from '@mui/icons-material/Delete'
-import PaymentIcon from '@mui/icons-material/Payment'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
+import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
@@ -31,7 +41,6 @@ import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
-import dayjs from 'dayjs'
 
 const validationSchema = Yup.object({
   unit_id: Yup.number().required('Unit is required'),
@@ -39,12 +48,15 @@ const validationSchema = Yup.object({
   year: Yup.number().required('Year is required'),
   base_amount: Yup.number().min(0).required('Base amount is required'),
   total_amount: Yup.number().min(0).required('Total amount is required'),
+  due_date: Yup.date().nullable(),
 })
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const Maintenance = () => {
   const { user } = useAuth()
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(10)
+  const currentYear = new Date().getFullYear()
+  const [year, setYear] = useState(currentYear)
   const [search, setSearch] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false)
@@ -53,31 +65,91 @@ const Maintenance = () => {
   const [editingMaintenance, setEditingMaintenance] = useState(null)
   const [selectedMaintenance, setSelectedMaintenance] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
+  const [selectedBlockId, setSelectedBlockId] = useState(null)
+  const [selectedFloorId, setSelectedFloorId] = useState('')
+  const [formBlockId, setFormBlockId] = useState('')
+  const [formFloorId, setFormFloorId] = useState('')
+  const [columnVisibility, setColumnVisibility] = useState({})
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState(null)
+  const [confirmGenerate, setConfirmGenerate] = useState(null) // { action: 'block' | 'floor', blockName?: string }
+  const [selectedLedgerRow, setSelectedLedgerRow] = useState(null)
+  const [recordToDelete, setRecordToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
-  const { data, isLoading, mutate } = useSWR(
-    ['/maintenance', page, limit, search, societyId],
-    () => maintenanceApi.getAll({ page, limit, search, society_id: societyId }).then(res => res.data)
+  const { data: ledgerData, isLoading, mutate } = useSWR(
+    societyId ? ['/maintenance/yearly-ledger', societyId, year] : null,
+    () => maintenanceApi.getYearlyLedger({ society_id: societyId, year }).then(res => res.data)
   )
 
-  const { data: unitsData } = useSWR(
-    societyId ? ['/units', societyId] : null,
-    () => propertyApi.getUnits({ society_id: societyId }).then(res => res.data)
+  const { data: unitMaintenanceData, mutate: mutateUnitMaintenance } = useSWR(
+    selectedLedgerRow && societyId
+      ? ['/maintenance/unit', selectedLedgerRow.unit_id, year]
+      : null,
+    () =>
+      maintenanceApi
+        .getAll({ unit_id: selectedLedgerRow.unit_id, year, society_id: societyId, limit: 12 })
+        .then(res => res.data)
   )
+
+  const { data: unitForEditData } = useSWR(
+    openDialog && editingMaintenance?.unit_id
+      ? ['/unit', editingMaintenance.unit_id]
+      : null,
+    () => propertyApi.getUnitById(editingMaintenance.unit_id).then(res => res.data)
+  )
+  const unitForEdit = unitForEditData?.data ?? unitForEditData
+
+  const { data: blocksData } = useSWR(
+    societyId ? ['/blocks', societyId] : null,
+    () => propertyApi.getBlocks({ society_id: societyId }).then(res => res.data)
+  )
+
+  const { data: floorsData } = useSWR(
+    selectedBlockId ? ['/floors-block', selectedBlockId] : null,
+    () => propertyApi.getFloors({ block_id: selectedBlockId }).then(res => res.data)
+  )
+
+  const blocks = blocksData?.data || []
+  const floorsForBlock = floorsData?.data ?? []
+
+  const { data: dialogFloorsData } = useSWR(
+    formBlockId ? ['/floors-dialog-maint', formBlockId] : null,
+    () => propertyApi.getFloors({ block_id: formBlockId }).then(res => res.data)
+  )
+  const { data: dialogUnitsData } = useSWR(
+    formBlockId && societyId ? ['/units-dialog-maint', societyId, formBlockId, formFloorId] : null,
+    () =>
+      propertyApi
+        .getUnits({
+          society_id: societyId,
+          block_id: formBlockId,
+          ...(formFloorId ? { floor_id: formFloorId } : {}),
+        })
+        .then(res => res.data)
+  )
+  const dialogFloors = dialogFloorsData?.data || []
+  const dialogUnits = dialogUnitsData?.data || []
 
   const handleOpenDialog = (maintenance = null) => {
     setEditingMaintenance(maintenance)
+    setFormBlockId('')
+    setFormFloorId('')
     setOpenDialog(true)
   }
 
   const handleCloseDialog = () => {
     setOpenDialog(false)
     setEditingMaintenance(null)
+    setFormBlockId('')
+    setFormFloorId('')
   }
 
-  const handleOpenPaymentDialog = (maintenance) => {
-    setSelectedMaintenance(maintenance)
-    setOpenPaymentDialog(true)
-  }
+  useEffect(() => {
+    if (openDialog && unitForEdit) {
+      setFormBlockId(unitForEdit.block_id ?? '')
+      setFormFloorId(unitForEdit.floor_id ?? '')
+    }
+  }, [openDialog, unitForEdit])
 
   const handleClosePaymentDialog = () => {
     setOpenPaymentDialog(false)
@@ -86,11 +158,17 @@ const Maintenance = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      const payload = {
+        ...values,
+        due_date: values.due_date || null,
+      }
+      delete payload.block_id
+      delete payload.floor_id
       if (editingMaintenance) {
-        await maintenanceApi.update(editingMaintenance.id, values)
+        await maintenanceApi.update(editingMaintenance.id, payload)
         toast.success('Maintenance record updated successfully')
       } else {
-        await maintenanceApi.create({ ...values, society_apartment_id: societyId })
+        await maintenanceApi.create({ ...payload, society_apartment_id: societyId })
         toast.success('Maintenance record created successfully')
       }
       mutate()
@@ -107,6 +185,7 @@ const Maintenance = () => {
       await maintenanceApi.recordPayment(selectedMaintenance.id, values)
       toast.success('Payment recorded successfully')
       mutate()
+      if (selectedLedgerRow) mutateUnitMaintenance()
       handleClosePaymentDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Payment failed')
@@ -115,15 +194,35 @@ const Maintenance = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this maintenance record?')) {
-      try {
-        await maintenanceApi.remove(id)
-        toast.success('Maintenance record deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
+  const handleOpenPaymentForRecord = (record) => {
+    setSelectedMaintenance(record)
+    setOpenPaymentDialog(true)
+  }
+
+  const handleCloseUnitDetailModal = () => {
+    setSelectedLedgerRow(null)
+    setRecordToDelete(null)
+  }
+
+  const handleOpenEditFromModal = (record) => {
+    setEditingMaintenance(record)
+    handleCloseUnitDetailModal()
+    setOpenDialog(true)
+  }
+
+  const handleConfirmDeleteRecord = async () => {
+    if (!recordToDelete) return
+    setDeleting(true)
+    try {
+      await maintenanceApi.remove(recordToDelete.id)
+      toast.success('Maintenance record removed')
+      mutate()
+      mutateUnitMaintenance()
+      setRecordToDelete(null)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to remove record')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -134,87 +233,116 @@ const Maintenance = () => {
     }).format(amount)
   }
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'paid':
-        return 'success'
-      case 'partially_paid':
-        return 'warning'
-      case 'pending':
-        return 'error'
-      default:
-        return 'default'
-    }
+  const formatFloorLabel = (floorNumber) => {
+    if (floorNumber == null) return '—'
+    const fn = Number(floorNumber)
+    if (fn === 0) return 'Ground'
+    if (fn === 1) return '1st'
+    if (fn === 2) return '2nd'
+    if (fn === 3) return '3rd'
+    return `${fn}th`
   }
 
   const columns = [
-    { id: 'unit_number', label: 'Unit', render: (row) => row.unit_number || 'N/A' },
-    { id: 'month', label: 'Month/Year', render: (row) => `${row.month}/${row.year}` },
-    { id: 'base_amount', label: 'Base Amount', render: (row) => formatCurrency(row.base_amount) },
-    { id: 'total_amount', label: 'Total Amount', render: (row) => formatCurrency(row.total_amount) },
-    { id: 'amount_paid', label: 'Amount Paid', render: (row) => formatCurrency(row.amount_paid || 0) },
+    { id: 'flat_no', label: 'Unit No.', render: (row) => row.flat_no || 'N/A' },
+    { id: 'resident_name', label: 'Resident Name', render: (row) => row.resident_name || '—' },
     {
-      id: 'status',
-      label: 'Status',
-      render: (row) => (
-        <Chip label={row.status} color={getStatusColor(row.status)} size="small" />
-      ),
+      id: 'floor_number',
+      label: 'Floor',
+      render: (row) => formatFloorLabel(row.floor_number),
+    },
+    ...MONTH_LABELS.map((label, i) => {
+      const key = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'][i]
+      return {
+        id: key,
+        label,
+        align: 'right',
+        render: (row) => formatCurrency(Number(row[key]) || 0),
+      }
+    }),
+    {
+      id: 'total_payment',
+      label: 'Total Payment',
+      align: 'right',
+      render: (row) => formatCurrency(Number(row.total_payment) || 0),
     },
     {
-      id: 'actions',
-      label: 'Actions',
+      id: 'paid_payment',
+      label: 'Paid Payment',
       align: 'right',
-      render: (row) => (
-        <Box>
-          {row.status !== 'paid' && (
-            <Tooltip title="Record Payment">
-              <IconButton size="small" color="success" onClick={() => handleOpenPaymentDialog(row)}>
-                <PaymentIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => handleOpenDialog(row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      ),
+      render: (row) => formatCurrency(Number(row.paid_payment) || 0),
+    },
+    {
+      id: 'due',
+      label: 'Due',
+      align: 'right',
+      render: (row) => formatCurrency(Number(row.due) || 0),
+    },
+    {
+      id: 'view',
+      label: 'View',
+      align: 'center',
+      render: () => 'View details',
+      onClick: (row) => setSelectedLedgerRow(row),
     },
   ]
 
-  const currentYear = new Date().getFullYear()
+  const visibleColumns = columns.filter((c) => columnVisibility[c.id] !== false)
+  const isColumnVisible = (id) => columnVisibility[id] !== false
+  const toggleColumnVisibility = (id) => {
+    setColumnVisibility((prev) => ({ ...prev, [id]: prev[id] === false }))
+  }
+
+  const rawRows = ledgerData?.data || []
+  const blockAndFloorFiltered =
+    selectedBlockId != null && selectedBlockId !== ''
+      ? selectedFloorId !== ''
+        ? rawRows.filter(
+            (row) => String(row.block_id) === String(selectedBlockId) && String(row.floor_id) === String(selectedFloorId)
+          )
+        : rawRows.filter((row) => String(row.block_id) === String(selectedBlockId))
+      : rawRows
+  const filteredData = search.trim()
+    ? blockAndFloorFiltered.filter(
+        (row) =>
+          (row.flat_no || '').toLowerCase().includes(search.toLowerCase()) ||
+          (row.resident_name || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : blockAndFloorFiltered
+
+  const perYearTotalMaintenance = blockAndFloorFiltered.reduce(
+    (sum, row) => sum + (Number(row.total_payment) || 0),
+    0
+  )
+
   const currentMonth = new Date().getMonth() + 1
 
   const initialValues = editingMaintenance
     ? {
+        block_id: unitForEdit?.block_id ?? '',
+        floor_id: unitForEdit?.floor_id ?? '',
         unit_id: editingMaintenance.unit_id || '',
         month: editingMaintenance.month || currentMonth,
         year: editingMaintenance.year || currentYear,
-        base_amount: editingMaintenance.base_amount || 0,
-        total_amount: editingMaintenance.total_amount || 0,
+        base_amount: editingMaintenance.base_amount ?? 0,
+        total_amount: editingMaintenance.total_amount ?? 0,
+        due_date: editingMaintenance.due_date ? editingMaintenance.due_date.slice(0, 10) : '',
       }
     : {
+        block_id: '',
+        floor_id: '',
         unit_id: '',
         month: currentMonth,
         year: currentYear,
         base_amount: 0,
         total_amount: 0,
+        due_date: '',
       }
 
   const handleGenerateMonthlyDues = async () => {
-    if (!window.confirm('Generate monthly dues for all active units? This will create maintenance records for the current month.')) {
-      return
-    }
-
     setGenerating(true)
     try {
-      await maintenanceApi.generateMonthlyDues()
+      await maintenanceApi.generateMonthlyDues({ month: currentMonth, year: currentYear })
       toast.success('Monthly dues generated successfully')
       mutate()
       setOpenGenerateDialog(false)
@@ -225,21 +353,90 @@ const Maintenance = () => {
     }
   }
 
+  const handleGenerateForBlock = () => {
+    if (!selectedBlockId) return
+    const blockName = blocks.find((b) => String(b.id) === String(selectedBlockId))?.name || 'this block'
+    setConfirmGenerate({ action: 'block', blockName })
+  }
+
+  const handleGenerateForFloor = () => {
+    if (!selectedFloorId) return
+    setConfirmGenerate({ action: 'floor' })
+  }
+
+  const handleConfirmGenerateSubmit = async () => {
+    if (!confirmGenerate) return
+    const { action } = confirmGenerate
+    setGenerating(true)
+    setConfirmGenerate(null)
+    try {
+      if (action === 'block') {
+        const res = await maintenanceApi.generateForScope({
+          scope: 'block',
+          block_id: selectedBlockId,
+          month: currentMonth,
+          year: currentYear,
+        })
+        const data = res.data?.data || res.data
+        toast.success(data ? `${data.successful} record(s) created` : 'Dues generated for block')
+      } else if (action === 'floor') {
+        const res = await maintenanceApi.generateForScope({
+          scope: 'floor',
+          floor_id: selectedFloorId,
+          block_id: selectedBlockId || undefined,
+          month: currentMonth,
+          year: currentYear,
+        })
+        const data = res.data?.data || res.data
+        toast.success(data ? `${data.successful} record(s) created` : 'Dues generated for floor')
+      }
+      mutate()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to generate dues')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        Per Year Total Maintenance Amount = {formatCurrency(perYearTotalMaintenance)}
+      </Typography>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
           Maintenance Management
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button
             variant="outlined"
             startIcon={<CalendarTodayIcon />}
             onClick={() => setOpenGenerateDialog(true)}
             color="primary"
+            disabled={generating}
           >
             Generate Monthly Dues
           </Button>
+          {selectedBlockId && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleGenerateForBlock}
+              disabled={generating}
+            >
+              {generating ? 'Generating…' : 'Generate for this block'}
+            </Button>
+          )}
+          {selectedBlockId && selectedFloorId && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleGenerateForFloor}
+              disabled={generating}
+            >
+              {generating ? 'Generating…' : 'Generate for this floor'}
+            </Button>
+          )}
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -250,12 +447,69 @@ const Maintenance = () => {
         </Box>
       </Box>
 
-      <Box sx={{ mb: 3 }}>
+      {blocks.length > 0 && (
+        <Tabs
+          value={selectedBlockId ?? ''}
+          onChange={(_, v) => {
+            setSelectedBlockId(v === '' ? null : v)
+            setSelectedFloorId('')
+          }}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            mb: 2,
+            '& .MuiTab-root:hover': { color: 'primary.main' },
+          }}
+        >
+          <Tab label="All blocks" value="" />
+          {blocks.map((block) => (
+            <Tab key={block.id} label={block.name} value={block.id} />
+          ))}
+        </Tabs>
+      )}
+
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          select
+          label="Year"
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          size="small"
+          sx={{ minWidth: 120 }}
+        >
+          {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
+            <MenuItem key={y} value={y}>
+              {y}
+            </MenuItem>
+          ))}
+        </TextField>
+        {selectedBlockId && floorsForBlock.length > 0 && (
+          <TextField
+            select
+            label="Floor"
+            value={selectedFloorId}
+            onChange={(e) => setSelectedFloorId(e.target.value)}
+            size="small"
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value="">All floors</MenuItem>
+            {floorsForBlock
+              .slice()
+              .sort((a, b) => (a.floor_number ?? 0) - (b.floor_number ?? 0))
+              .map((floor) => (
+                <MenuItem key={floor.id} value={floor.id}>
+                  {floor.floor_number === 0 ? 'Ground' : floor.floor_number === 1 ? '1st' : floor.floor_number === 2 ? '2nd' : floor.floor_number === 3 ? '3rd' : `${floor.floor_number}th`} floor
+                </MenuItem>
+              ))}
+          </TextField>
+        )}
         <TextField
           fullWidth
-          placeholder="Search maintenance records..."
+          placeholder="Search by flat no or resident name..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          size="small"
+          sx={{ flex: 1, minWidth: 200 }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -264,18 +518,51 @@ const Maintenance = () => {
             ),
           }}
         />
+        <IconButton
+          onClick={(e) => setColumnMenuAnchor(e.currentTarget)}
+          color="inherit"
+          size="small"
+          title="Toggle columns"
+          sx={{ border: 1, borderColor: 'divider' }}
+        >
+          <ViewColumnIcon />
+        </IconButton>
+        <Menu
+          anchorEl={columnMenuAnchor}
+          open={Boolean(columnMenuAnchor)}
+          onClose={() => setColumnMenuAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          PaperProps={{ sx: { maxHeight: 400, minWidth: 220 } }}
+        >
+          {columns.map((col) => (
+            <ListItemButton
+              key={col.id}
+              dense
+              onClick={() => toggleColumnVisibility(col.id)}
+            >
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <Checkbox
+                  edge="start"
+                  checked={isColumnVisible(col.id)}
+                  tabIndex={-1}
+                  disableRipple
+                  size="small"
+                />
+              </ListItemIcon>
+              <ListItemText primary={col.label} />
+            </ListItemButton>
+          ))}
+        </Menu>
       </Box>
 
       <DataTable
-        columns={columns}
-        data={data?.data || []}
+        columns={visibleColumns.length > 0 ? visibleColumns : columns}
+        data={filteredData}
         loading={isLoading}
-        pagination={data?.pagination}
-        onPageChange={setPage}
-        onRowsPerPageChange={(newLimit) => {
-          setLimit(newLimit)
-          setPage(1)
-        }}
+        pagination={undefined}
+        onPageChange={() => {}}
+        onRowsPerPageChange={() => {}}
       />
 
       {/* Add/Edit Dialog */}
@@ -286,13 +573,67 @@ const Maintenance = () => {
           onSubmit={handleSubmit}
           enableReinitialize
         >
-          {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
+          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
               <DialogTitle>
                 {editingMaintenance ? 'Edit Maintenance Record' : 'Add New Maintenance Record'}
               </DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Block"
+                      name="block_id"
+                      value={values.block_id}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        handleChange(e)
+                        setFieldValue('floor_id', '')
+                        setFieldValue('unit_id', '')
+                        setFormBlockId(v)
+                        setFormFloorId('')
+                      }}
+                      onBlur={handleBlur}
+                      size="small"
+                    >
+                      <MenuItem value="">Select block</MenuItem>
+                      {blocks.map((block) => (
+                        <MenuItem key={block.id} value={block.id}>
+                          {block.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Floor"
+                      name="floor_id"
+                      value={values.floor_id}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        handleChange(e)
+                        setFieldValue('unit_id', '')
+                        setFormFloorId(v)
+                      }}
+                      onBlur={handleBlur}
+                      disabled={!values.block_id}
+                      size="small"
+                    >
+                      <MenuItem value="">Select floor</MenuItem>
+                      {dialogFloors
+                        .slice()
+                        .sort((a, b) => (a.floor_number ?? 0) - (b.floor_number ?? 0))
+                        .map((floor) => (
+                          <MenuItem key={floor.id} value={floor.id}>
+                            {floor.floor_number === 0 ? 'Ground' : floor.floor_number === 1 ? '1st' : floor.floor_number === 2 ? '2nd' : floor.floor_number === 3 ? '3rd' : `${floor.floor_number}th`} floor
+                          </MenuItem>
+                        ))}
+                    </TextField>
+                  </Grid>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -304,11 +645,13 @@ const Maintenance = () => {
                       onBlur={handleBlur}
                       error={touched.unit_id && !!errors.unit_id}
                       helperText={touched.unit_id && errors.unit_id}
+                      disabled={!values.block_id}
+                      size="small"
                     >
-                      <MenuItem value="">Select Unit</MenuItem>
-                      {unitsData?.data?.map((unit) => (
+                      <MenuItem value="">Select unit</MenuItem>
+                      {dialogUnits.map((unit) => (
                         <MenuItem key={unit.id} value={unit.id}>
-                          {unit.block_name} - Floor {unit.floor_number} - Unit {unit.unit_number}
+                          Unit {unit.unit_number}
                         </MenuItem>
                       ))}
                     </TextField>
@@ -402,6 +745,21 @@ const Maintenance = () => {
                       helperText={touched.total_amount && errors.total_amount}
                     />
                   </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Due Date"
+                      name="due_date"
+                      type="date"
+                      value={values.due_date}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.due_date && !!errors.due_date}
+                      helperText={touched.due_date && errors.due_date}
+                      InputLabelProps={{ shrink: true }}
+                      inputProps={{ max: '9999-12-31' }}
+                    />
+                  </Grid>
                 </Grid>
               </DialogContent>
               <DialogActions>
@@ -470,10 +828,10 @@ const Maintenance = () => {
         <DialogTitle>Generate Monthly Dues</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            This will generate maintenance dues for all active units for the current month ({new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}).
+            This will generate maintenance dues for all units in your apartment for the current month ({new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}).
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Only units without existing maintenance records for this month will be processed.
+            Only units that have a resident assigned and no existing maintenance record for this month will be processed.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -487,6 +845,160 @@ const Maintenance = () => {
             startIcon={generating ? <CircularProgress size={20} /> : null}
           >
             {generating ? 'Generating...' : 'Generate Dues'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unit detail modal: view maintenance and record payment */}
+      <Dialog
+        open={Boolean(selectedLedgerRow)}
+        onClose={handleCloseUnitDetailModal}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Unit {selectedLedgerRow?.flat_no ?? '—'} – {selectedLedgerRow?.resident_name || 'No resident'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Maintenance for year {year}
+          </Typography>
+          {!unitMaintenanceData?.data?.length ? (
+            <Typography variant="body2" color="text.secondary">
+              No maintenance records for this unit in {year}.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'action.hover' }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Month</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Total</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Paid</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Due</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(unitMaintenanceData?.data || [])
+                    .slice()
+                    .sort((a, b) => (a.month ?? 0) - (b.month ?? 0))
+                    .map((record) => {
+                      const due = (Number(record.total_amount) || 0) - (Number(record.amount_paid) || 0)
+                      const monthName = record.month
+                        ? new Date(2000, record.month - 1).toLocaleString('default', { month: 'short' })
+                        : '—'
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell>{monthName}</TableCell>
+                          <TableCell align="right">{formatCurrency(Number(record.total_amount) || 0)}</TableCell>
+                          <TableCell align="right">{formatCurrency(Number(record.amount_paid) || 0)}</TableCell>
+                          <TableCell align="right">{formatCurrency(due)}</TableCell>
+                          <TableCell>{record.status || 'pending'}</TableCell>
+                          <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                            {due > 0 && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleOpenPaymentForRecord(record)}
+                                sx={{ mr: 0.5 }}
+                              >
+                                Record payment
+                              </Button>
+                            )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => handleOpenEditFromModal(record)}
+                              sx={{ mr: 0.5 }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              onClick={() => setRecordToDelete(record)}
+                            >
+                              Delete
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseUnitDetailModal}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm delete maintenance record */}
+      <Dialog
+        open={Boolean(recordToDelete)}
+        onClose={() => setRecordToDelete(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Remove maintenance record?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            {recordToDelete && (
+              <>
+                Remove the maintenance record for{' '}
+                {new Date(2000, (recordToDelete.month || 1) - 1).toLocaleString('default', { month: 'long' })} {recordToDelete.year}
+                ? This cannot be undone.
+              </>
+            )}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRecordToDelete(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmDeleteRecord}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={20} /> : null}
+          >
+            {deleting ? 'Removing…' : 'Remove'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm generate for block/floor */}
+      <Dialog
+        open={Boolean(confirmGenerate)}
+        onClose={() => setConfirmGenerate(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Confirm</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            {confirmGenerate?.action === 'block' &&
+              `Generate monthly dues for all units in ${confirmGenerate.blockName || 'this block'} (current month)?`}
+            {confirmGenerate?.action === 'floor' &&
+              'Generate monthly dues for all units on this floor (current month)?'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmGenerate(null)} disabled={generating}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmGenerateSubmit}
+            disabled={generating}
+            startIcon={generating ? <CircularProgress size={20} /> : null}
+          >
+            {generating ? 'Generating…' : 'Confirm'}
           </Button>
         </DialogActions>
       </Dialog>

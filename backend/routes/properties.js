@@ -9,12 +9,16 @@ router.use(authenticate);
 
 // Blocks routes
 router.get('/blocks', propertyController.getBlocks);
+router.get('/blocks/:id/next-floor', propertyController.getBlockNextFloorNumber);
 router.post('/blocks', requireRole('super_admin'), propertyController.createBlock);
 router.put('/blocks/:id', requireRole('super_admin'), propertyController.updateBlock);
 
 // Floors routes
 router.get('/floors', propertyController.getFloors);
 router.post('/floors', requireRole('super_admin'), propertyController.createFloor);
+router.put('/floors/:id', requireRole('super_admin'), propertyController.updateFloor);
+router.delete('/floors/:id', requireRole('super_admin'), propertyController.deleteFloor);
+router.post('/floors/:id/units', requireRole('super_admin'), propertyController.addUnitsToFloor);
 
 // Units routes
 router.get('/units', propertyController.getUnits);

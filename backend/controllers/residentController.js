@@ -3,13 +3,14 @@ import { query } from '../config/database.js';
 // Get all residents
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, society_id, unit_id } = req.query;
+    const { page = 1, limit = 10, search, society_id, unit_id, block_id, floor_id } = req.query;
     const offset = (page - 1) * limit;
 
     let sql = `
-      SELECT r.*, u.unit_number, u.owner_name, s.name as society_name
+      SELECT r.*, u.unit_number, u.owner_name, u.block_id, u.floor_id, f.floor_number, s.name as society_name
       FROM users r
       LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN floors f ON u.floor_id = f.id
       LEFT JOIN apartments s ON r.society_apartment_id = s.id
       WHERE r.role IN ('resident', 'union_admin')
     `;
@@ -28,6 +29,18 @@ export const getAll = async (req, res) => {
       params.push(unit_id);
     }
 
+    if (block_id) {
+      paramCount++;
+      sql += ` AND u.block_id = $${paramCount}`;
+      params.push(block_id);
+    }
+
+    if (floor_id) {
+      paramCount++;
+      sql += ` AND u.floor_id = $${paramCount}`;
+      params.push(floor_id);
+    }
+
     if (search) {
       paramCount++;
       sql += ` AND (r.name ILIKE $${paramCount} OR r.email ILIKE $${paramCount} OR r.contact_number ILIKE $${paramCount})`;
@@ -39,9 +52,10 @@ export const getAll = async (req, res) => {
 
     const result = await query(sql, params);
 
-    // Get total count
+    // Get total count (join units when filtering by block_id / floor_id)
     let countSql = `
       SELECT COUNT(*) FROM users r
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE r.role IN ('resident', 'union_admin')
     `;
     const countParams = [];
@@ -57,6 +71,18 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND r.unit_id = $${countParamCount}`;
       countParams.push(unit_id);
+    }
+
+    if (block_id) {
+      countParamCount++;
+      countSql += ` AND u.block_id = $${countParamCount}`;
+      countParams.push(block_id);
+    }
+
+    if (floor_id) {
+      countParamCount++;
+      countSql += ` AND u.floor_id = $${countParamCount}`;
+      countParams.push(floor_id);
     }
 
     if (search) {
@@ -87,16 +113,31 @@ export const getAll = async (req, res) => {
   }
 };
 
-// Get resident by ID
+// Get resident by ID (with unit utility/car fields and defaulter status)
 export const getById = async (req, res) => {
   try {
     const { id } = req.params;
 
     const result = await query(
-      `SELECT r.*, u.unit_number, u.owner_name, s.name as society_name
+      `SELECT r.*,
+         u.unit_number, u.owner_name,
+         u.k_electric_account, u.gas_account, u.water_account, u.phone_tv_account,
+         u.telephone_bills, u.other_bills,
+         u.car_make_model, u.license_plate, u.number_of_cars,
+         s.name as society_name,
+         d.status as defaulter_status,
+         d.amount_due as defaulter_amount_due,
+         d.months_overdue as defaulter_months_overdue
        FROM users r
        LEFT JOIN units u ON r.unit_id = u.id
        LEFT JOIN apartments s ON r.society_apartment_id = s.id
+       LEFT JOIN LATERAL (
+         SELECT status, amount_due, months_overdue
+         FROM defaulters
+         WHERE unit_id = r.unit_id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) d ON true
        WHERE r.id = $1 AND r.role IN ('resident', 'union_admin')`,
       [id]
     );

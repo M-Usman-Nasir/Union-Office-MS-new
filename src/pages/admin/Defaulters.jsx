@@ -29,10 +29,11 @@ import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import toast from 'react-hot-toast'
-import dayjs from 'dayjs'
+import { ROLES } from '@/utils/constants'
 
 const Defaulters = () => {
   const { user } = useAuth()
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
@@ -51,7 +52,7 @@ const Defaulters = () => {
     })
   )
 
-  const { data: stats, error: statsError } = useSWR(
+  const { data: stats } = useSWR(
     ['/defaulters/statistics', societyId],
     () => defaulterApi.getStatistics({ society_id: societyId }).then(res => res.data.data).catch(err => {
       console.error('Defaulters statistics error:', err)
@@ -114,11 +115,6 @@ const Defaulters = () => {
     }).format(amount || 0)
   }
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    return dayjs(dateString).format('DD/MM/YYYY')
-  }
-
   const getStatusColor = (status) => {
     switch (status) {
       case 'resolved':
@@ -176,8 +172,8 @@ const Defaulters = () => {
         </Box>
       )}
 
-      {/* Visibility Notice */}
-      {!settingsLoading && settings && !isVisible && (
+      {/* Visibility Notice: only for super_admin (union_admin manages their society and can use Settings without this reminder) */}
+      {isSuperAdmin && !settingsLoading && settings && !isVisible && (
         <Box sx={{ mb: 3 }}>
           <Alert severity="warning">
             Defaulter list visibility is currently disabled. Residents will not be able to view the defaulter list.

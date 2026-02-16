@@ -309,19 +309,87 @@ export const remove = async (req, res) => {
   }
 };
 
-// Generate monthly dues manually
+// Get yearly maintenance ledger (one row per unit with monthly columns + total/paid/due)
+export const getYearlyLedger = async (req, res) => {
+  try {
+    const { society_id, year } = req.query;
+    const ledgerYear = year ? parseInt(year, 10) : new Date().getFullYear();
+
+    if (!society_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'society_id is required',
+      });
+    }
+
+    const sql = `
+      SELECT
+        u.id AS unit_id,
+        u.unit_number AS flat_no,
+        COALESCE(
+          NULLIF(TRIM(u.resident_name), ''),
+          NULLIF(TRIM(u.owner_name), ''),
+          (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') LIMIT 1),
+          ''
+        ) AS resident_name,
+        f.floor_number,
+        u.floor_id,
+        u.block_id,
+        b.name AS block_name,
+        SUM(CASE WHEN m.month = 1 THEN m.total_amount ELSE 0 END) AS jan,
+        SUM(CASE WHEN m.month = 2 THEN m.total_amount ELSE 0 END) AS feb,
+        SUM(CASE WHEN m.month = 3 THEN m.total_amount ELSE 0 END) AS mar,
+        SUM(CASE WHEN m.month = 4 THEN m.total_amount ELSE 0 END) AS apr,
+        SUM(CASE WHEN m.month = 5 THEN m.total_amount ELSE 0 END) AS may,
+        SUM(CASE WHEN m.month = 6 THEN m.total_amount ELSE 0 END) AS jun,
+        SUM(CASE WHEN m.month = 7 THEN m.total_amount ELSE 0 END) AS jul,
+        SUM(CASE WHEN m.month = 8 THEN m.total_amount ELSE 0 END) AS aug,
+        SUM(CASE WHEN m.month = 9 THEN m.total_amount ELSE 0 END) AS sep,
+        SUM(CASE WHEN m.month = 10 THEN m.total_amount ELSE 0 END) AS oct,
+        SUM(CASE WHEN m.month = 11 THEN m.total_amount ELSE 0 END) AS nov,
+        SUM(CASE WHEN m.month = 12 THEN m.total_amount ELSE 0 END) AS dec,
+        COALESCE(SUM(m.total_amount), 0) AS total_payment,
+        COALESCE(SUM(m.amount_paid), 0) AS paid_payment,
+        COALESCE(SUM(m.total_amount), 0) - COALESCE(SUM(m.amount_paid), 0) AS due
+      FROM units u
+      LEFT JOIN floors f ON u.floor_id = f.id
+      LEFT JOIN blocks b ON u.block_id = b.id
+      LEFT JOIN maintenance m ON m.unit_id = u.id AND m.year = $1
+      WHERE u.society_apartment_id = $2
+      GROUP BY u.id, u.unit_number, u.resident_name, u.owner_name, f.floor_number, u.floor_id, u.block_id, b.name
+      ORDER BY b.name NULLS LAST, f.floor_number NULLS LAST, u.unit_number
+    `;
+
+    const result = await query(sql, [ledgerYear, society_id]);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      year: ledgerYear,
+    });
+  } catch (error) {
+    console.error('Get yearly ledger error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch yearly maintenance ledger',
+      error: error.message,
+    });
+  }
+};
+
+// Generate monthly dues manually (union_admin: only their society; super_admin: all societies)
 export const generateMonthlyDues = async (req, res) => {
   try {
     const { month, year } = req.body;
-    
+
     const currentDate = new Date();
     const targetMonth = month || currentDate.getMonth() + 1;
     const targetYear = year || currentDate.getFullYear();
 
-    // Import the generator function
+    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : null;
+
     const { generateMonthlyDues: generateDues } = await import('../jobs/monthlyDuesGenerator.js');
-    
-    const result = await generateDues(targetMonth, targetYear);
+    const result = await generateDues(targetMonth, targetYear, societyId);
 
     res.json({
       success: true,
@@ -333,6 +401,54 @@ export const generateMonthlyDues = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to generate monthly dues',
+      error: error.message,
+    });
+  }
+};
+
+// Generate monthly dues for a block or floor (union_admin only, for their society)
+export const generateForScope = async (req, res) => {
+  try {
+    const societyId = req.user?.society_apartment_id;
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Society (apartment) is required. Only union admins can generate for a block or floor.',
+      });
+    }
+
+    const { month, year, scope, block_id, floor_id } = req.body;
+    const currentDate = new Date();
+    const targetMonth = month || currentDate.getMonth() + 1;
+    const targetYear = year || currentDate.getFullYear();
+
+    let blockId = null;
+    let floorId = null;
+    if (scope === 'block' && block_id != null && block_id !== '') {
+      blockId = block_id;
+    } else if (scope === 'floor' && floor_id != null && floor_id !== '') {
+      floorId = floor_id;
+      if (block_id != null && block_id !== '') blockId = block_id;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: scope === 'block' ? 'block_id is required' : 'floor_id is required for floor scope',
+      });
+    }
+
+    const { generateMonthlyDuesForScope } = await import('../jobs/monthlyDuesGenerator.js');
+    const result = await generateMonthlyDuesForScope(targetMonth, targetYear, societyId, { blockId, floorId });
+
+    res.json({
+      success: true,
+      message: `Dues generated for ${scope}: ${result.successful} created, ${result.failed} failed`,
+      data: result
+    });
+  } catch (error) {
+    console.error('Generate for scope error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate dues for scope',
       error: error.message,
     });
   }

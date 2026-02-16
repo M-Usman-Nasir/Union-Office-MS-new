@@ -3,7 +3,12 @@ import { query } from '../config/database.js';
 // Get all announcements
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, society_id, type, is_active } = req.query;
+    let { page = 1, limit = 10, society_id, type, is_active } = req.query;
+    // Union admin: default to their society when society_id not provided
+    if (req.user?.role === 'union_admin' && (society_id == null || society_id === '' || String(society_id) === 'undefined')) {
+      society_id = req.user.society_apartment_id;
+    }
+    society_id = society_id != null && society_id !== '' && String(society_id) !== 'undefined' ? Number(society_id) : null;
     const offset = (page - 1) * limit;
 
     let sql = `
@@ -17,7 +22,7 @@ export const getAll = async (req, res) => {
     const params = [];
     let paramCount = 0;
 
-    if (society_id) {
+    if (society_id != null && Number.isFinite(society_id)) {
       paramCount++;
       sql += ` AND a.society_apartment_id = $${paramCount}`;
       params.push(society_id);
@@ -45,7 +50,7 @@ export const getAll = async (req, res) => {
     const countParams = [];
     let countParamCount = 0;
 
-    if (society_id) {
+    if (society_id != null && Number.isFinite(society_id)) {
       countParamCount++;
       countSql += ` AND society_apartment_id = $${countParamCount}`;
       countParams.push(society_id);

@@ -337,19 +337,23 @@ try {
   }
   console.log('✅ Created complaints')
 
-  // 9. Announcements (per apartment)
+  // 9. Announcements (per apartment) – only insert when society has none
   console.log('\n📣 Creating announcements...')
-  const announcements = [
+  const announcementTemplates = [
+    { title: 'Electricity Bills Available', description: 'January 2025', type: 'notice' },
+    { title: 'January Maintenance Due Date', description: 'Due by 5th of the month', type: 'payment' },
     { title: 'Monthly Meeting', description: 'Monthly society meeting on 1st of every month', type: 'meeting' },
-    { title: 'Maintenance Due', description: 'Please pay your maintenance fees by the 10th', type: 'payment' },
     { title: 'Water Supply Notice', description: 'Water supply will be interrupted for maintenance', type: 'notice' },
     { title: 'Security Update', description: 'New security measures implemented', type: 'update' }
   ]
 
   for (let a = 0; a < apartmentIds.length; a++) {
     const societyId = apartmentIds[a]
+    const countResult = await query('SELECT COUNT(*) FROM announcements WHERE society_apartment_id = $1', [societyId])
+    if (Number(countResult.rows[0].count) > 0) continue
+
     const createdBy = unionAdminIds[a] || unionAdminIds[0]
-    for (const ann of announcements) {
+    for (const ann of announcementTemplates) {
       const date = new Date()
       date.setDate(date.getDate() - Math.floor(Math.random() * 10))
       await query(
@@ -358,8 +362,9 @@ try {
         [societyId, ann.title, ann.description, ann.type, createdBy, date]
       )
     }
+    console.log(`   ✅ Created ${announcementTemplates.length} announcements for apartment index ${a + 1}`)
   }
-  console.log('✅ Created announcements')
+  console.log('✅ Announcements done')
 
   // 10. Defaulters (spread across units)
   console.log('\n⚠️  Creating defaulters...')

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -14,9 +14,14 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
+  Breadcrumbs,
+  Link,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import LayersIcon from '@mui/icons-material/Layers'
+import DomainIcon from '@mui/icons-material/Domain'
 import useSWR from 'swr'
 import { propertyApi } from '@/api/propertyApi'
 import { apartmentApi } from '@/api/apartmentApi'
@@ -32,16 +37,24 @@ const validationSchema = Yup.object({
 
 const Blocks = () => {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [, setPage] = useState(1)
   const [, setLimit] = useState(10)
   const [societyFilter, setSocietyFilter] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingBlock, setEditingBlock] = useState(null)
 
+  const societyIdFromUrl = searchParams.get('society_id')
+
   useEffect(() => {
-    const societyId = searchParams.get('society_id')
-    if (societyId) setSocietyFilter(societyId)
-  }, [searchParams])
+    if (societyIdFromUrl) setSocietyFilter(societyIdFromUrl)
+  }, [societyIdFromUrl])
+
+  const { data: currentSocietyData } = useSWR(
+    societyIdFromUrl ? ['/society', societyIdFromUrl] : null,
+    () => apartmentApi.getById(societyIdFromUrl).then(res => res.data)
+  )
+  const currentSocietyName = currentSocietyData?.data?.name
 
   const { data: societiesData } = useSWR(
     '/societies',
@@ -69,7 +82,11 @@ const Blocks = () => {
         await propertyApi.updateBlock(editingBlock.id, values)
         toast.success('Block updated successfully')
       } else {
-        await propertyApi.createBlock(values)
+        await propertyApi.createBlock({
+          ...values,
+          total_floors: Number(values.total_floors) || 0,
+          total_units: Number(values.total_units) || 0,
+        })
         toast.success('Block created successfully')
       }
       mutate()
@@ -85,13 +102,35 @@ const Blocks = () => {
     { id: 'name', label: 'Block Name' },
     { id: 'society_name', label: 'Apartment', render: (row) => row.society_name || 'N/A' },
     { id: 'total_floors', label: 'Total Floors' },
-    { id: 'total_units', label: 'Total Units' },
+    {
+      id: 'total_units',
+      label: 'Total Units',
+      render: (row) => (row.total_units == null || Number(row.total_units) === 0 ? 'N/A' : row.total_units),
+    },
     {
       id: 'actions',
       label: 'Actions',
       align: 'right',
       render: (row) => (
-        <Box>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Tooltip title="Floors">
+            <IconButton
+              size="small"
+              onClick={() => navigate(`/super-admin/floors?society_id=${row.society_apartment_id}&block_id=${row.id}`)}
+              aria-label="Manage floors"
+            >
+              <LayersIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Units">
+            <IconButton
+              size="small"
+              onClick={() => navigate(`/super-admin/units?society_id=${row.society_apartment_id}&block_id=${row.id}`)}
+              aria-label="Manage units"
+            >
+              <DomainIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Edit">
             <IconButton size="small" onClick={() => handleOpenDialog(row)}>
               <EditIcon fontSize="small" />
@@ -103,14 +142,37 @@ const Blocks = () => {
   ]
 
   const initialValues = {
-    society_apartment_id: editingBlock?.society_apartment_id || societyFilter || '',
+    society_apartment_id: editingBlock?.society_apartment_id || societyFilter || societyIdFromUrl || '',
     name: editingBlock?.name || '',
-    total_floors: editingBlock?.total_floors || 0,
-    total_units: editingBlock?.total_units || 0,
+    total_floors: editingBlock != null ? (editingBlock.total_floors ?? 0) : '',
+    total_units: editingBlock != null ? (editingBlock.total_units ?? 0) : '',
   }
+
+  const backToApartmentsUrl = societyIdFromUrl
+    ? `/super-admin/societies?society_id=${societyIdFromUrl}`
+    : '/super-admin/societies'
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      {societyIdFromUrl && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton
+            component={RouterLink}
+            to={backToApartmentsUrl}
+            aria-label="Back to Apartments"
+            size="small"
+            sx={{ mr: 0.5 }}
+          >
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link component={RouterLink} to={backToApartmentsUrl} underline="hover" color="inherit">
+              Apartments
+            </Link>
+            <Typography color="text.primary">Blocks</Typography>
+          </Breadcrumbs>
+        </Box>
+      )}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
           Blocks Management
@@ -125,20 +187,26 @@ const Blocks = () => {
       </Box>
 
       <Box sx={{ mb: 3 }}>
-        <TextField
-          select
-          label="Filter by Apartment"
-          value={societyFilter}
-          onChange={(e) => setSocietyFilter(e.target.value)}
-          sx={{ minWidth: 250, mr: 2 }}
-        >
-          <MenuItem value="">All Apartments</MenuItem>
-          {societiesData?.data?.map((society) => (
-            <MenuItem key={society.id} value={society.id}>
-              {society.name}
-            </MenuItem>
-          ))}
-        </TextField>
+        {societyIdFromUrl && currentSocietyName ? (
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Apartment: <Typography component="span" color="primary.main">{currentSocietyName}</Typography>
+          </Typography>
+        ) : (
+          <TextField
+            select
+            label="Filter by Apartment"
+            value={societyFilter}
+            onChange={(e) => setSocietyFilter(e.target.value)}
+            sx={{ minWidth: 250, mr: 2 }}
+          >
+            <MenuItem value="">All Apartments</MenuItem>
+            {societiesData?.data?.map((society) => (
+              <MenuItem key={society.id} value={society.id}>
+                {society.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
       </Box>
 
       <DataTable
@@ -164,27 +232,38 @@ const Blocks = () => {
               </DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Apartment"
-                      name="society_apartment_id"
-                      value={values.society_apartment_id}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                      error={touched.society_apartment_id && !!errors.society_apartment_id}
-                      helperText={touched.society_apartment_id && errors.society_apartment_id}
-                      disabled={!!editingBlock}
-                    >
-                      <MenuItem value="">Select Apartment</MenuItem>
-                      {societiesData?.data?.map((society) => (
-                        <MenuItem key={society.id} value={society.id}>
-                          {society.name}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
+                  {(societyIdFromUrl && currentSocietyName) || editingBlock ? (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Apartment"
+                        value={editingBlock ? (societiesData?.data?.find((s) => s.id === editingBlock.society_apartment_id)?.name ?? '—') : currentSocietyName}
+                        disabled
+                        helperText={societyIdFromUrl ? 'Same apartment as selected from Apartments.' : undefined}
+                      />
+                    </Grid>
+                  ) : (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Apartment"
+                        name="society_apartment_id"
+                        value={values.society_apartment_id}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.society_apartment_id && !!errors.society_apartment_id}
+                        helperText={touched.society_apartment_id && errors.society_apartment_id}
+                      >
+                        <MenuItem value="">Select Apartment</MenuItem>
+                        {societiesData?.data?.map((society) => (
+                          <MenuItem key={society.id} value={society.id}>
+                            {society.name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                  )}
                   <Grid item xs={12}>
                     <TextField
                       fullWidth

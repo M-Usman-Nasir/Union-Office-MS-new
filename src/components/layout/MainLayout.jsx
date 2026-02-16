@@ -17,6 +17,8 @@ import {
   Avatar,
   Menu,
   MenuItem,
+  TextField,
+  InputAdornment,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -36,6 +38,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
+import SearchIcon from '@mui/icons-material/Search'
 import { useTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useAuth } from '@/contexts/AuthContext'
@@ -67,6 +70,7 @@ const MainLayout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [anchorEl, setAnchorEl] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const effectiveDrawerWidth = sidebarOpen ? drawerWidth : drawerWidthCollapsed
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('sm'))
@@ -121,13 +125,13 @@ const MainLayout = ({ children }) => {
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.ADMIN_DASHBOARD },
         { text: 'Residents', icon: <PeopleIcon />, path: ROUTES.ADMIN_RESIDENTS },
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.ADMIN_MAINTENANCE },
-        { text: 'Finance', icon: <AccountBalanceIcon />, path: ROUTES.ADMIN_FINANCE },
         { text: 'Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_DEFAULTERS },
+        { text: 'Finance', icon: <AccountBalanceIcon />, path: ROUTES.ADMIN_FINANCE },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.ADMIN_COMPLAINTS },
-        { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
-        { text: 'Messages', icon: <MessageIcon />, path: ROUTES.ADMIN_MESSAGES },
         { text: 'Users', icon: <PeopleIcon />, path: ROUTES.ADMIN_USERS },
+        { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
+        { text: 'Union Members', icon: <PeopleIcon />, path: ROUTES.ADMIN_UNION_MEMBERS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.ADMIN_PROFILE },
         { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
       ]
@@ -418,6 +422,31 @@ const MainLayout = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'Dashboard'}
           </Typography>
+          <TextField
+            size="small"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: 'inherit', opacity: 0.8 }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              width: { xs: 140, sm: 200 },
+              mr: 1,
+              '& .MuiOutlinedInput-root': {
+                color: 'inherit',
+                backgroundColor: (t) => (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.2)'),
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
+                '&.Mui-focused fieldset': { borderColor: 'rgba(255,255,255,0.8)' },
+              },
+              '& .MuiInputBase-input::placeholder': { color: 'inherit', opacity: 0.7 },
+            }}
+          />
           <IconButton
             onClick={toggleMode}
             color="inherit"

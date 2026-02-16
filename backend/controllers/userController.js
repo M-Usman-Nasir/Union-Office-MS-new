@@ -5,10 +5,10 @@ import { createOrUpdateSubscription } from './subscriptionController.js';
 // Get all users (Super Admin: all users; Union Admin: only users in their society)
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, role, search } = req.query;
+    const { page = 1, limit = 10, role, search, unassigned_only } = req.query;
     const offset = (page - 1) * limit;
 
-    let sql = 'SELECT id, email, name, role, society_apartment_id, unit_id, is_active, created_at, last_login FROM users WHERE 1=1';
+    let sql = 'SELECT id, email, name, role, society_apartment_id, unit_id, is_active, created_at, last_login, address, city, postal_code, work_employer, work_title, work_phone FROM users WHERE 1=1';
     const params = [];
     let paramCount = 0;
 
@@ -23,6 +23,11 @@ export const getAll = async (req, res) => {
       paramCount++;
       sql += ` AND role = $${paramCount}`;
       params.push(role);
+    }
+
+    // Super Admin: list only union admins not assigned to any apartment
+    if (req.user.role === 'super_admin' && unassigned_only === 'true') {
+      sql += ' AND society_apartment_id IS NULL';
     }
 
     if (search) {
@@ -50,6 +55,9 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND role = $${countParamCount}`;
       countParams.push(role);
+    }
+    if (req.user.role === 'super_admin' && unassigned_only === 'true') {
+      countSql += ' AND society_apartment_id IS NULL';
     }
     if (search) {
       countParamCount++;
@@ -85,7 +93,7 @@ export const getById = async (req, res) => {
     const { id } = req.params;
 
     const result = await query(
-      'SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, is_active, created_at, last_login FROM users WHERE id = $1',
+      'SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, is_active, created_at, last_login, address, city, postal_code, work_employer, work_title, work_phone FROM users WHERE id = $1',
       [id]
     );
 
@@ -121,11 +129,59 @@ export const getById = async (req, res) => {
   }
 };
 
+// Check if email is already used (users table only). exclude_id = current user when editing.
+export const checkEmail = async (req, res) => {
+  try {
+    const email = (req.query.email || '').trim().toLowerCase();
+    const excludeId = req.query.exclude_id ? parseInt(req.query.exclude_id, 10) : null;
+
+    if (!email) {
+      return res.status(400).json({
+        success: true,
+        data: { available: true },
+        message: 'No email provided',
+      });
+    }
+
+    const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!validEmailRegex.test(email)) {
+      return res.json({
+        success: true,
+        data: { available: true },
+        message: 'Invalid format; not checking',
+      });
+    }
+
+    let sql = 'SELECT id FROM users WHERE LOWER(email) = $1';
+    const params = [email];
+    if (excludeId && !Number.isNaN(excludeId)) {
+      sql += ' AND id != $2';
+      params.push(excludeId);
+    }
+    sql += ' LIMIT 1';
+
+    const result = await query(sql, params);
+    const available = result.rows.length === 0;
+
+    res.json({
+      success: true,
+      data: { available },
+    });
+  } catch (error) {
+    console.error('Check email error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check email',
+      error: error.message,
+    });
+  }
+};
+
 // Update user (Union Admin can only update users in their society or themselves; one union_admin per apartment enforced)
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active } = req.body;
+    const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, address, city, postal_code, work_employer, work_title, work_phone } = req.body;
 
     const existing = await query(
       'SELECT id, role, society_apartment_id FROM users WHERE id = $1',
@@ -189,10 +245,16 @@ export const update = async (req, res) => {
            contact_number = COALESCE($6, contact_number),
            emergency_contact = COALESCE($7, emergency_contact),
            is_active = COALESCE($8, is_active),
+           address = COALESCE($9, address),
+           city = COALESCE($10, city),
+           postal_code = COALESCE($11, postal_code),
+           work_employer = COALESCE($12, work_employer),
+           work_title = COALESCE($13, work_title),
+           work_phone = COALESCE($14, work_phone),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9
+       WHERE id = $15
        RETURNING id, email, name, role, society_apartment_id, unit_id, is_active, updated_at`,
-      [name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, id]
+      [name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, address, city, postal_code, work_employer, work_title, work_phone, id]
     );
 
     const updatedUser = result.rows[0];

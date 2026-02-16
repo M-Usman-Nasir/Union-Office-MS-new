@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link as RouterLink } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -7,16 +7,21 @@ import {
   Button,
   TextField,
   MenuItem,
-  IconButton,
-  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Grid,
+  IconButton,
+  Tooltip,
+  Breadcrumbs,
+  Link,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
+import DeleteIcon from '@mui/icons-material/Delete'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import DomainIcon from '@mui/icons-material/Domain'
 import useSWR from 'swr'
 import { propertyApi } from '@/api/propertyApi'
 import { apartmentApi } from '@/api/apartmentApi'
@@ -25,23 +30,30 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
-const validationSchema = Yup.object({
-  society_apartment_id: Yup.number().required('Apartment is required'),
-  block_id: Yup.number().required('Block is required'),
-  floor_number: Yup.number().min(1).required('Floor number is required'),
-})
-
 const Floors = () => {
   const [searchParams] = useSearchParams()
+  const societyIdFromUrl = searchParams.get('society_id')
+  const blockIdFromUrl = searchParams.get('block_id')
   const [societyFilter, setSocietyFilter] = useState('')
   const [blockFilter, setBlockFilter] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingFloor, setEditingFloor] = useState(null)
+  const [addUnitsDialog, setAddUnitsDialog] = useState({ open: false, floor: null, count: 1 })
+  const [addDialogBlockId, setAddDialogBlockId] = useState(null)
 
   useEffect(() => {
-    const societyId = searchParams.get('society_id')
-    if (societyId) setSocietyFilter(societyId)
-  }, [searchParams])
+    if (societyIdFromUrl) setSocietyFilter(societyIdFromUrl)
+  }, [societyIdFromUrl])
+
+  useEffect(() => {
+    if (blockIdFromUrl) setBlockFilter(blockIdFromUrl)
+  }, [blockIdFromUrl])
+
+  const { data: currentSocietyData } = useSWR(
+    societyIdFromUrl ? ['/society', societyIdFromUrl] : null,
+    () => apartmentApi.getById(societyIdFromUrl).then(res => res.data)
+  )
+  const currentSocietyName = currentSocietyData?.data?.name
 
   const { data: societiesData } = useSWR(
     '/societies',
@@ -63,8 +75,70 @@ const Floors = () => {
     () => propertyApi.getFloors({ block_id: blockFilter }).then(res => res.data)
   )
 
+  const { data: nextFloorData } = useSWR(
+    openDialog && !editingFloor && addDialogBlockId
+      ? ['/blocks/next-floor', addDialogBlockId]
+      : null,
+    () => propertyApi.getBlockNextFloorNumber(addDialogBlockId).then(res => res.data)
+  )
+  const nextFloorNumber =
+    openDialog && !editingFloor && nextFloorData?.data?.next_floor_number != null
+      ? nextFloorData.data.next_floor_number
+      : null
+  const canAddGround = Boolean(nextFloorData?.data?.can_add_ground)
+  const showGroundOption = !editingFloor && canAddGround && nextFloorNumber === 1
+
+  // When coming from Apartments (society_id only): auto-select first/only block; user can change
+  useEffect(() => {
+    if (!societyIdFromUrl || blockIdFromUrl) return
+    const blocks = blocksData?.data
+    if (blocks?.length > 0 && !blockFilter) {
+      setBlockFilter(blocks[0].id)
+    }
+  }, [societyIdFromUrl, blockIdFromUrl, blocksData?.data, blockFilter])
+
+  const currentBlockName = (blockIdFromUrl || blockFilter) && blocksData?.data
+    ? blocksData.data.find((b) => String(b.id) === String(blockIdFromUrl || blockFilter))?.name
+    : null
+  const showBlockReadOnly = (blockIdFromUrl && currentBlockName) || editingFloor || (!editingFloor && blockFilter && currentBlockName)
+  const backToApartmentsUrl = societyIdFromUrl
+    ? `/super-admin/societies?society_id=${societyIdFromUrl}`
+    : '/super-admin/societies'
+
+  const validationSchema = Yup.object({
+    society_apartment_id: Yup.number().required('Apartment is required'),
+    block_id: Yup.number().required('Block is required'),
+    floor_number: Yup.number()
+      .min(0, 'Use 0 for Ground floor')
+      .required('Floor number is required')
+      .test(
+        'unique-in-block',
+        'This floor number already exists in this block',
+        function (value) {
+          if (value == null || value === '') return true
+          const blockId = this.parent.block_id
+          if (blockId == null || blockId === '') return true
+          const sameBlock =
+            Number(blockId) === Number(blockFilter) ||
+            Number(blockId) === Number(blockIdFromUrl) ||
+            String(blockId) === String(blockFilter)
+          const existingFloors = sameBlock ? (floorsData?.data || []) : []
+          const excludeId = editingFloor?.id
+          const duplicate = existingFloors.some(
+            (f) =>
+              Number(f.floor_number) === Number(value) &&
+              (!excludeId || Number(f.id) !== Number(excludeId))
+          )
+          return !duplicate
+        }
+      ),
+  })
+
   const handleOpenDialog = (floor = null) => {
     setEditingFloor(floor)
+    if (!floor) {
+      setAddDialogBlockId(resolvedBlockId || blockFilter || blockIdFromUrl || null)
+    }
     setOpenDialog(true)
   }
 
@@ -73,17 +147,44 @@ const Floors = () => {
     setEditingFloor(null)
   }
 
+  const handleOpenAddUnitsDialog = (floor) => {
+    setAddUnitsDialog({ open: true, floor, count: 1 })
+  }
+
+  const handleCloseAddUnitsDialog = () => {
+    setAddUnitsDialog({ open: false, floor: null, count: 1 })
+  }
+
+  const handleAddUnitsSubmit = async () => {
+    const { floor, count } = addUnitsDialog
+    if (!floor?.id || !count || count < 1) return
+    try {
+      await propertyApi.addUnitsToFloor(floor.id, count)
+      toast.success(`${count} unit(s) added. They will appear on the Units page for this block.`)
+      mutate()
+      handleCloseAddUnitsDialog()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to add units')
+    }
+  }
+
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      // Ensure block_id is included (it's required)
-      const floorData = {
-        block_id: values.block_id,
-        floor_number: values.floor_number,
-        total_units: values.total_units || 0,
+      if (editingFloor) {
+        await propertyApi.updateFloor(editingFloor.id, {
+          floor_number: values.floor_number,
+          total_units: values.total_units ?? 0,
+        })
+        toast.success('Floor updated successfully')
+      } else {
+        const floorData = {
+          block_id: values.block_id,
+          floor_number: values.floor_number,
+          total_units: values.total_units || 0,
+        }
+        await propertyApi.createFloor(floorData)
+        toast.success('Floor created successfully')
       }
-      
-      await propertyApi.createFloor(floorData)
-      toast.success('Floor created successfully')
       mutate()
       handleCloseDialog()
     } catch (error) {
@@ -93,21 +194,140 @@ const Floors = () => {
     }
   }
 
+  const handleDelete = (row) => {
+    const label = row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`
+    const doDelete = async () => {
+      try {
+        await propertyApi.deleteFloor(row.id)
+        toast.success('Floor deleted successfully')
+        mutate()
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Delete failed')
+      }
+    }
+    toast.custom(
+      (t) => (
+        <Box
+          sx={{
+            background: (theme) =>
+              theme.palette.mode === 'dark' ? theme.palette.grey[900] : theme.palette.background.paper,
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            boxShadow: 3,
+            p: 2,
+            minWidth: 280,
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+            Delete {label}?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            This cannot be undone.
+          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button size="small" onClick={() => toast.dismiss(t.id)}>
+              Cancel
+            </Button>
+            <Button size="small" variant="contained" color="error" onClick={() => { toast.dismiss(t.id); doDelete() }}>
+              Delete
+            </Button>
+          </Box>
+        </Box>
+      ),
+      { duration: Infinity }
+    )
+  }
+
   const columns = [
-    { id: 'floor_number', label: 'Floor Number' },
+    {
+      id: 'floor_number',
+      label: 'Floor',
+      render: (row) => (row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`),
+    },
     { id: 'block_name', label: 'Block', render: (row) => row.block_name || 'N/A' },
-    { id: 'total_units', label: 'Total Units' },
+    {
+      id: 'total_units',
+      label: 'Total Units',
+      render: (row) => {
+        const count = row.units_count != null ? row.units_count : row.total_units
+        return count == null || Number(count) === 0 ? 'N/A' : count
+      },
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (row) => (
+        <Box component="span" sx={{ display: 'inline-flex', gap: 0.5 }}>
+          <Tooltip title="Add units to this floor">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => handleOpenAddUnitsDialog(row)}
+              aria-label={`Add units to ${row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`}`}
+            >
+              <DomainIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => handleOpenDialog(row)}
+              aria-label={`Edit ${row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`}`}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => handleDelete(row)}
+              aria-label={`Delete ${row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`}`}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      ),
+    },
   ]
 
+  const resolvedSocietyId = editingFloor?.society_apartment_id ?? societyFilter ?? societyIdFromUrl ?? ''
+  const resolvedBlockId = editingFloor?.block_id ?? blockFilter ?? blockIdFromUrl ?? ''
   const initialValues = {
-    society_apartment_id: editingFloor?.society_apartment_id || societyFilter || '',
-    block_id: editingFloor?.block_id || blockFilter || '',
-    floor_number: editingFloor?.floor_number || '',
+    society_apartment_id: resolvedSocietyId !== '' ? Number(resolvedSocietyId) || resolvedSocietyId : '',
+    block_id: resolvedBlockId !== '' ? Number(resolvedBlockId) || resolvedBlockId : '',
+    floor_number:
+      editingFloor != null
+        ? editingFloor.floor_number
+        : (nextFloorNumber ?? 1),
     total_units: editingFloor?.total_units || 0,
   }
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      {societyIdFromUrl && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton
+            component={RouterLink}
+            to={backToApartmentsUrl}
+            aria-label="Back to Apartments"
+            size="small"
+            sx={{ mr: 0.5 }}
+          >
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link component={RouterLink} to={backToApartmentsUrl} underline="hover" color="inherit">
+              Apartments
+            </Link>
+            <Typography color="text.primary">Floors</Typography>
+          </Breadcrumbs>
+        </Box>
+      )}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
           Floors Management
@@ -122,38 +342,50 @@ const Floors = () => {
       </Box>
 
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
-        <TextField
-          select
-          label="Select Apartment"
-          value={societyFilter}
-          onChange={(e) => {
-            setSocietyFilter(e.target.value)
-            setBlockFilter('')
-          }}
-          sx={{ minWidth: 250 }}
-        >
-          <MenuItem value="">Select Apartment</MenuItem>
-          {societiesData?.data?.map((society) => (
-            <MenuItem key={society.id} value={society.id}>
-              {society.name}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Select Block"
-          value={blockFilter}
-          onChange={(e) => setBlockFilter(e.target.value)}
-          disabled={!societyFilter}
-          sx={{ minWidth: 250 }}
-        >
-          <MenuItem value="">Select Block</MenuItem>
-          {blocksData?.data?.map((block) => (
-            <MenuItem key={block.id} value={block.id}>
-              {block.name}
-            </MenuItem>
-          ))}
-        </TextField>
+        {societyIdFromUrl && currentSocietyName ? (
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Apartment: <Typography component="span" color="primary.main">{currentSocietyName}</Typography>
+          </Typography>
+        ) : (
+          <TextField
+            select
+            label="Select Apartment"
+            value={societyFilter}
+            onChange={(e) => {
+              setSocietyFilter(e.target.value)
+              setBlockFilter('')
+            }}
+            sx={{ minWidth: 250 }}
+          >
+            <MenuItem value="">Select Apartment</MenuItem>
+            {societiesData?.data?.map((society) => (
+              <MenuItem key={society.id} value={society.id}>
+                {society.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+        {blockIdFromUrl && currentBlockName ? (
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Block: <Typography component="span" color="primary.main">{currentBlockName}</Typography>
+          </Typography>
+        ) : (
+          <TextField
+            select
+            label="Select Block"
+            value={blockFilter}
+            onChange={(e) => setBlockFilter(e.target.value)}
+            disabled={!societyFilter}
+            sx={{ minWidth: 250 }}
+          >
+            <MenuItem value="">Select Block</MenuItem>
+            {blocksData?.data?.map((block) => (
+              <MenuItem key={block.id} value={block.id}>
+                {block.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
       </Box>
 
       {!blockFilter ? (
@@ -183,83 +415,135 @@ const Floors = () => {
         >
           {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
             <Form>
-              <DialogTitle>Add New Floor</DialogTitle>
+              <DialogTitle>{editingFloor ? 'Edit Floor' : 'Add New Floor'}</DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Apartment"
-                      name="society_apartment_id"
-                      value={values.society_apartment_id}
-                      onChange={(e) => {
-                        handleChange(e)
-                        // Reset block when society changes
-                        if (e.target.value !== values.society_apartment_id) {
-                          handleChange({ target: { name: 'block_id', value: '' } })
-                        }
-                      }}
-                      onBlur={handleBlur}
-                      error={touched.society_apartment_id && !!errors.society_apartment_id}
-                      helperText={touched.society_apartment_id && errors.society_apartment_id}
-                      disabled={!!editingFloor}
-                    >
-                      <MenuItem value="">Select Apartment</MenuItem>
-                      {societiesData?.data?.map((society) => (
-                        <MenuItem key={society.id} value={society.id}>
-                          {society.name}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Block"
-                      name="block_id"
-                      value={values.block_id}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                      error={touched.block_id && !!errors.block_id}
-                      helperText={touched.block_id && errors.block_id}
-                      disabled={!values.society_apartment_id || !!editingFloor}
-                    >
-                      <MenuItem value="">Select Block</MenuItem>
-                      {(values.society_apartment_id
-                        ? (blocksData?.data || []).filter(
-                            (block) => block.society_apartment_id === values.society_apartment_id
-                          )
-                        : (allBlocksData?.data || [])
-                      ).map((block) => (
-                        <MenuItem key={block.id} value={block.id}>
-                          {block.name}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Floor Number"
-                      name="floor_number"
-                      type="number"
-                      inputProps={{ min: 1 }}
-                      value={values.floor_number}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        if (raw === '') {
+                  {(societyIdFromUrl && currentSocietyName) || editingFloor ? (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Apartment"
+                        value={editingFloor ? (societiesData?.data?.find((s) => String(s.id) === String(editingFloor.society_apartment_id))?.name ?? '—') : currentSocietyName}
+                        disabled
+                        helperText={societyIdFromUrl ? 'Same apartment as selected from Apartments.' : undefined}
+                      />
+                    </Grid>
+                  ) : (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Apartment"
+                        name="society_apartment_id"
+                        value={values.society_apartment_id}
+                        onChange={(e) => {
                           handleChange(e)
-                          return
+                          if (e.target.value !== values.society_apartment_id) {
+                            handleChange({ target: { name: 'block_id', value: '' } })
+                          }
+                        }}
+                        onBlur={handleBlur}
+                        error={touched.society_apartment_id && !!errors.society_apartment_id}
+                        helperText={touched.society_apartment_id && errors.society_apartment_id}
+                      >
+                        <MenuItem value="">Select Apartment</MenuItem>
+                        {societiesData?.data?.map((society) => (
+                          <MenuItem key={society.id} value={society.id}>
+                            {society.name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                  )}
+                  {showBlockReadOnly ? (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Block"
+                        value={editingFloor ? (blocksData?.data?.find((b) => String(b.id) === String(editingFloor.block_id))?.name ?? '—') : currentBlockName}
+                        disabled
+                        helperText={blockIdFromUrl ? 'Same block as selected from Blocks.' : blockFilter ? 'Same block as selected in Floors table.' : undefined}
+                      />
+                    </Grid>
+                  ) : (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Block"
+                        name="block_id"
+                        value={values.block_id}
+                        onChange={(e) => {
+                          handleChange(e)
+                          if (!editingFloor) setAddDialogBlockId(e.target.value || null)
+                        }}
+                        onBlur={handleBlur}
+                        error={touched.block_id && !!errors.block_id}
+                        helperText={touched.block_id && errors.block_id}
+                        disabled={!values.society_apartment_id}
+                      >
+                        <MenuItem value="">Select Block</MenuItem>
+                        {(values.society_apartment_id
+                          ? (blocksData?.data || []).filter(
+                              (block) => block.society_apartment_id === values.society_apartment_id
+                            )
+                          : (allBlocksData?.data || [])
+                        ).map((block) => (
+                          <MenuItem key={block.id} value={block.id}>
+                            {block.name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                  )}
+                  <Grid item xs={12}>
+                    {showGroundOption ? (
+                      <TextField
+                        fullWidth
+                        select
+                        label="Floor"
+                        name="floor_number"
+                        value={values.floor_number}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.floor_number && !!errors.floor_number}
+                        helperText={
+                          (touched.floor_number && errors.floor_number) ||
+                          'First floor (1) is for residents. Ground (0) is optional (e.g. shops/showrooms).'
                         }
-                        const num = Math.max(1, parseInt(raw, 10) || 1)
-                        handleChange({ target: { name: e.target.name, value: num } })
-                      }}
-                      onBlur={handleBlur}
-                      error={touched.floor_number && !!errors.floor_number}
-                      helperText={touched.floor_number && errors.floor_number}
-                    />
+                      >
+                        <MenuItem value={1}>1 – First floor (for residents)</MenuItem>
+                        <MenuItem value={0}>0 – Ground floor (optional, e.g. shops/showrooms)</MenuItem>
+                      </TextField>
+                    ) : (
+                      <TextField
+                        fullWidth
+                        label="Floor Number"
+                        name="floor_number"
+                        type="number"
+                        inputProps={{ min: 0 }}
+                        value={values.floor_number}
+                        onChange={(e) => {
+                          if (editingFloor) {
+                            const raw = e.target.value
+                            if (raw === '') {
+                              handleChange(e)
+                              return
+                            }
+                            const num = Math.max(0, parseInt(raw, 10) || 0)
+                            handleChange({ target: { name: e.target.name, value: num } })
+                          }
+                        }}
+                        onBlur={handleBlur}
+                        disabled={!editingFloor}
+                        error={touched.floor_number && !!errors.floor_number}
+                        helperText={
+                          editingFloor
+                            ? ((touched.floor_number && errors.floor_number) || '0 = Ground (optional), 1 = First, 2 = Second, etc.')
+                            : `Next resident floor in sequence (1, 2, 3, …). Ground floor (0) is optional.`
+                        }
+                      />
+                    )}
                   </Grid>
                   <Grid item xs={12}>
                     <TextField
@@ -286,12 +570,42 @@ const Floors = () => {
               <DialogActions>
                 <Button onClick={handleCloseDialog}>Cancel</Button>
                 <Button type="submit" variant="contained" disabled={isSubmitting}>
-                  Create
+                  {editingFloor ? 'Update' : 'Create'}
                 </Button>
               </DialogActions>
             </Form>
           )}
         </Formik>
+      </Dialog>
+
+      <Dialog open={addUnitsDialog.open} onClose={handleCloseAddUnitsDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          Add units to {addUnitsDialog.floor ? (addUnitsDialog.floor.floor_number === 0 ? 'Ground floor' : `Floor ${addUnitsDialog.floor.floor_number}`) : ''}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            type="number"
+            label="Number of units"
+            inputProps={{ min: 1, max: 999 }}
+            value={addUnitsDialog.count}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10)
+              setAddUnitsDialog((prev) => ({ ...prev, count: isNaN(v) || v < 1 ? 1 : v }))
+            }}
+            sx={{ mt: 1 }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            New unit rows will appear on the Units page with empty fields. Union admin can then add residents.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAddUnitsDialog}>Cancel</Button>
+          <Button variant="contained" onClick={handleAddUnitsSubmit}>
+            Add units
+          </Button>
+        </DialogActions>
       </Dialog>
     </Container>
   )

@@ -11,12 +11,18 @@ import {
   Chip,
   Divider,
   Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
 import PersonIcon from '@mui/icons-material/Person'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
+import LockIcon from '@mui/icons-material/Lock'
 import { useAuth } from '@/contexts/AuthContext'
 import { authApi } from '@/api/authApi'
+import { userApi } from '@/api/userApi'
 import useSWR from 'swr'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -30,11 +36,22 @@ const validationSchema = Yup.object({
   cnic: Yup.string(),
 })
 
+const passwordChangeSchema = Yup.object({
+  new_password: Yup.string()
+    .min(6, 'Password must be at least 6 characters')
+    .required('New password is required'),
+  confirm_password: Yup.string()
+    .oneOf([Yup.ref('new_password'), null], 'Passwords must match')
+    .required('Please confirm your password'),
+})
+
 const SuperAdminProfile = () => {
   const { user, mutate: mutateAuth } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
   const fileInputRef = useRef(null)
 
   const { data: userData, mutate } = useSWR(
@@ -115,19 +132,37 @@ const SuperAdminProfile = () => {
     }
   }
 
+  const handleChangePassword = async (values) => {
+    const userId = user?.id ?? userData?.id
+    if (!userId) {
+      toast.error('User not found')
+      return
+    }
+    setIsChangingPassword(true)
+    try {
+      await userApi.updatePassword(userId, { new_password: values.new_password })
+      toast.success('Password changed successfully')
+      setPasswordDialogOpen(false)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to change password')
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
   const profileData = userData || user
   const displayImage = imagePreview || getImageUrl(profileData?.profile_image)
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
+      {/* <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" sx={{ mb: 1 }}>
           My Profile
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Manage your account information and personal details
         </Typography>
-      </Box>
+      </Box> */}
 
       <Card>
         <CardContent>
@@ -340,6 +375,82 @@ const SuperAdminProfile = () => {
           </Formik>
         </CardContent>
       </Card>
+
+      {/* Change Password Section */}
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <LockIcon sx={{ mr: 1, color: 'primary.main' }} />
+            <Typography variant="h6">Security</Typography>
+          </Box>
+          <Divider sx={{ mb: 3 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Change your account password. Use a strong password with at least 6 characters.
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<LockIcon />}
+            onClick={() => setPasswordDialogOpen(true)}
+          >
+            Change Password
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Change Password Dialog */}
+      <Dialog open={passwordDialogOpen} onClose={() => !isChangingPassword && setPasswordDialogOpen(false)} maxWidth="sm" fullWidth>
+        <Formik
+          initialValues={{ new_password: '', confirm_password: '' }}
+          validationSchema={passwordChangeSchema}
+          onSubmit={handleChangePassword}
+        >
+          {({ values, errors, touched, handleChange, handleBlur, handleSubmit }) => (
+            <Form onSubmit={handleSubmit}>
+              <DialogTitle>Change Password</DialogTitle>
+              <DialogContent>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="New Password"
+                      name="new_password"
+                      type="password"
+                      value={values.new_password}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.new_password && !!errors.new_password}
+                      helperText={touched.new_password && errors.new_password}
+                      autoComplete="new-password"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Confirm New Password"
+                      name="confirm_password"
+                      type="password"
+                      value={values.confirm_password}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.confirm_password && !!errors.confirm_password}
+                      helperText={touched.confirm_password && errors.confirm_password}
+                      autoComplete="new-password"
+                    />
+                  </Grid>
+                </Grid>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setPasswordDialogOpen(false)} disabled={isChangingPassword}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="contained" disabled={isChangingPassword}>
+                  {isChangingPassword ? 'Updating...' : 'Update Password'}
+                </Button>
+              </DialogActions>
+            </Form>
+          )}
+        </Formik>
+      </Dialog>
     </Container>
   )
 }

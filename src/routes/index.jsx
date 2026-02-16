@@ -24,6 +24,7 @@ import Announcements from '@/pages/admin/Announcements'
 import Settings from '@/pages/admin/Settings'
 import AdminProfile from '@/pages/admin/Profile'
 import Messages from '@/pages/admin/Messages'
+import UnionMembers from '@/pages/admin/UnionMembers'
 import ResidentDashboard from '@/pages/resident/Dashboard'
 import ResidentComplaints from '@/pages/resident/Complaints'
 import ResidentMaintenance from '@/pages/resident/Maintenance'
@@ -81,6 +82,7 @@ export const AppRoutes = () => {
                 <Route path="messages" element={<Messages />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="users" element={<Users />} />
+                <Route path="union-members" element={<UnionMembers />} />
                 <Route path="profile" element={<AdminProfile />} />
               </Routes>
             </MainLayout>

@@ -10,6 +10,9 @@ router.use(authenticate);
 // Get all users (super admin and union admin)
 router.get('/', requireRole('super_admin', 'union_admin'), userController.getAll);
 
+// Check if email exists (must be before /:id)
+router.get('/check-email', requireRole('super_admin', 'union_admin'), userController.checkEmail);
+
 // Get user by ID
 router.get('/:id', requireRole('super_admin', 'union_admin'), userController.getById);
 

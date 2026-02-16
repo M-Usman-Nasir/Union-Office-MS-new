@@ -123,7 +123,7 @@ export const login = async (req, res) => {
 // Register (for super admin to create users)
 export const register = async (req, res) => {
   try {
-    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status } = req.body;
+    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status, address, city, postal_code, work_employer, work_title, work_phone } = req.body;
 
     // Validation
     if (!email || !password || !name || !role) {
@@ -173,8 +173,8 @@ export const register = async (req, res) => {
 
     // Create user
     const result = await query(
-      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, created_by, address, city, postal_code, work_employer, work_title, work_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING id, email, name, role, society_apartment_id, unit_id, created_at`,
       [
         email.toLowerCase(),
@@ -187,6 +187,12 @@ export const register = async (req, res) => {
         contact_number || null,
         emergency_contact || null,
         req.user?.id || null,
+        address || null,
+        city || null,
+        postal_code || null,
+        work_employer || null,
+        work_title || null,
+        work_phone || null,
       ]
     );
 

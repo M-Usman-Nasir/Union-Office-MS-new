@@ -19,6 +19,7 @@ import {
   ListItemText,
   Divider,
   IconButton,
+  Autocomplete,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -29,10 +30,11 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import LayersIcon from '@mui/icons-material/Layers'
 import DomainIcon from '@mui/icons-material/Domain'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import useSWR from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
-import { authApi } from '@/api/authApi'
+import { userApi } from '@/api/userApi'
 import { superAdminApi } from '@/api/superAdminApi'
 import DataTable from '@/components/common/DataTable'
 import AddressAutocomplete from '@/components/common/AddressAutocomplete'
@@ -49,19 +51,12 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
-const getValidationSchema = (isEdit) =>
-  Yup.object({
+const validationSchema = Yup.object({
     name: Yup.string().required('Name is required'),
     address: Yup.string(),
     city: Yup.string(),
     total_floors: Yup.number().min(0).nullable(),
-    ...(!isEdit && {
-      client_name: Yup.string().required('Client name is required'),
-      client_email: Yup.string().email('Invalid email').required('Client email is required'),
-      client_password: Yup.string().min(6, 'At least 6 characters').required('Client password is required'),
-      client_contact_number: Yup.string().nullable(),
-      plan_id: Yup.number().nullable(),
-    }),
+    assigned_union_admin_id: Yup.number().nullable(),
   })
 
 const Apartments = () => {
@@ -72,6 +67,8 @@ const Apartments = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [editingSociety, setEditingSociety] = useState(null)
   const [actionMenu, setActionMenu] = useState({ anchorEl: null, row: null })
+  const [assignAdminRow, setAssignAdminRow] = useState(null)
+  const [assignSelectedAdmin, setAssignSelectedAdmin] = useState(null)
 
   const openActionMenu = (e, row) => {
     e.stopPropagation()
@@ -84,17 +81,24 @@ const Apartments = () => {
     () => apartmentApi.getAll({ page, limit, search }).then(res => res.data)
   )
 
-  const { data: plansData } = useSWR(
-    openDialog && !editingSociety ? '/super-admin/subscription/plans' : null,
-    () => superAdminApi.getSubscriptionPlans().then(res => res.data)
-  )
-  const subscriptionPlans = plansData?.data ?? []
-
   const { data: adminsData, mutate: mutateAdmins } = useSWR(
     '/super-admin/subscription/admins',
     () => superAdminApi.getAdminsWithSubscriptions().then(res => res.data)
   )
   const admins = adminsData?.data ?? []
+
+  const { data: unassignedAdminsData } = useSWR(
+    openDialog || assignAdminRow ? '/users/unassigned-union-admins' : null,
+    () => userApi.getUnassignedUnionAdmins().then(res => res.data)
+  )
+  const unassignedUnionAdmins = unassignedAdminsData?.data ?? []
+
+  const { data: apartmentDetailData } = useSWR(
+    openDialog && editingSociety?.id ? ['/apartment-detail', editingSociety.id] : null,
+    () => apartmentApi.getById(editingSociety.id).then(res => res.data)
+  )
+  const apartmentDetail = apartmentDetailData?.data
+
   const [activatingId, setActivatingId] = useState(null)
 
   const handleActivateSubscription = async (subscriptionId) => {
@@ -122,10 +126,45 @@ const Apartments = () => {
     setEditingSociety(null)
   }
 
+  const handleOpenAssignAdmin = (row) => {
+    setAssignAdminRow(row)
+    setAssignSelectedAdmin(null)
+    closeActionMenu()
+  }
+
+  const handleCloseAssignAdmin = () => {
+    setAssignAdminRow(null)
+    setAssignSelectedAdmin(null)
+  }
+
+  const handleAssignAdmin = async () => {
+    if (!assignAdminRow || !assignSelectedAdmin?.id) return
+    try {
+      await userApi.update(assignSelectedAdmin.id, { society_apartment_id: assignAdminRow.id })
+      toast.success('Union Admin assigned successfully.')
+      mutate()
+      mutateAdmins()
+      handleCloseAssignAdmin()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Assignment failed')
+    }
+  }
+
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
       if (editingSociety) {
-        await apartmentApi.update(editingSociety.id, values)
+        await apartmentApi.update(editingSociety.id, {
+          name: values.name,
+          address: values.address,
+          city: values.city,
+          area: values.area,
+          total_blocks: values.total_blocks,
+          total_floors: values.total_floors,
+          total_units: values.total_units,
+        })
+        if (values.assigned_union_admin_id && !assignedAdminForEdit) {
+          await userApi.update(values.assigned_union_admin_id, { society_apartment_id: editingSociety.id })
+        }
         toast.success('Apartment updated successfully')
       } else {
         const payload = {
@@ -156,20 +195,11 @@ const Apartments = () => {
             })
           }
         }
-        // Create client (Union Admin) for this apartment with pending subscription; super admin activates later
-        if (newId && values.client_email && values.client_name && values.client_password) {
-          await authApi.register({
-            name: values.client_name,
-            email: values.client_email,
-            password: values.client_password,
-            role: 'union_admin',
-            society_apartment_id: newId,
-            contact_number: values.client_contact_number || null,
-            plan_id: values.plan_id ? Number(values.plan_id) : null,
-            subscription_status: 'pending',
-          })
+        // Assign selected unassigned Union Admin to this apartment
+        if (newId && values.assigned_union_admin_id) {
+          await userApi.update(values.assigned_union_admin_id, { society_apartment_id: newId })
         }
-        toast.success('Apartment and client created. Activate the client subscription from Admins to allow login.')
+        toast.success(values.assigned_union_admin_id ? 'Apartment created and Union Admin assigned.' : 'Apartment created successfully.')
       }
       mutate()
       handleCloseDialog()
@@ -193,7 +223,7 @@ const Apartments = () => {
 
   const confirmDelete = (id) => {
     closeActionMenu()
-    const toastId = toast.custom(
+    toast.custom(
       (t) => (
         <Box
           sx={{
@@ -232,16 +262,42 @@ const Apartments = () => {
   }
 
   const columns = [
-    { id: 'name', label: 'Name' },
+    {
+      id: 'name',
+      label: 'Name',
+      minWidth: 180,
+      render: (row) => (
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+          {row.name || '—'}
+        </Typography>
+      ),
+    },
     { id: 'address', label: 'Address' },
+    {
+      id: 'union_admin',
+      label: 'Union Admin',
+      minWidth: 160,
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        return (
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+            {admin ? admin.name : '—'}
+          </Typography>
+        )
+      },
+    },
     { id: 'city', label: 'City' },
     { id: 'area', label: 'Area' },
-    { id: 'total_blocks', label: 'Blocks' },
-    { id: 'total_floors', label: 'Floors' },
-    { id: 'total_units', label: 'Units' },
+    { id: 'total_blocks', label: 'Block' },
+    { id: 'total_floors', label: 'Floor' },
+    {
+      id: 'total_units',
+      label: 'Unit',
+      render: (row) => (row.total_units == null || Number(row.total_units) === 0 ? 'N/A' : row.total_units),
+    },
     {
       id: 'actions',
-      label: 'Actions',
+      label: 'Action',
       align: 'right',
       render: (row) => (
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -310,6 +366,12 @@ const Apartments = () => {
                     </MenuItem>
                   ) : null
                 })()}
+                {!admins.find((a) => a.society_apartment_id === actionMenu.row.id) && (
+                  <MenuItem onClick={() => handleOpenAssignAdmin(actionMenu.row)}>
+                    <ListItemIcon><PersonAddIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText>Assign Union Admin</ListItemText>
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={() => {
                     handleOpenDialog(actionMenu.row)
@@ -334,16 +396,23 @@ const Apartments = () => {
     },
   ]
 
-  const initialValues = editingSociety
+  const assignedAdminForEdit = editingSociety
+    ? admins.find((a) => a.society_apartment_id === editingSociety.id)
+    : null
+
+  const editSource = editingSociety ? (apartmentDetail || editingSociety) : null
+
+  const initialValues = editSource
     ? {
-        name: editingSociety.name || '',
-        address: editingSociety.address || '',
-        city: editingSociety.city || '',
-        area: editingSociety.area || '',
-        total_blocks: editingSociety.total_blocks || 0,
-        total_floors: editingSociety.total_floors ?? 0,
-        total_units: editingSociety.total_units || 0,
+        name: editSource.name || '',
+        address: editSource.address || '',
+        city: editSource.city || '',
+        area: editSource.area || '',
+        total_blocks: editSource.total_blocks ?? 0,
+        total_floors: editSource.total_floors ?? 0,
+        total_units: editSource.total_units ?? 0,
         blockNames: [],
+        assigned_union_admin_id: assignedAdminForEdit?.id ?? null,
       }
     : {
         name: '',
@@ -354,11 +423,7 @@ const Apartments = () => {
         total_floors: 0,
         total_units: 0,
         blockNames: [],
-        client_name: '',
-        client_email: '',
-        client_password: '',
-        client_contact_number: '',
-        plan_id: '',
+        assigned_union_admin_id: null,
       }
 
   const totalLeads = data?.pagination?.total ?? (data?.data?.length ?? 0)
@@ -415,7 +480,7 @@ const Apartments = () => {
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik
           initialValues={initialValues}
-          validationSchema={getValidationSchema(!!editingSociety)}
+          validationSchema={validationSchema}
           onSubmit={handleSubmit}
           enableReinitialize
         >
@@ -425,17 +490,21 @@ const Apartments = () => {
                 {editingSociety ? 'Edit Apartment' : 'Add New Apartment'}
               </DialogTitle>
               <DialogContent>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Blocks, floors and units are optional. You can add them here or later from Blocks / Floors / Units.
+                </Typography>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
-                      label="Name"
+                      label="Apartment name"
                       name="name"
                       value={values.name}
                       onChange={handleChange}
                       onBlur={handleBlur}
                       error={touched.name && !!errors.name}
                       helperText={touched.name && errors.name}
+                      placeholder="e.g. Sunrise Towers, Green Valley"
                     />
                   </Grid>
                   <Grid item xs={12} sx={{ position: 'relative', zIndex: 10 }}>
@@ -501,7 +570,6 @@ const Apartments = () => {
                         setFieldValue('blockNames', names)
                       }}
                       onBlur={handleBlur}
-                      disabled={!!editingSociety}
                     />
                   </Grid>
                   <Grid item xs={6}>
@@ -569,86 +637,50 @@ const Apartments = () => {
                       </Grid>
                     </Grid>
                   )}
-                  {!editingSociety && (
-                    <>
-                      <Grid item xs={12}>
-                        <Typography variant="subtitle1" sx={{ mt: 1, mb: 0.5, fontWeight: 600 }}>
-                          Client (Union Admin)
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Create the apartment client. Subscription will be pending until you activate it from Admins.
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Client name"
-                          name="client_name"
-                          value={values.client_name || ''}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={touched.client_name && !!errors.client_name}
-                          helperText={touched.client_name && errors.client_name}
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Client email"
-                          name="client_email"
-                          type="email"
-                          value={values.client_email || ''}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={touched.client_email && !!errors.client_email}
-                          helperText={touched.client_email && errors.client_email}
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Client password"
-                          name="client_password"
-                          type="password"
-                          value={values.client_password || ''}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={touched.client_password && !!errors.client_password}
-                          helperText={touched.client_password && errors.client_password}
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          fullWidth
-                          label="Contact number"
-                          name="client_contact_number"
-                          value={values.client_contact_number || ''}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                        />
-                      </Grid>
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          select
-                          label="Package"
-                          name="plan_id"
-                          value={values.plan_id || ''}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={touched.plan_id && !!errors.plan_id}
-                          helperText={touched.plan_id && errors.plan_id}
-                        >
-                          <MenuItem value="">Select package</MenuItem>
-                          {subscriptionPlans.map((plan) => (
-                            <MenuItem key={plan.id} value={plan.id}>
-                              {plan.name} — {plan.amount} / {plan.interval_months} mo
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </Grid>
-                    </>
-                  )}
+                  <Grid item xs={12} sx={{ position: 'relative', zIndex: 10 }}>
+                      <Typography variant="subtitle1" sx={{ mt: 1, mb: 0.5, fontWeight: 600 }}>
+                        Union Admin {editingSociety ? '(assigned to this apartment)' : '(assign to this apartment)'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                        {editingSociety && assignedAdminForEdit
+                          ? 'Assigned admin cannot be changed here.'
+                          : 'Type to search. Only unassigned Union Admins are shown.'}
+                      </Typography>
+                      <Autocomplete
+                        fullWidth
+                        options={
+                          assignedAdminForEdit
+                            ? [assignedAdminForEdit, ...unassignedUnionAdmins]
+                            : unassignedUnionAdmins
+                        }
+                        getOptionLabel={(option) => (option && option.name) || ''}
+                        value={
+                          assignedAdminForEdit ||
+                          unassignedUnionAdmins.find((a) => a.id === values.assigned_union_admin_id) ||
+                          null
+                        }
+                        onChange={(_, newValue) => {
+                          setFieldValue('assigned_union_admin_id', newValue ? newValue.id : null)
+                        }}
+                        onBlur={() => handleBlur({ target: { name: 'assigned_union_admin_id' } })}
+                        disabled={!!assignedAdminForEdit}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            name="assigned_union_admin_id"
+                            label="Select Union Admin"
+                            error={touched.assigned_union_admin_id && !!errors.assigned_union_admin_id}
+                            helperText={touched.assigned_union_admin_id && errors.assigned_union_admin_id}
+                          />
+                        )}
+                        renderOption={(props, option) => (
+                          <li {...props} key={option.id}>
+                            {option.name} {option.email ? `(${option.email})` : ''}
+                          </li>
+                        )}
+                        isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                      />
+                  </Grid>
                 </Grid>
               </DialogContent>
               <DialogActions>
@@ -661,8 +693,44 @@ const Apartments = () => {
           )}
         </Formik>
       </Dialog>
+
+      <Dialog open={Boolean(assignAdminRow)} onClose={handleCloseAssignAdmin} maxWidth="xs" fullWidth>
+        <DialogTitle>Assign Union Admin</DialogTitle>
+        <DialogContent>
+          {assignAdminRow && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Apartment: <strong>{assignAdminRow.name}</strong>
+            </Typography>
+          )}
+          <Autocomplete
+            fullWidth
+            options={unassignedUnionAdmins}
+            getOptionLabel={(option) => (option && option.name) || ''}
+            value={assignSelectedAdmin}
+            onChange={(_, newValue) => setAssignSelectedAdmin(newValue)}
+            renderInput={(params) => (
+              <TextField {...params} label="Select Union Admin" placeholder="Type to search..." />
+            )}
+            renderOption={(props, option) => (
+              <li {...props} key={option.id}>
+                {option.name} {option.email ? `(${option.email})` : ''}
+              </li>
+            )}
+            isOptionEqualToValue={(option, value) => option?.id === value?.id}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAssignAdmin}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleAssignAdmin}
+            disabled={!assignSelectedAdmin?.id}
+          >
+            Assign
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   )
 }
-
 export default Apartments

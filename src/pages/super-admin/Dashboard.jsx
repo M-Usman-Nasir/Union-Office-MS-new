@@ -22,12 +22,16 @@ import ApartmentIcon from '@mui/icons-material/Apartment'
 import HomeIcon from '@mui/icons-material/Home'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import CardMembershipIcon from '@mui/icons-material/CardMembership'
+import CancelPresentationIcon from '@mui/icons-material/CancelPresentation'
+import BarChartIcon from '@mui/icons-material/BarChart'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import { superAdminApi } from '@/api/superAdminApi'
 import PieChart from '@/components/charts/PieChart'
+import BarChart from '@/components/charts/BarChart'
 import { ROUTES } from '@/utils/constants'
 import dayjs from 'dayjs'
 
@@ -75,6 +79,7 @@ const SuperAdminDashboard = () => {
     unitsData?.data?.length ??
     societies.reduce((sum, s) => sum + (Number(s.total_units) || 0), 0)
 
+  const totalAdmins = adminsData?.pagination?.total ?? admins.length
   const activeSubscribers = admins.filter(
     (a) => (a.subscription_status || '').toLowerCase() === 'active' || (a.subscription_status || '').toLowerCase() === 'trial'
   ).length
@@ -88,8 +93,16 @@ const SuperAdminDashboard = () => {
     return acc
   }, {})
 
+  const trialSubscribers = subscriptionByStatus.trial ?? 0
+  const cancelledSubscribers = subscriptionByStatus.cancelled ?? 0
+  const avgUnitsPerClient =
+    totalClients > 0 ? Math.round((totalUnits / totalClients) * 10) / 10 : null
   const recentSubscribers = admins.slice(0, 8)
   const recentClients = societies.slice(0, 8)
+  const topClientsByUnits = [...societies]
+    .sort((a, b) => (Number(b.total_units) || 0) - (Number(a.total_units) || 0))
+    .slice(0, 8)
+    .map((s) => ({ category: s.name || '—', value: Number(s.total_units) || 0 }))
 
   return (
     <Container maxWidth={false} disableGutters sx={{ py: 2 }}>
@@ -119,9 +132,6 @@ const SuperAdminDashboard = () => {
           {dayjs().format('dddd, D MMMM YYYY')}
         </Typography>
       </Box>
-      <Typography variant="h4" component="h1" fontWeight={600} sx={{ mt: 2 }}>
-          Subscribers & Clients
-        </Typography>
 
       {isLoading ? (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="320px">
@@ -196,6 +206,78 @@ const SuperAdminDashboard = () => {
                     </Typography>
                   </Box>
                   <HomeIcon sx={{ fontSize: 40, color: 'info.main' }} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <Typography variant="h4" component="div">
+                      {totalAdmins !== undefined ? totalAdmins : '—'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Union Admins
+                    </Typography>
+                  </Box>
+                  <PeopleIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <Typography variant="h4" component="div">
+                      {adminsLoading ? '—' : trialSubscribers}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Trial Subscriptions
+                    </Typography>
+                  </Box>
+                  <CardMembershipIcon sx={{ fontSize: 40, color: 'info.main' }} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <Typography variant="h4" component="div">
+                      {adminsLoading ? '—' : cancelledSubscribers}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Cancelled Subscriptions
+                    </Typography>
+                  </Box>
+                  <CancelPresentationIcon sx={{ fontSize: 40, color: 'action.disabled' }} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <Typography variant="h4" component="div">
+                      {unitsLoading || societiesLoading ? '—' : avgUnitsPerClient ?? '—'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Avg Units per Client
+                    </Typography>
+                  </Box>
+                  <BarChartIcon sx={{ fontSize: 40, color: 'secondary.main' }} />
                 </Box>
               </CardContent>
             </Card>
@@ -346,6 +428,24 @@ const SuperAdminDashboard = () => {
                       value: count || 0,
                     }))}
                     title=""
+                  />
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {topClientsByUnits.length > 0 && (
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Units by client (top 8)
+                  </Typography>
+                  <BarChart
+                    data={topClientsByUnits}
+                    title=""
+                    xLabel="Client"
+                    yLabel="Units"
                   />
                 </CardContent>
               </Card>

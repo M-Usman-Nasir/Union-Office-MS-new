@@ -7,6 +7,10 @@ export const propertyApi = {
     return api.get(API_ENDPOINTS.BLOCKS, { params })
   },
 
+  getBlockNextFloorNumber: (blockId) => {
+    return api.get(API_ENDPOINTS.BLOCK_NEXT_FLOOR(blockId))
+  },
+
   createBlock: (data) => {
     return api.post(API_ENDPOINTS.BLOCKS, data)
   },
@@ -22,6 +26,18 @@ export const propertyApi = {
 
   createFloor: (data) => {
     return api.post(API_ENDPOINTS.FLOORS, data)
+  },
+
+  updateFloor: (id, data) => {
+    return api.put(API_ENDPOINTS.FLOOR_BY_ID(id), data)
+  },
+
+  deleteFloor: (id) => {
+    return api.delete(API_ENDPOINTS.FLOOR_BY_ID(id))
+  },
+
+  addUnitsToFloor: (floorId, count) => {
+    return api.post(API_ENDPOINTS.FLOOR_ADD_UNITS(floorId), { count })
   },
 
   // Units

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Container,
   Typography,
@@ -13,24 +13,34 @@ import {
   Grid,
   MenuItem,
   IconButton,
-  Tooltip,
+  Tabs,
+  Tab,
+  Menu,
+  Chip,
+  CircularProgress,
 } from '@mui/material'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ErrorIcon from '@mui/icons-material/Error'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import RemoveIcon from '@mui/icons-material/Remove'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { residentApi } from '@/api/residentApi'
+import { userApi } from '@/api/userApi'
 import { propertyApi } from '@/api/propertyApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import DataTable from '@/components/common/DataTable'
+import dayjs from 'dayjs'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
-import { ROLES } from '@/utils/constants'
 
-const getValidationSchema = (isEdit) => Yup.object({
+const getValidationSchema = (isEdit, apartmentCreatedAt) => Yup.object({
   email: Yup.string().email('Invalid email').required('Email is required'),
   password: isEdit 
     ? Yup.string().min(6, 'Password must be at least 6 characters')
@@ -40,7 +50,19 @@ const getValidationSchema = (isEdit) => Yup.object({
   contact_number: Yup.string(),
   cnic: Yup.string(),
   emergency_contact: Yup.string(),
-  move_in_date: Yup.date().nullable(),
+  move_in_date: Yup.date()
+    .nullable()
+    .test(
+      'not-before-apartment',
+      'Move-in date must be on or after the apartment creation date',
+      (value) => {
+        if (value == null) return true
+        if (apartmentCreatedAt == null) return true
+        const moveIn = dayjs(value).startOf('day')
+        const created = dayjs(apartmentCreatedAt).startOf('day')
+        return !moveIn.isBefore(created)
+      }
+    ),
 })
 
 const Residents = () => {
@@ -50,33 +72,129 @@ const Residents = () => {
   const [search, setSearch] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingResident, setEditingResident] = useState(null)
-  const [societyId] = useState(user?.society_apartment_id)
+  const [selectedBlockId, setSelectedBlockId] = useState(null)
+  const [selectedFloorId, setSelectedFloorId] = useState('')
+  const [viewDialogOpen, setViewDialogOpen] = useState(false)
+  const [viewingResident, setViewingResident] = useState(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [idToDelete, setIdToDelete] = useState(null)
+  const [actionMenuAnchor, setActionMenuAnchor] = useState(null)
+  const [actionMenuRow, setActionMenuRow] = useState(null)
+  // Cascading Block → Floor → Unit: used for fetching floors/units in Add/Edit dialog
+  const [formBlockId, setFormBlockId] = useState('')
+  const [formFloorId, setFormFloorId] = useState('')
+  /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
+  const [emailCheckStatus, setEmailCheckStatus] = useState(null)
+
+  const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
+  const fetchParams = { page, limit, search, society_id: societyId }
+  if (selectedBlockId != null && selectedBlockId !== '') {
+    fetchParams.block_id = selectedBlockId
+  }
+  if (selectedFloorId != null && selectedFloorId !== '') {
+    fetchParams.floor_id = selectedFloorId
+  }
 
   const { data, isLoading, mutate } = useSWR(
-    ['/residents', page, limit, search, societyId],
-    () => residentApi.getAll({ page, limit, search, society_id: societyId }).then(res => res.data)
+    user ? ['/residents', page, limit, search, societyId, selectedBlockId, selectedFloorId] : null,
+    () => residentApi.getAll(fetchParams).then(res => res.data)
   )
 
-  const { data: unitsData } = useSWR(
-    societyId ? ['/units', societyId] : null,
-    () => propertyApi.getUnits({ society_id: societyId }).then(res => res.data)
+  const { data: blocksData } = useSWR(
+    societyId ? ['/blocks', societyId] : null,
+    () => propertyApi.getBlocks({ society_id: societyId }).then(res => res.data)
   )
+
+  // When editing a resident with a unit, fetch unit to get block_id and floor_id for cascading dropdowns
+  const { data: unitForEditData } = useSWR(
+    openDialog && editingResident?.unit_id
+      ? ['/unit', editingResident.unit_id]
+      : null,
+    () => propertyApi.getUnitById(editingResident.unit_id).then(res => res.data)
+  )
+  const unitForEdit = unitForEditData?.data ?? unitForEditData
+
+  // Floors for the selected block in Add/Edit dialog
+  const { data: floorsData } = useSWR(
+    formBlockId ? ['/floors', formBlockId] : null,
+    () => propertyApi.getFloors({ block_id: formBlockId }).then(res => res.data)
+  )
+  // Units filtered by block (and optionally floor) in Add/Edit dialog
+  const { data: dialogUnitsData } = useSWR(
+    formBlockId && societyId ? ['/units-dialog', societyId, formBlockId, formFloorId] : null,
+    () =>
+      propertyApi
+        .getUnits({
+          society_id: societyId,
+          block_id: formBlockId,
+          ...(formFloorId ? { floor_id: formFloorId } : {}),
+        })
+        .then(res => res.data)
+  )
+
+  const blocks = blocksData?.data || []
+  const floors = floorsData?.data || []
+  const dialogUnits = dialogUnitsData?.data || []
+
+  // Current society (apartment) for display name in form
+  const { data: currentSocietyData } = useSWR(
+    societyId ? ['/society', societyId] : null,
+    () => apartmentApi.getById(societyId).then(res => res.data)
+  )
+  const currentSociety = currentSocietyData?.data
+  const apartmentOptions = currentSociety ? [{ id: currentSociety.id, name: currentSociety.name || `Apartment #${currentSociety.id}` }] : []
+
+  // Floors for selected block (for floor filter dropdown)
+  const { data: flatsFloorsData } = useSWR(
+    selectedBlockId ? ['/floors-block', selectedBlockId] : null,
+    () => propertyApi.getFloors({ block_id: selectedBlockId }).then(res => res.data)
+  )
+
+  // Family members for the resident being viewed
+  const { data: familyMembersData } = useSWR(
+    viewDialogOpen && viewingResident?.id ? ['/family-members', viewingResident.id] : null,
+    () => residentApi.getFamilyMembers(viewingResident.id).then(res => res.data)
+  )
+  const familyMembers = familyMembersData?.data || []
 
   const handleOpenDialog = (resident = null) => {
     setEditingResident(resident)
+    setEmailCheckStatus(null)
+    setFormBlockId('')
+    setFormFloorId('')
     setOpenDialog(true)
   }
 
   const handleCloseDialog = () => {
     setOpenDialog(false)
     setEditingResident(null)
+    setEmailCheckStatus(null)
+    setFormBlockId('')
+    setFormFloorId('')
   }
+
+  // When editing and unit loads, set block/floor so cascading dropdowns fetch the right data
+  useEffect(() => {
+    if (openDialog && unitForEdit) {
+      setFormBlockId(unitForEdit.block_id ?? '')
+      setFormFloorId(unitForEdit.floor_id ?? '')
+    }
+  }, [openDialog, unitForEdit])
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      if (!editingResident && emailCheckStatus === 'taken') {
+        toast.error('This email is already registered. Please use a different email.')
+        setSubmitting(false)
+        return
+      }
       // Prepare data for backend
       const submitData = { ...values }
       
+      // block_id and floor_id are only for cascading UI; backend expects only unit_id
+      delete submitData.block_id
+      delete submitData.floor_id
+
       // Clean up empty strings - convert to null for optional fields
       const optionalFields = ['contact_number', 'cnic', 'emergency_contact', 'move_in_date', 'unit_id', 'owner_name', 'license_plate']
       optionalFields.forEach(field => {
@@ -125,41 +243,125 @@ const Residents = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this resident?')) {
-      try {
-        await residentApi.remove(id)
-        toast.success('Resident deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
+  const handleView = async (row) => {
+    setActionMenuAnchor(null)
+    setActionMenuRow(null)
+    try {
+      const res = await residentApi.getById(row.id)
+      setViewingResident(res.data?.data ?? row)
+      setViewDialogOpen(true)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load resident details')
     }
   }
 
+  const handleDeleteClick = (id) => {
+    setIdToDelete(id)
+    setDeleteConfirmOpen(true)
+    setActionMenuAnchor(null)
+    setActionMenuRow(null)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!idToDelete) return
+    try {
+      await residentApi.remove(idToDelete)
+      toast.success('Resident deleted successfully')
+      mutate()
+      setDeleteConfirmOpen(false)
+      setIdToDelete(null)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Delete failed')
+    }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false)
+    setIdToDelete(null)
+  }
+
+  const handleActionMenuOpen = (event, row) => {
+    event.stopPropagation()
+    setActionMenuAnchor(event.currentTarget)
+    setActionMenuRow(row)
+  }
+
+  const handleActionMenuClose = () => {
+    setActionMenuAnchor(null)
+    setActionMenuRow(null)
+  }
+
   const columns = [
-    { id: 'name', label: 'Name' },
-    { id: 'email', label: 'Email' },
-    { id: 'role', label: 'Role', render: (row) => row.role === 'union_admin' ? 'Union Admin' : 'Resident' },
-    { id: 'contact_number', label: 'Contact' },
-    { id: 'unit_number', label: 'Unit', render: (row) => row.unit_number || 'N/A' },
+    {
+      id: 'name',
+      label: 'Full Name',
+      render: (row) =>
+        row.role === 'union_admin' ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography component="span" variant="body2" fontWeight={600} color="primary.main">
+              {row.name || '-'}
+            </Typography>
+            <Chip label="Union Admin" size="small" color="primary" variant="outlined" sx={{ height: 22 }} />
+          </Box>
+        ) : (
+          (row.name || '-')
+        ),
+    },
+    { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '-' },
+    {
+      id: 'floor_number',
+      label: 'Floors No.',
+      render: (row) => {
+        const fn = row.floor_number != null ? Number(row.floor_number) : null
+        if (fn === null) return '-'
+        if (fn === 0) return 'Ground'
+        if (fn === 1) return '1st'
+        if (fn === 2) return '2nd'
+        if (fn === 3) return '3rd'
+        return `${fn}th`
+      },
+    },
+    {
+      id: 'move_in_date',
+      label: 'Move in Date',
+      render: (row) => (row.move_in_date ? dayjs(row.move_in_date).format('DD MMM YYYY') : '-'),
+    },
+    { id: 'contact_number', label: 'Phone No.', render: (row) => row.contact_number || '-' },
+    { id: 'email', label: 'Email', render: (row) => row.email || '-' },
+    {
+      id: 'role',
+      label: 'Role',
+      render: (row) =>
+        row.role === 'union_admin' ? (
+          <Chip label="Union Admin" size="small" color="primary" variant="filled" sx={{ fontWeight: 600 }} />
+        ) : (
+          <Typography variant="body2" color="text.secondary">Resident</Typography>
+        ),
+    },
+    {
+      id: 'is_active',
+      label: 'Status',
+      render: (row) => (
+        <Chip
+          size="small"
+          label={row.is_active !== false ? 'Active' : 'Inactive'}
+          color={row.is_active !== false ? 'success' : 'default'}
+          variant="outlined"
+        />
+      ),
+    },
     {
       id: 'actions',
-      label: 'Actions',
+      label: 'Action',
       align: 'right',
       render: (row) => (
-        <Box>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => handleOpenDialog(row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        <IconButton
+          size="small"
+          onClick={(e) => handleActionMenuOpen(e, row)}
+          aria-label="Actions"
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
       ),
     },
   ]
@@ -181,6 +383,8 @@ const Residents = () => {
         cnic: editingResident.cnic || '',
         emergency_contact: editingResident.emergency_contact || '',
         move_in_date: formatDateForInput(editingResident.move_in_date),
+        block_id: unitForEdit?.block_id ?? '',
+        floor_id: unitForEdit?.floor_id ?? '',
         unit_id: editingResident.unit_id || '',
         owner_name: editingResident.owner_name || '',
         license_plate: editingResident.license_plate || '',
@@ -196,6 +400,8 @@ const Residents = () => {
         cnic: '',
         emergency_contact: '',
         move_in_date: '',
+        block_id: '',
+        floor_id: '',
         unit_id: '',
         owner_name: '',
         license_plate: '',
@@ -203,12 +409,35 @@ const Residents = () => {
         other_bills: [],
       }
 
+  const floorsForBlock = flatsFloorsData?.data ?? []
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" component="h1">
-          Residents Management
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, flexWrap: 'wrap' }}>
+          <Typography variant="h4" component="h1">
+            Residents Management
+          </Typography>
+          {currentSociety?.name && (
+            <Typography
+              variant="h5"
+              component="span"
+              sx={{
+                color: 'primary.main',
+                fontWeight: 600,
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 1,
+                bgcolor: (theme) =>
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : 'rgba(25, 118, 210, 0.12)',
+              }}
+            >
+              {currentSociety.name}
+            </Typography>
+          )}
+        </Box>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -218,9 +447,55 @@ const Residents = () => {
         </Button>
       </Box>
 
-      <Box sx={{ mb: 3 }}>
+      {blocks.length > 0 && (
+        <Tabs
+          value={selectedBlockId ?? ''}
+          onChange={(_, v) => {
+            setSelectedBlockId(v === '' ? null : v)
+            setSelectedFloorId('')
+            setPage(1)
+          }}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            mb: 2,
+            '& .MuiTab-root:hover': { color: 'primary.main' },
+          }}
+        >
+          <Tab label="All blocks" value="" />
+          {blocks.map((block) => (
+            <Tab key={block.id} label={block.name} value={block.id} />
+          ))}
+        </Tabs>
+      )}
+
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        {selectedBlockId && floorsForBlock.length > 0 && (
+          <TextField
+            select
+            label="Floor"
+            value={selectedFloorId}
+            onChange={(e) => {
+              setSelectedFloorId(e.target.value)
+              setPage(1)
+            }}
+            sx={{ minWidth: 160 }}
+            size="small"
+          >
+            <MenuItem value="">All floors</MenuItem>
+            {floorsForBlock
+              .slice()
+              .sort((a, b) => (a.floor_number ?? 0) - (b.floor_number ?? 0))
+              .map((floor) => (
+                <MenuItem key={floor.id} value={floor.id}>
+                  {floor.floor_number === 0 ? 'Ground' : floor.floor_number === 1 ? '1st' : floor.floor_number === 2 ? '2nd' : floor.floor_number === 3 ? '3rd' : `${floor.floor_number}th`} floor
+                </MenuItem>
+              ))}
+          </TextField>
+        )}
         <TextField
           fullWidth
+          sx={{ flex: '1 1 200px' }}
           placeholder="Search residents..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -234,6 +509,41 @@ const Residents = () => {
         />
       </Box>
 
+      <Menu
+        anchorEl={actionMenuAnchor}
+        open={Boolean(actionMenuAnchor)}
+        onClose={handleActionMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (actionMenuRow) handleView(actionMenuRow)
+          }}
+        >
+          <VisibilityIcon fontSize="small" sx={{ mr: 1 }} />
+          View
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (actionMenuRow) handleOpenDialog(actionMenuRow)
+            handleActionMenuClose()
+          }}
+        >
+          <EditIcon fontSize="small" sx={{ mr: 1 }} />
+          Edit
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (actionMenuRow) handleDeleteClick(actionMenuRow.id)
+          }}
+          sx={{ color: 'error.main' }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          Delete
+        </MenuItem>
+      </Menu>
+
       <DataTable
         columns={columns}
         data={data?.data || []}
@@ -244,23 +554,107 @@ const Residents = () => {
           setLimit(newLimit)
           setPage(1)
         }}
+        dense
       />
+
+      <Dialog open={viewDialogOpen} onClose={() => { setViewDialogOpen(false); setViewingResident(null) }} maxWidth="sm" fullWidth>
+        <DialogTitle>Resident details</DialogTitle>
+        <DialogContent dividers>
+          {viewingResident && (
+            <Grid container spacing={2} sx={{ pt: 1 }}>
+              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Full Name</Typography><Typography variant="body1">{viewingResident.name || '-'}</Typography></Grid>
+              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Unit No.</Typography><Typography variant="body1">{viewingResident.unit_number || '-'}</Typography></Grid>
+              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Phone No.</Typography><Typography variant="body1">{viewingResident.contact_number || '-'}</Typography></Grid>
+              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Email</Typography><Typography variant="body1">{viewingResident.email || '-'}</Typography></Grid>
+              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Role</Typography><Typography variant="body1">{viewingResident.role === 'union_admin' ? 'Union Admin' : 'Resident'}</Typography></Grid>
+              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Status</Typography><Typography variant="body1">{viewingResident.is_active !== false ? 'Active' : 'Inactive'}</Typography></Grid>
+
+              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Utilities</Typography></Grid>
+              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">K-Electric</Typography><Typography variant="body1">{viewingResident.k_electric_account || '-'}</Typography></Grid>
+              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">Gas</Typography><Typography variant="body1">{viewingResident.gas_account || '-'}</Typography></Grid>
+              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">Water</Typography><Typography variant="body1">{viewingResident.water_account || '-'}</Typography></Grid>
+              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">Phone/TV</Typography><Typography variant="body1">{viewingResident.phone_tv_account || '-'}</Typography></Grid>
+
+              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Vehicles</Typography></Grid>
+              <Grid item xs={12} sm={4}><Typography variant="body2" color="text.secondary">Cars No.</Typography><Typography variant="body1">{viewingResident.number_of_cars ?? '-'}</Typography></Grid>
+              <Grid item xs={12} sm={4}><Typography variant="body2" color="text.secondary">Make &amp; Model</Typography><Typography variant="body1">{viewingResident.car_make_model || '-'}</Typography></Grid>
+              <Grid item xs={12} sm={4}><Typography variant="body2" color="text.secondary">License Plate</Typography><Typography variant="body1">{viewingResident.license_plate || '-'}</Typography></Grid>
+
+              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Defaulter</Typography></Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">Status</Typography>
+                <Typography variant="body1">
+                  {viewingResident.defaulter_status
+                    ? `${viewingResident.defaulter_status}${viewingResident.defaulter_amount_due != null ? ` (Amount due: ${viewingResident.defaulter_amount_due})` : ''}${viewingResident.defaulter_months_overdue != null ? `, ${viewingResident.defaulter_months_overdue} mo. overdue` : ''}`
+                    : 'Not a defaulter'}
+                </Typography>
+              </Grid>
+
+              {(Array.isArray(viewingResident.telephone_bills) && viewingResident.telephone_bills.length > 0) || (Array.isArray(viewingResident.other_bills) && viewingResident.other_bills.length > 0) ? (
+                <>
+                  <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Bills</Typography></Grid>
+                  {Array.isArray(viewingResident.telephone_bills) && viewingResident.telephone_bills.length > 0 && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary">Telephone</Typography>
+                      <Typography variant="body1" component="span">{viewingResident.telephone_bills.map((b) => `${b.provider || 'N/A'} ${b.account_number || ''} (${b.amount ?? 0})`).join(', ') || '-'}</Typography>
+                    </Grid>
+                  )}
+                  {Array.isArray(viewingResident.other_bills) && viewingResident.other_bills.length > 0 && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary">Other</Typography>
+                      <Typography variant="body1" component="span">{viewingResident.other_bills.map((b) => `${b.type || 'N/A'} ${b.provider || ''} (${b.amount ?? 0})`).join(', ') || '-'}</Typography>
+                    </Grid>
+                  )}
+                </>
+              ) : null}
+
+              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Family Members</Typography></Grid>
+              <Grid item xs={12}>
+                {familyMembers.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No family members added.</Typography>
+                ) : (
+                  <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                    {familyMembers.map((fm) => (
+                      <li key={fm.id}><Typography variant="body1">{fm.name}{fm.relation ? ` (${fm.relation})` : ''}</Typography></li>
+                    ))}
+                  </Box>
+                )}
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setViewDialogOpen(false); setViewingResident(null) }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteConfirmOpen} onClose={handleDeleteCancel}>
+        <DialogTitle>Delete resident?</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete this resident? This cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <Formik
+          key={editingResident ? `edit-${editingResident.id}` : 'add-new'}
           initialValues={initialValues}
-          validationSchema={getValidationSchema(!!editingResident)}
+          validationSchema={getValidationSchema(!!editingResident, currentSociety?.created_at)}
           onSubmit={handleSubmit}
           enableReinitialize
         >
           {({ values, errors, touched, handleChange, handleBlur, isSubmitting, setFieldValue }) => (
-            <Form>
+            <Form autoComplete="off">
               <DialogTitle>
                 {editingResident ? 'Edit Resident' : 'Add New Resident'}
               </DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Name"
@@ -272,18 +666,54 @@ const Residents = () => {
                       helperText={touched.name && errors.name}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Email"
                       name="email"
                       type="email"
                       value={values.email}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                      error={touched.email && !!errors.email}
-                      helperText={touched.email && errors.email}
+                      onChange={(e) => {
+                        setEmailCheckStatus(null)
+                        handleChange(e)
+                      }}
+                      onBlur={async (e) => {
+                        handleBlur(e)
+                        const email = (values.email || '').trim()
+                        if (!email || !!editingResident) return
+                        const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+                        if (!validEmailRegex.test(email)) return
+                        setEmailCheckStatus('checking')
+                        try {
+                          const res = await userApi.checkEmail(email, editingResident?.id)
+                          setEmailCheckStatus(res?.data?.available ? 'available' : 'taken')
+                        } catch {
+                          setEmailCheckStatus(null)
+                        }
+                      }}
+                      error={(touched.email && !!errors.email) || emailCheckStatus === 'taken'}
+                      helperText={
+                        (touched.email && errors.email) ||
+                        (emailCheckStatus === 'taken' ? 'This email is already registered in the system.' : null)
+                      }
                       disabled={!!editingResident}
+                      autoComplete="off"
+                      InputProps={{
+                        endAdornment:
+                          emailCheckStatus === 'checking' ? (
+                            <InputAdornment position="end">
+                              <CircularProgress size={22} />
+                            </InputAdornment>
+                          ) : emailCheckStatus === 'available' ? (
+                            <InputAdornment position="end">
+                              <CheckCircleIcon color="success" fontSize="small" titleAccess="Email is available" />
+                            </InputAdornment>
+                          ) : emailCheckStatus === 'taken' ? (
+                            <InputAdornment position="end">
+                              <ErrorIcon color="error" fontSize="small" titleAccess="Email already registered" />
+                            </InputAdornment>
+                          ) : null,
+                      }}
                     />
                   </Grid>
                   {!editingResident && (
@@ -298,6 +728,7 @@ const Residents = () => {
                         onBlur={handleBlur}
                         error={touched.password && !!errors.password}
                         helperText={touched.password && errors.password}
+                        autoComplete="new-password"
                       />
                     </Grid>
                   )}
@@ -313,34 +744,33 @@ const Residents = () => {
                         onBlur={handleBlur}
                         error={touched.password && !!errors.password}
                         helperText={touched.password && errors.password}
+                        autoComplete="new-password"
                       />
                     </Grid>
                   )}
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
-                      label="Society"
+                      select
+                      label="Apartment"
                       name="society_apartment_id"
-                      type="number"
-                      inputProps={{ min: 1 }}
-                      value={values.society_apartment_id}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        if (raw === '') {
-                          handleChange(e)
-                          return
-                        }
-                        const num = Math.max(1, parseInt(raw, 10) || 1)
-                        handleChange({ target: { name: e.target.name, value: num } })
-                      }}
+                      value={values.society_apartment_id ?? ''}
+                      onChange={handleChange}
                       onBlur={handleBlur}
                       error={touched.society_apartment_id && !!errors.society_apartment_id}
                       helperText={touched.society_apartment_id && errors.society_apartment_id}
                       disabled={!!societyId}
                       required
-                    />
+                    >
+                      <MenuItem value="">Select Apartment</MenuItem>
+                      {apartmentOptions.map((apt) => (
+                        <MenuItem key={apt.id} value={apt.id}>
+                          {apt.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Contact Number"
@@ -350,7 +780,7 @@ const Residents = () => {
                       onBlur={handleBlur}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="CNIC"
@@ -381,38 +811,80 @@ const Residents = () => {
                       value={values.move_in_date}
                       onChange={handleChange}
                       onBlur={handleBlur}
+                      error={touched.move_in_date && !!errors.move_in_date}
+                      helperText={touched.move_in_date && errors.move_in_date}
                       InputLabelProps={{
                         shrink: true,
                       }}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={4}>
                     <TextField
                       fullWidth
                       select
-                      label="Unit"
-                      name="unit_id"
-                      value={values.unit_id}
-                      onChange={handleChange}
+                      label="Block"
+                      name="block_id"
+                      value={values.block_id}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        handleChange(e)
+                        setFieldValue('floor_id', '')
+                        setFieldValue('unit_id', '')
+                        setFormBlockId(v)
+                        setFormFloorId('')
+                      }}
                       onBlur={handleBlur}
                     >
-                      <MenuItem value="">None</MenuItem>
-                      {unitsData?.data?.map((unit) => (
-                        <MenuItem key={unit.id} value={unit.id}>
-                          {unit.block_name} - Floor {unit.floor_number} - Unit {unit.unit_number}
+                      <MenuItem value="">Select block</MenuItem>
+                      {blocks.map((block) => (
+                        <MenuItem key={block.id} value={block.id}>
+                          {block.name}
                         </MenuItem>
                       ))}
                     </TextField>
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={4}>
                     <TextField
                       fullWidth
-                      label="Owner Name"
-                      name="owner_name"
-                      value={values.owner_name}
+                      select
+                      label="Floor"
+                      name="floor_id"
+                      value={values.floor_id}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        handleChange(e)
+                        setFieldValue('unit_id', '')
+                        setFormFloorId(v)
+                      }}
+                      onBlur={handleBlur}
+                      disabled={!values.block_id}
+                    >
+                      <MenuItem value="">Select floor</MenuItem>
+                      {floors.map((floor) => (
+                        <MenuItem key={floor.id} value={floor.id}>
+                          Floor {floor.floor_number}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Unit (Flat)"
+                      name="unit_id"
+                      value={values.unit_id}
                       onChange={handleChange}
                       onBlur={handleBlur}
-                    />
+                      disabled={!values.block_id}
+                    >
+                      <MenuItem value="">Select unit</MenuItem>
+                      {dialogUnits.map((unit) => (
+                        <MenuItem key={unit.id} value={unit.id}>
+                          Unit {unit.unit_number}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </Grid>
                   <Grid item xs={12}>
                     <TextField

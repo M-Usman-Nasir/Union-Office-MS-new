@@ -15,12 +15,15 @@ import {
   IconButton,
   Tooltip,
   Chip,
+  CircularProgress,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import LockIcon from '@mui/icons-material/Lock'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ErrorIcon from '@mui/icons-material/Error'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { userApi } from '@/api/userApi'
@@ -61,10 +64,11 @@ const getValidationSchema = (isEdit, currentUserRole) => {
       .required('Password is required')
   }
 
-  // Apartment required for union_admin, resident, and staff roles
+  // Apartment: required for union_admin/resident/staff when current user is union_admin; optional for super_admin (can assign later from leads or Add Apartment)
   baseSchema.society_apartment_id = Yup.number().when('role', {
     is: (role) => role === 'union_admin' || role === 'resident' || role === 'staff',
-    then: (schema) => schema.required('Apartment is required'),
+    then: (schema) =>
+      currentUserRole === 'super_admin' ? schema.nullable() : schema.required('Apartment is required'),
     otherwise: (schema) => schema.nullable(),
   })
 
@@ -73,6 +77,12 @@ const getValidationSchema = (isEdit, currentUserRole) => {
   baseSchema.cnic = Yup.string().nullable()
   baseSchema.contact_number = Yup.string().nullable()
   baseSchema.emergency_contact = Yup.string().nullable()
+  baseSchema.address = Yup.string().nullable()
+  baseSchema.city = Yup.string().nullable()
+  baseSchema.postal_code = Yup.string().nullable()
+  baseSchema.work_employer = Yup.string().nullable()
+  baseSchema.work_title = Yup.string().nullable()
+  baseSchema.work_phone = Yup.string().nullable()
 
   return Yup.object(baseSchema)
 }
@@ -95,6 +105,8 @@ const Users = () => {
   const [selectedCity, setSelectedCity] = useState('')
   const [selectedArea, setSelectedArea] = useState('')
   const [selectedBlockId, setSelectedBlockId] = useState('')
+  /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
+  const [emailCheckStatus, setEmailCheckStatus] = useState(null)
 
   const { data, isLoading, mutate } = useSWR(
     ['/users', page, limit, search, roleFilter],
@@ -184,6 +196,7 @@ const Users = () => {
 
   const handleOpenDialog = (user = null) => {
     setEditingUser(user)
+    setEmailCheckStatus(null)
     setOpenDialog(true)
   }
 
@@ -194,6 +207,7 @@ const Users = () => {
     setSelectedCity('')
     setSelectedArea('')
     setSelectedBlockId('')
+    setEmailCheckStatus(null)
   }
 
   const handleOpenPasswordDialog = (user) => {
@@ -208,11 +222,16 @@ const Users = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      if (!editingUser && emailCheckStatus === 'taken') {
+        toast.error('This email is already registered. Please use a different email.')
+        setSubmitting(false)
+        return
+      }
       // Prepare data for backend
       const submitData = { ...values }
 
       // Clean up empty strings - convert to null for optional fields
-      const optionalFields = ['society_apartment_id', 'unit_id', 'cnic', 'contact_number', 'emergency_contact']
+      const optionalFields = ['society_apartment_id', 'unit_id', 'cnic', 'contact_number', 'emergency_contact', 'address', 'city', 'postal_code', 'work_employer', 'work_title', 'work_phone']
       optionalFields.forEach(field => {
         if (submitData[field] === '' || submitData[field] === undefined) {
           submitData[field] = null
@@ -263,16 +282,54 @@ const Users = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      try {
-        await userApi.remove(id)
-        toast.success('User deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
+  const handleDelete = async (id, dismissToastId) => {
+    if (dismissToastId) toast.dismiss(dismissToastId)
+    try {
+      await userApi.remove(id)
+      toast.success('User deleted successfully')
+      mutate()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Delete failed')
     }
+  }
+
+  const confirmDelete = (id) => {
+    toast.custom(
+      (t) => (
+        <Box
+          sx={{
+            background: (theme) => theme.palette.background.paper,
+            color: (theme) => theme.palette.text.primary,
+            p: 2,
+            borderRadius: 2,
+            boxShadow: 3,
+            minWidth: 280,
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+            Delete this user?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            This action cannot be undone.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+            <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
+              Cancel
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="error"
+              onClick={() => handleDelete(id, t.id)}
+            >
+              Delete
+            </Button>
+          </Box>
+        </Box>
+      ),
+      { duration: Infinity }
+    )
   }
 
   const getRoleColor = (role) => {
@@ -297,11 +354,12 @@ const Users = () => {
   }
 
   const columns = [
-    { id: 'name', label: 'Name' },
-    { id: 'email', label: 'Email' },
+    { id: 'name', label: 'Name', minWidth: 140 },
+    { id: 'email', label: 'Email', minWidth: 200 },
     {
       id: 'role',
       label: 'Role',
+      minWidth: 120,
       render: (row) => (
         <Chip
           label={row.role === 'super_admin' ? 'Super Admin' : row.role === 'union_admin' ? 'Union Admin' : row.role === 'staff' ? 'Staff' : 'Resident'}
@@ -313,6 +371,7 @@ const Users = () => {
     ...(currentUser?.role === 'super_admin' ? [{
       id: 'society_apartment_id',
       label: 'Apartment',
+      minWidth: 140,
       render: (row) => (
         <Typography variant="body2">
           {row.society_apartment_id ? getSocietyName(row.society_apartment_id) : 'N/A'}
@@ -322,6 +381,7 @@ const Users = () => {
     {
       id: 'is_active',
       label: 'Status',
+      minWidth: 90,
       render: (row) => (
         <Chip
           label={row.is_active ? 'Active' : 'Inactive'}
@@ -334,6 +394,7 @@ const Users = () => {
       id: 'actions',
       label: 'Actions',
       align: 'right',
+      minWidth: 120,
       render: (row) => (
         <Box>
           <Tooltip title="Change Password">
@@ -348,7 +409,7 @@ const Users = () => {
           </Tooltip>
           {row.id !== currentUser?.id && (
             <Tooltip title="Delete">
-              <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+              <IconButton size="small" color="error" onClick={() => confirmDelete(row.id)}>
                 <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -368,6 +429,12 @@ const Users = () => {
         cnic: editingUser.cnic || '',
         contact_number: editingUser.contact_number || '',
         emergency_contact: editingUser.emergency_contact || '',
+        address: editingUser.address || '',
+        city: editingUser.city || '',
+        postal_code: editingUser.postal_code || '',
+        work_employer: editingUser.work_employer || '',
+        work_title: editingUser.work_title || '',
+        work_phone: editingUser.work_phone || '',
         is_active: editingUser.is_active !== undefined ? editingUser.is_active : true,
       }
     : {
@@ -380,6 +447,12 @@ const Users = () => {
         cnic: '',
         contact_number: '',
         emergency_contact: '',
+        address: '',
+        city: '',
+        postal_code: '',
+        work_employer: '',
+        work_title: '',
+        work_phone: '',
         is_active: true,
       }
 
@@ -442,6 +515,7 @@ const Users = () => {
       {/* Add/Edit Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik
+          key={editingUser ? `edit-${editingUser.id}` : 'add-new'}
           initialValues={initialValues}
           validationSchema={getValidationSchema(!!editingUser, currentUser?.role)}
           onSubmit={handleSubmit}
@@ -473,7 +547,7 @@ const Users = () => {
             const apartmentOptions = useCascading ? apartmentsByLocation : (societiesData?.data ?? [])
 
             return (
-              <Form>
+              <Form autoComplete="off">
                 <DialogTitle>
                   {editingUser ? 'Edit User' : 'Add New User'}
                 </DialogTitle>
@@ -482,7 +556,7 @@ const Users = () => {
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
-                        label="Name"
+                        label="User Name"
                         name="name"
                         value={values.name}
                         onChange={handleChange}
@@ -498,11 +572,47 @@ const Users = () => {
                         name="email"
                         type="email"
                         value={values.email}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        error={touched.email && !!errors.email}
-                        helperText={touched.email && errors.email}
+                        onChange={(e) => {
+                          setEmailCheckStatus(null)
+                          handleChange(e)
+                        }}
+                        onBlur={async (e) => {
+                          handleBlur(e)
+                          const email = (values.email || '').trim()
+                          if (!email || !!editingUser) return
+                          const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+                          if (!validEmailRegex.test(email)) return
+                          setEmailCheckStatus('checking')
+                          try {
+                            const res = await userApi.checkEmail(email, editingUser?.id)
+                            setEmailCheckStatus(res?.data?.available ? 'available' : 'taken')
+                          } catch {
+                            setEmailCheckStatus(null)
+                          }
+                        }}
+                        error={(touched.email && !!errors.email) || emailCheckStatus === 'taken'}
+                        helperText={
+                          (touched.email && errors.email) ||
+                          (emailCheckStatus === 'taken' ? 'This email is already registered in the system.' : null)
+                        }
                         disabled={!!editingUser}
+                        autoComplete="off"
+                        InputProps={{
+                          endAdornment:
+                            emailCheckStatus === 'checking' ? (
+                              <InputAdornment position="end">
+                                <CircularProgress size={22} />
+                              </InputAdornment>
+                            ) : emailCheckStatus === 'available' ? (
+                              <InputAdornment position="end">
+                                <CheckCircleIcon color="success" fontSize="small" titleAccess="Email is available" />
+                              </InputAdornment>
+                            ) : emailCheckStatus === 'taken' ? (
+                              <InputAdornment position="end">
+                                <ErrorIcon color="error" fontSize="small" titleAccess="Email already registered" />
+                              </InputAdornment>
+                            ) : null,
+                        }}
                       />
                     </Grid>
                     {!editingUser && (
@@ -517,6 +627,7 @@ const Users = () => {
                           onBlur={handleBlur}
                           error={touched.password && !!errors.password}
                           helperText={touched.password && errors.password}
+                          autoComplete="new-password"
                         />
                       </Grid>
                     )}
@@ -646,9 +757,9 @@ const Users = () => {
                               onChange={handleSocietyChange}
                               onBlur={handleBlur}
                               error={touched.society_apartment_id && !!errors.society_apartment_id}
-                              helperText={touched.society_apartment_id && errors.society_apartment_id}
+                              helperText={(touched.society_apartment_id && errors.society_apartment_id) || (currentUser?.role === 'super_admin' ? 'Optional — assign later from leads or Add Apartment' : null)}
                               disabled={!selectedCity || isSocietyDisabled || !isSocietyEditable}
-                              required
+                              required={currentUser?.role !== 'super_admin'}
                             >
                               <MenuItem value="">Select Apartment</MenuItem>
                               {apartmentOptions.map((society) => (
@@ -672,9 +783,9 @@ const Users = () => {
                           onChange={handleSocietyChange}
                           onBlur={handleBlur}
                           error={touched.society_apartment_id && !!errors.society_apartment_id}
-                          helperText={touched.society_apartment_id && errors.society_apartment_id}
+                          helperText={(touched.society_apartment_id && errors.society_apartment_id) || (currentUser?.role === 'super_admin' ? 'Optional — assign later from leads or Add Apartment' : null)}
                           disabled={isSocietyDisabled || !isSocietyEditable}
-                          required
+                          required={currentUser?.role !== 'super_admin'}
                         >
                           <MenuItem value="">Select Apartment</MenuItem>
                           {(societiesData?.data ?? []).map((society) => (
@@ -742,6 +853,89 @@ const Users = () => {
                         error={touched.cnic && !!errors.cnic}
                         helperText={touched.cnic && errors.cnic}
                         placeholder="e.g., 12345-1234567-1"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
+                        Work Information (optional)
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Employer"
+                        name="work_employer"
+                        value={values.work_employer}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.work_employer && !!errors.work_employer}
+                        helperText={touched.work_employer && errors.work_employer}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Job Title"
+                        name="work_title"
+                        value={values.work_title}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.work_title && !!errors.work_title}
+                        helperText={touched.work_title && errors.work_title}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Work Phone"
+                        name="work_phone"
+                        value={values.work_phone}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.work_phone && !!errors.work_phone}
+                        helperText={touched.work_phone && errors.work_phone}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
+                        Address Information (optional)
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Address"
+                        name="address"
+                        value={values.address}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.address && !!errors.address}
+                        helperText={touched.address && errors.address}
+                        placeholder="Street, building, area"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="City"
+                        name="city"
+                        value={values.city}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.city && !!errors.city}
+                        helperText={touched.city && errors.city}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Postal Code"
+                        name="postal_code"
+                        value={values.postal_code}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.postal_code && !!errors.postal_code}
+                        helperText={touched.postal_code && errors.postal_code}
                       />
                     </Grid>
                     {editingUser && (

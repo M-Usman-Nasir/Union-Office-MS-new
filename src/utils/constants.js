@@ -50,9 +50,11 @@ export const API_ENDPOINTS = {
   
   // Maintenance
   MAINTENANCE: '/maintenance',
+  MAINTENANCE_YEARLY_LEDGER: '/maintenance/yearly-ledger',
   MAINTENANCE_BY_ID: (id) => `/maintenance/${id}`,
   MAINTENANCE_PAYMENT: (id) => `/maintenance/${id}/payment`,
   MAINTENANCE_GENERATE_DUES: '/maintenance/generate-monthly-dues',
+  MAINTENANCE_GENERATE_FOR_SCOPE: '/maintenance/generate-for-scope',
   
   // Finance
   FINANCE: '/finance',
@@ -82,12 +84,16 @@ export const API_ENDPOINTS = {
   
   // Properties
   BLOCKS: '/properties/blocks',
+  BLOCK_NEXT_FLOOR: (id) => `/properties/blocks/${id}/next-floor`,
   FLOORS: '/properties/floors',
+  FLOOR_BY_ID: (id) => `/properties/floors/${id}`,
+  FLOOR_ADD_UNITS: (id) => `/properties/floors/${id}/units`,
   UNITS: '/properties/units',
   UNIT_BY_ID: (id) => `/properties/units/${id}`,
   
   // Users
   USERS: '/users',
+  USER_CHECK_EMAIL: '/users/check-email',
   USER_BY_ID: (id) => `/users/${id}`,
   USER_PASSWORD: (id) => `/users/${id}/password`,
   
@@ -157,6 +163,7 @@ export const ROUTES = {
   ADMIN_USERS: '/admin/users',
   ADMIN_PROFILE: '/admin/profile',
   ADMIN_MESSAGES: '/admin/messages',
+  ADMIN_UNION_MEMBERS: '/admin/union-members',
   
   // Resident
   RESIDENT_DASHBOARD: '/resident/dashboard',

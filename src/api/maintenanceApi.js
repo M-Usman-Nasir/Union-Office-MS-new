@@ -6,6 +6,10 @@ export const maintenanceApi = {
     return api.get(API_ENDPOINTS.MAINTENANCE, { params })
   },
 
+  getYearlyLedger: (params) => {
+    return api.get(API_ENDPOINTS.MAINTENANCE_YEARLY_LEDGER, { params })
+  },
+
   getById: (id) => {
     return api.get(API_ENDPOINTS.MAINTENANCE_BY_ID(id))
   },
@@ -26,7 +30,11 @@ export const maintenanceApi = {
     return api.delete(API_ENDPOINTS.MAINTENANCE_BY_ID(id))
   },
 
-  generateMonthlyDues: () => {
-    return api.post(API_ENDPOINTS.MAINTENANCE_GENERATE_DUES)
+  generateMonthlyDues: (data) => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_GENERATE_DUES, data || {})
+  },
+
+  generateForScope: (data) => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_GENERATE_FOR_SCOPE, data)
   },
 }

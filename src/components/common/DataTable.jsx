@@ -24,6 +24,8 @@ const DataTable = ({
 }) => {
   const headerPy = dense ? 0.5 : 1.5
   const cellPy = dense ? 0.5 : 1.25
+  const headerPx = dense ? 1 : undefined
+  const cellPx = dense ? 1 : undefined
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" p={4}>
@@ -32,14 +34,42 @@ const DataTable = ({
     )
   }
 
+  const getCellSx = (column) => {
+    const base = { py: cellPy }
+    if (cellPx !== undefined) base.px = cellPx
+    if (column.minWidth) base.minWidth = column.minWidth
+    if (column.width) base.width = column.width
+    return base
+  }
+  const getHeaderSx = (column) => {
+    const base = { fontWeight: 600, py: headerPy }
+    if (headerPx !== undefined) base.px = headerPx
+    if (column.minWidth) base.minWidth = column.minWidth
+    if (column.width) base.width = column.width
+    return base
+  }
+
   return (
-    <Paper>
-      <TableContainer>
-        <Table>
+    <Paper sx={{ overflow: 'hidden' }}>
+      <TableContainer sx={{ overflowX: 'auto' }}>
+        <Table size={dense ? 'small' : 'medium'} sx={{ tableLayout: 'auto', width: '100%', minWidth: 600 }}>
           <TableHead>
-            <TableRow>
+            <TableRow
+              sx={{
+                backgroundColor: (theme) =>
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : 'rgba(0, 0, 0, 0.04)',
+                borderBottom: 2,
+                borderColor: 'divider',
+                '& th': {
+                  color: 'text.primary',
+                  fontWeight: 700,
+                },
+              }}
+            >
               {columns.map((column) => (
-                <TableCell key={column.id} align={column.align || 'left'} sx={{ fontWeight: 600, py: headerPy }}>
+                <TableCell key={column.id} align={column.align || 'left'} sx={getHeaderSx(column)}>
                   {column.label}
                 </TableCell>
               ))}
@@ -49,7 +79,7 @@ const DataTable = ({
             {data && data.length > 0 ? (
               data.map((row, index) => (
                 <TableRow
-                  key={row.id || index}
+                  key={row.id ?? row.unit_id ?? index}
                   hover
                   sx={{
                     backgroundColor: (theme) =>
@@ -61,11 +91,23 @@ const DataTable = ({
                     '&:not(:last-child) td': { borderBottom: 1, borderColor: 'divider' },
                   }}
                 >
-                  {columns.map((column) => (
-                    <TableCell key={column.id} align={column.align || 'left'} sx={{ py: cellPy }}>
-                      {column.render ? column.render(row) : row[column.id]}
-                    </TableCell>
-                  ))}
+                  {columns.map((column) => {
+                    const cellContent = column.render ? column.render(row) : row[column.id]
+                    const isClickable = typeof column.onClick === 'function'
+                    return (
+                      <TableCell
+                        key={column.id}
+                        align={column.align || 'left'}
+                        onClick={isClickable ? (e) => { e.stopPropagation(); column.onClick(row); } : undefined}
+                        sx={{
+                          ...getCellSx(column),
+                          ...(isClickable ? { cursor: 'pointer' } : {}),
+                        }}
+                      >
+                        {cellContent}
+                      </TableCell>
+                    )
+                  })}
                 </TableRow>
               ))
             ) : (
