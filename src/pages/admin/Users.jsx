@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Container,
   Typography,
@@ -97,6 +97,16 @@ const Users = () => {
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
+  const roleFilterDefaultSet = useRef(false)
+
+  // Default Role Filter to "Union Admin" for super admin only (once on load)
+  useEffect(() => {
+    if (currentUser?.role === 'super_admin' && !roleFilterDefaultSet.current) {
+      roleFilterDefaultSet.current = true
+      setRoleFilter('union_admin')
+    }
+  }, [currentUser?.role])
+
   const [openDialog, setOpenDialog] = useState(false)
   const [openPasswordDialog, setOpenPasswordDialog] = useState(false)
   const [editingUser, setEditingUser] = useState(null)

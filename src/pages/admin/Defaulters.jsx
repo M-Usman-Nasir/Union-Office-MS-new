@@ -11,13 +11,14 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
-  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
@@ -26,9 +27,11 @@ import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { defaulterApi } from '@/api/defaulterApi'
 import { settingsApi } from '@/api/settingsApi'
+import { propertyApi } from '@/api/propertyApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import toast from 'react-hot-toast'
+import dayjs from 'dayjs'
 import { ROLES } from '@/utils/constants'
 
 const Defaulters = () => {
@@ -42,10 +45,16 @@ const Defaulters = () => {
   const [selectedDefaulter, setSelectedDefaulter] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
+  const [selectedBlockId, setSelectedBlockId] = useState(null)
+  const [selectedFloorId, setSelectedFloorId] = useState('')
+
+  const fetchParams = { page, limit, search, status: statusFilter, society_id: societyId }
+  if (selectedBlockId != null && selectedBlockId !== '') fetchParams.block_id = selectedBlockId
+  if (selectedFloorId != null && selectedFloorId !== '') fetchParams.floor_id = selectedFloorId
 
   const { data, isLoading, error, mutate } = useSWR(
-    ['/defaulters', page, limit, search, statusFilter, societyId],
-    () => defaulterApi.getAll({ page, limit, search, status: statusFilter, society_id: societyId }).then(res => res.data).catch(err => {
+    ['/defaulters', page, limit, search, statusFilter, societyId, selectedBlockId, selectedFloorId],
+    () => defaulterApi.getAll(fetchParams).then(res => res.data).catch(err => {
       console.error('Defaulters API error:', err)
       toast.error(err.response?.data?.message || 'Failed to load defaulters data')
       throw err
@@ -67,6 +76,17 @@ const Defaulters = () => {
   )
 
   const isVisible = settings?.defaulter_list_visible !== false
+
+  const { data: blocksData } = useSWR(
+    societyId ? ['/blocks', societyId] : null,
+    () => propertyApi.getBlocks({ society_id: societyId }).then(res => res.data)
+  )
+  const { data: floorsData } = useSWR(
+    selectedBlockId ? ['/floors-block', selectedBlockId] : null,
+    () => propertyApi.getFloors({ block_id: selectedBlockId }).then(res => res.data)
+  )
+  const blocks = blocksData?.data || []
+  const floorsForBlock = floorsData?.data ?? []
 
   const handleOpenDialog = (defaulter) => {
     setSelectedDefaulter(defaulter)
@@ -115,35 +135,35 @@ const Defaulters = () => {
     }).format(amount || 0)
   }
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'resolved':
-        return 'success'
-      case 'escalated':
-        return 'error'
-      case 'active':
-        return 'warning'
-      default:
-        return 'default'
-    }
+  const formatFloorLabel = (floorNumber) => {
+    const fn = floorNumber != null ? Number(floorNumber) : null
+    if (fn === null) return '-'
+    if (fn === 0) return 'Ground'
+    if (fn === 1) return '1st'
+    if (fn === 2) return '2nd'
+    if (fn === 3) return '3rd'
+    return `${fn}th`
   }
 
   const columns = [
-    { id: 'unit_number', label: 'Unit', render: (row) => row.unit_number || 'N/A' },
-    { id: 'owner_name', label: 'Owner', render: (row) => row.owner_name || 'N/A' },
-    { id: 'resident_name', label: 'Resident', render: (row) => row.resident_name || 'N/A' },
-    { id: 'amount_due', label: 'Amount Due', render: (row) => formatCurrency(row.amount_due) },
-    { id: 'months_overdue', label: 'Months Overdue' },
+    { id: 'resident_name', label: 'Full Name', render: (row) => row.resident_name || '-' },
+    { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '-' },
     {
-      id: 'status',
-      label: 'Status',
-      render: (row) => (
-        <Chip label={row.status} color={getStatusColor(row.status)} size="small" />
-      ),
+      id: 'floor_number',
+      label: 'Floors No.',
+      render: (row) => formatFloorLabel(row.floor_number),
     },
     {
+      id: 'last_payment_date',
+      label: 'Last Payment Date',
+      render: (row) => (row.last_payment_date ? dayjs(row.last_payment_date).format('DD MMM YYYY') : '-'),
+    },
+    { id: 'amount_due', label: 'Amount Due', render: (row) => formatCurrency(row.amount_due) },
+    { id: 'months_overdue', label: 'Months Overdue', render: (row) => row.months_overdue ?? '-' },
+    { id: 'remarks', label: 'Remarks', render: (row) => row.remarks || '-' },
+    {
       id: 'actions',
-      label: 'Actions',
+      label: 'Action',
       align: 'right',
       render: (row) => (
         <Tooltip title="Update Status">
@@ -240,7 +260,52 @@ const Defaulters = () => {
         </Grid>
       )}
 
+      {blocks.length > 0 && (
+        <Tabs
+          value={selectedBlockId ?? ''}
+          onChange={(_, v) => {
+            setSelectedBlockId(v === '' ? null : v)
+            setSelectedFloorId('')
+            setPage(1)
+          }}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            mb: 2,
+            '& .MuiTab-root:hover': { color: 'primary.main' },
+          }}
+        >
+          <Tab label="All blocks" value="" />
+          {blocks.map((block) => (
+            <Tab key={block.id} label={block.name} value={block.id} />
+          ))}
+        </Tabs>
+      )}
+
       <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        {selectedBlockId && floorsForBlock.length > 0 && (
+          <TextField
+            select
+            label="Floor"
+            value={selectedFloorId}
+            onChange={(e) => {
+              setSelectedFloorId(e.target.value)
+              setPage(1)
+            }}
+            sx={{ minWidth: 160 }}
+            size="small"
+          >
+            <MenuItem value="">All floors</MenuItem>
+            {floorsForBlock
+              .slice()
+              .sort((a, b) => (a.floor_number ?? 0) - (b.floor_number ?? 0))
+              .map((floor) => (
+                <MenuItem key={floor.id} value={floor.id}>
+                  {floor.floor_number === 0 ? 'Ground' : floor.floor_number === 1 ? '1st' : floor.floor_number === 2 ? '2nd' : floor.floor_number === 3 ? '3rd' : `${floor.floor_number}th`} floor
+                </MenuItem>
+              ))}
+          </TextField>
+        )}
         <TextField
           fullWidth
           sx={{ flex: '1 1 200px' }}
@@ -292,7 +357,10 @@ const Defaulters = () => {
       {/* Status Update Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik
-          initialValues={{ status: selectedDefaulter?.status || 'active' }}
+          initialValues={{
+            status: selectedDefaulter?.status || 'active',
+            remarks: selectedDefaulter?.remarks || '',
+          }}
           onSubmit={handleStatusUpdate}
           enableReinitialize
         >
@@ -303,7 +371,7 @@ const Defaulters = () => {
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={12}>
                     <Typography variant="body2" color="text.secondary">
-                      Unit: {selectedDefaulter?.unit_number || 'N/A'}
+                      Unit: {selectedDefaulter?.unit_number || '—'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Amount Due: {formatCurrency(selectedDefaulter?.amount_due)}
@@ -322,6 +390,18 @@ const Defaulters = () => {
                       <MenuItem value="resolved">Resolved</MenuItem>
                       <MenuItem value="escalated">Escalated</MenuItem>
                     </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      label="Remarks"
+                      name="remarks"
+                      value={values.remarks}
+                      onChange={handleChange}
+                      placeholder="Optional notes"
+                    />
                   </Grid>
                 </Grid>
               </DialogContent>

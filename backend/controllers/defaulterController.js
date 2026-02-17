@@ -3,7 +3,7 @@ import { query } from '../config/database.js';
 // Get all defaulters
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, society_id, status } = req.query;
+    const { page = 1, limit = 10, society_id, status, block_id, floor_id } = req.query;
     const offset = (page - 1) * limit;
 
     // Check if defaulter list is visible for residents
@@ -30,10 +30,19 @@ export const getAll = async (req, res) => {
     }
 
     let sql = `
-      SELECT d.*, u.unit_number, u.owner_name, u.resident_name, u.contact_number as resident_contact,
-             s.name as society_name
+      SELECT d.*, u.unit_number, u.owner_name, u.contact_number as resident_contact,
+             u.block_id, u.floor_id, f.floor_number,
+             s.name as society_name,
+             COALESCE(
+               (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
+               NULLIF(TRIM(u.resident_name), ''),
+               NULLIF(TRIM(u.owner_name), ''),
+               ''
+             ) AS resident_name,
+             (SELECT MAX(m.payment_date) FROM maintenance m WHERE m.unit_id = d.unit_id AND m.payment_date IS NOT NULL) AS last_payment_date
       FROM defaulters d
       LEFT JOIN units u ON d.unit_id = u.id
+      LEFT JOIN floors f ON u.floor_id = f.id
       LEFT JOIN apartments s ON d.society_apartment_id = s.id
       WHERE 1=1
     `;
@@ -52,25 +61,51 @@ export const getAll = async (req, res) => {
       params.push(status);
     }
 
+    if (block_id) {
+      paramCount++;
+      sql += ` AND u.block_id = $${paramCount}`;
+      params.push(block_id);
+    }
+
+    if (floor_id) {
+      paramCount++;
+      sql += ` AND u.floor_id = $${paramCount}`;
+      params.push(floor_id);
+    }
+
     sql += ` ORDER BY d.months_overdue DESC, d.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
     const result = await query(sql, params);
 
-    // Get total count
-    let countSql = 'SELECT COUNT(*) FROM defaulters WHERE 1=1';
+    // Get total count (join units for block/floor filter)
+    let countSql = `
+      SELECT COUNT(*) FROM defaulters d
+      LEFT JOIN units u ON d.unit_id = u.id
+      WHERE 1=1
+    `;
     const countParams = [];
     let countParamCount = 0;
 
     if (society_id) {
       countParamCount++;
-      countSql += ` AND society_apartment_id = $${countParamCount}`;
+      countSql += ` AND d.society_apartment_id = $${countParamCount}`;
       countParams.push(society_id);
     }
     if (status) {
       countParamCount++;
-      countSql += ` AND status = $${countParamCount}`;
+      countSql += ` AND d.status = $${countParamCount}`;
       countParams.push(status);
+    }
+    if (block_id) {
+      countParamCount++;
+      countSql += ` AND u.block_id = $${countParamCount}`;
+      countParams.push(block_id);
+    }
+    if (floor_id) {
+      countParamCount++;
+      countSql += ` AND u.floor_id = $${countParamCount}`;
+      countParams.push(floor_id);
     }
 
     const countResult = await query(countSql, countParams);
@@ -140,9 +175,16 @@ export const exportDefaulters = async (req, res) => {
     const { society_id } = req.query;
 
     let sql = `
-      SELECT d.id, d.unit_id, d.amount_due, d.months_overdue, d.status, d.created_at,
-             u.unit_number, u.owner_name, u.resident_name, u.contact_number as resident_contact, u.email,
-             s.name as society_name
+      SELECT d.id, d.unit_id, d.amount_due, d.months_overdue, d.remarks, d.created_at,
+             u.unit_number, u.contact_number as resident_contact, u.email,
+             s.name as society_name,
+             COALESCE(
+               (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
+               NULLIF(TRIM(u.resident_name), ''),
+               NULLIF(TRIM(u.owner_name), ''),
+               ''
+             ) AS resident_name,
+             (SELECT MAX(m.payment_date) FROM maintenance m WHERE m.unit_id = d.unit_id AND m.payment_date IS NOT NULL) AS last_payment_date
       FROM defaulters d
       LEFT JOIN units u ON d.unit_id = u.id
       LEFT JOIN apartments s ON d.society_apartment_id = s.id
@@ -159,8 +201,10 @@ export const exportDefaulters = async (req, res) => {
 
     const result = await query(sql, params);
 
-    // Build CSV
-    const headers = ['Unit', 'Owner', 'Resident', 'Contact', 'Email', 'Amount Due', 'Months Overdue', 'Status', 'Society'];
+    const formatDate = (val) => (val == null ? '' : new Date(val).toISOString().slice(0, 10));
+
+    // Build CSV (aligned with table: Unit, Resident, Last Payment Date, Amount Due, Months Overdue, Remarks, Society)
+    const headers = ['Unit', 'Resident', 'Last Payment Date', 'Contact', 'Email', 'Amount Due', 'Months Overdue', 'Remarks', 'Society'];
     const escapeCsv = (val) => {
       if (val == null) return '';
       const s = String(val);
@@ -168,13 +212,13 @@ export const exportDefaulters = async (req, res) => {
     };
     const rows = result.rows.map((r) => [
       escapeCsv(r.unit_number),
-      escapeCsv(r.owner_name),
       escapeCsv(r.resident_name),
+      escapeCsv(formatDate(r.last_payment_date)),
       escapeCsv(r.resident_contact),
       escapeCsv(r.email),
       escapeCsv(r.amount_due),
       escapeCsv(r.months_overdue),
-      escapeCsv(r.status),
+      escapeCsv(r.remarks),
       escapeCsv(r.society_name),
     ]);
     const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
@@ -192,11 +236,11 @@ export const exportDefaulters = async (req, res) => {
   }
 };
 
-// Update defaulter status
+// Update defaulter status (and optional remarks)
 export const updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, remarks } = req.body;
 
     if (!['active', 'resolved', 'escalated'].includes(status)) {
       return res.status(400).json({
@@ -208,10 +252,11 @@ export const updateStatus = async (req, res) => {
     const result = await query(
       `UPDATE defaulters 
        SET status = $1,
+           remarks = COALESCE($2, remarks),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
+       WHERE id = $3
        RETURNING *`,
-      [status, id]
+      [status, remarks !== undefined ? remarks : null, id]
     );
 
     if (result.rows.length === 0) {

@@ -15,9 +15,10 @@ import {
   IconButton,
   Tooltip,
   Chip,
+  Card,
+  CardContent,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
-import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
@@ -35,7 +36,6 @@ import { Autocomplete } from '@mui/material'
 import ProgressTimeline from '@/components/complaints/ProgressTimeline'
 
 const statusOptions = ['pending', 'in_progress', 'resolved', 'closed']
-const priorityOptions = ['low', 'medium', 'high', 'urgent']
 
 const Complaints = () => {
   const { user } = useAuth()
@@ -43,7 +43,6 @@ const Complaints = () => {
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [openDialog, setOpenDialog] = useState(false)
   const [openViewDialog, setOpenViewDialog] = useState(false)
   const [openAssignDialog, setOpenAssignDialog] = useState(false)
   const [openProgressDialog, setOpenProgressDialog] = useState(false)
@@ -53,6 +52,11 @@ const Complaints = () => {
   const { data, isLoading, mutate } = useSWR(
     ['/complaints', page, limit, search, statusFilter, societyId],
     () => complaintApi.getAll({ page, limit, search, status: statusFilter, society_id: societyId }).then(res => res.data)
+  )
+
+  const { data: stats } = useSWR(
+    societyId ? ['/complaints/statistics', societyId] : null,
+    () => complaintApi.getStatistics({ society_id: societyId }).then(res => res.data)
   )
 
   // Fetch staff list for assignment
@@ -75,16 +79,6 @@ const Complaints = () => {
   const handleCloseViewDialog = () => {
     setOpenViewDialog(false)
     setSelectedComplaint(null)
-  }
-
-  const handleStatusUpdate = async (id, status) => {
-    try {
-      await complaintApi.updateStatus(id, { status })
-      toast.success('Complaint status updated successfully')
-      mutate()
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Update failed')
-    }
   }
 
   const handleDelete = async (id) => {
@@ -181,6 +175,16 @@ const Complaints = () => {
   }
 
   const columns = [
+    { id: 'created_at', label: 'Date', render: (row) => formatDate(row.created_at) },
+    { id: 'id', label: 'Complaint ID', render: (row) => row.id ?? '—' },
+    { id: 'submitted_by_name', label: 'Resident Name', render: (row) => row.submitted_by_name || '—' },
+    { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '—' },
+    { id: 'type', label: 'Type', render: (row) => row.type || '—' },
+    { id: 'remarks', label: 'Remarks', render: (row) => (
+      <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+        {row.remarks || '—'}
+      </Typography>
+    )},
     { id: 'title', label: 'Title' },
     { id: 'description', label: 'Description', render: (row) => (
       <Typography variant="body2" noWrap sx={{ maxWidth: 300 }}>
@@ -210,7 +214,6 @@ const Complaints = () => {
         </Typography>
       ),
     },
-    { id: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at) },
     {
       id: 'actions',
       label: 'Actions',
@@ -249,6 +252,48 @@ const Complaints = () => {
           Complaints Management
         </Typography>
       </Box>
+
+      {/* Statistics Cards */}
+      {stats?.data != null && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={4}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" color="warning.main">
+                  {stats.data.pending ?? 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Pending
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" color="success.main">
+                  {stats.data.resolved ?? 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Resolved
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6">
+                  {stats.data.total ?? 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Complaints
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
 
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
         <TextField

@@ -11,6 +11,9 @@ router.use(authenticate);
 // Get all complaints
 router.get('/', complaintController.getAll);
 
+// Get complaint statistics (must be before /:id)
+router.get('/statistics', complaintController.getStatistics);
+
 // Create complaint with attachments (multipart/form-data)
 router.post('/with-attachments', uploadComplaintAttachments, complaintController.createWithAttachments);
 

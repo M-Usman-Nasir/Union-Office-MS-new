@@ -109,6 +109,51 @@ export const getAll = async (req, res) => {
   }
 };
 
+// Get complaint statistics (pending, resolved, total) for admin dashboard cards
+export const getStatistics = async (req, res) => {
+  try {
+    const { society_id } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramCount = 0;
+
+    if (society_id) {
+      paramCount++;
+      whereClause += ` AND society_apartment_id = $${paramCount}`;
+      params.push(society_id);
+    }
+
+    const [pendingResult, resolvedResult, totalResult] = await Promise.all([
+      query(
+        `SELECT COUNT(*) AS count FROM complaints ${whereClause} AND status IN ('pending', 'in_progress')`,
+        params
+      ),
+      query(
+        `SELECT COUNT(*) AS count FROM complaints ${whereClause} AND status IN ('resolved', 'closed')`,
+        params
+      ),
+      query(`SELECT COUNT(*) AS count FROM complaints ${whereClause}`, params),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        pending: parseInt(pendingResult.rows[0]?.count || 0, 10),
+        resolved: parseInt(resolvedResult.rows[0]?.count || 0, 10),
+        total: parseInt(totalResult.rows[0]?.count || 0, 10),
+      },
+    });
+  } catch (error) {
+    console.error('Get complaint statistics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch complaint statistics',
+      error: error.message,
+    });
+  }
+};
+
 // Get complaint by ID
 export const getById = async (req, res) => {
   try {

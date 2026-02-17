@@ -150,7 +150,6 @@ const Finance = () => {
   const yearOptions = getFinanceYearOptions()
 
   const columns = [
-    { id: 'transaction_date', label: 'Date', render: (row) => formatDate(row.transaction_date) },
     {
       id: 'month_year',
       label: 'Month / Year',
@@ -159,6 +158,7 @@ const Finance = () => {
         return `${monthName || '-'} ${row.year || ''}`.trim() || '-'
       },
     },
+    { id: 'transaction_date', label: 'Date', render: (row) => formatDate(row.transaction_date) },
     { id: 'transaction_type', label: 'Type', render: (row) => (
       <Chip
         label={row.transaction_type}

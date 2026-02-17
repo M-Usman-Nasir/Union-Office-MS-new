@@ -66,6 +66,7 @@ export const API_ENDPOINTS = {
   
   // Complaints
   COMPLAINTS: '/complaints',
+  COMPLAINTS_STATISTICS: '/complaints/statistics',
   COMPLAINTS_WITH_ATTACHMENTS: '/complaints/with-attachments',
   COMPLAINT_BY_ID: (id) => `/complaints/${id}`,
   COMPLAINT_STATUS: (id) => `/complaints/${id}/status`,

@@ -244,7 +244,7 @@ const Maintenance = () => {
   }
 
   const columns = [
-    { id: 'flat_no', label: 'Unit No.', render: (row) => row.flat_no || 'N/A' },
+    { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || row.flat_no || '-' },
     { id: 'resident_name', label: 'Resident Name', render: (row) => row.resident_name || '—' },
     {
       id: 'floor_number',
@@ -305,7 +305,7 @@ const Maintenance = () => {
   const filteredData = search.trim()
     ? blockAndFloorFiltered.filter(
         (row) =>
-          (row.flat_no || '').toLowerCase().includes(search.toLowerCase()) ||
+          (row.unit_number || row.flat_no || '').toLowerCase().includes(search.toLowerCase()) ||
           (row.resident_name || '').toLowerCase().includes(search.toLowerCase())
       )
     : blockAndFloorFiltered
@@ -857,7 +857,7 @@ const Maintenance = () => {
         fullWidth
       >
         <DialogTitle>
-          Unit {selectedLedgerRow?.flat_no ?? '—'} – {selectedLedgerRow?.resident_name || 'No resident'}
+          Unit {selectedLedgerRow?.unit_number ?? selectedLedgerRow?.flat_no ?? '—'} – {selectedLedgerRow?.resident_name || 'No resident'}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

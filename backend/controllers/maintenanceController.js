@@ -326,10 +326,11 @@ export const getYearlyLedger = async (req, res) => {
       SELECT
         u.id AS unit_id,
         u.unit_number AS flat_no,
+        u.unit_number AS unit_number,
         COALESCE(
+          (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
           NULLIF(TRIM(u.resident_name), ''),
           NULLIF(TRIM(u.owner_name), ''),
-          (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') LIMIT 1),
           ''
         ) AS resident_name,
         f.floor_number,

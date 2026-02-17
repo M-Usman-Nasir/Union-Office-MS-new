@@ -6,6 +6,10 @@ export const complaintApi = {
     return api.get(API_ENDPOINTS.COMPLAINTS, { params })
   },
 
+  getStatistics: (params) => {
+    return api.get(API_ENDPOINTS.COMPLAINTS_STATISTICS, { params })
+  },
+
   getById: (id) => {
     return api.get(API_ENDPOINTS.COMPLAINT_BY_ID(id))
   },
