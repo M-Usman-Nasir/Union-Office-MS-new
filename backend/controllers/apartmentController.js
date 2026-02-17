@@ -143,7 +143,7 @@ export const getById = async (req, res) => {
 // Create apartment
 export const create = async (req, res) => {
   try {
-    const { name, address, city, area, total_blocks, total_floors, total_units } = req.body;
+    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -153,10 +153,10 @@ export const create = async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO apartments (name, address, city, area, total_blocks, total_floors, total_units)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO apartments (name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [name, address || null, city || null, area || null, total_blocks || 0, total_floors || 0, total_units || 0]
+      [name, address || null, city || null, area || null, total_blocks || 0, total_floors || 0, total_units || 0, union_admin_name || null, union_admin_email || null, union_admin_phone || null]
     );
 
     res.status(201).json({
@@ -178,7 +178,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, city, area, total_blocks, total_floors, total_units } = req.body;
+    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone } = req.body;
 
     // Check if apartment exists
     const existing = await query('SELECT id FROM apartments WHERE id = $1', [id]);
@@ -198,10 +198,13 @@ export const update = async (req, res) => {
            total_blocks = COALESCE($5, total_blocks),
            total_floors = COALESCE($6, total_floors),
            total_units = COALESCE($7, total_units),
+           union_admin_name = $8,
+           union_admin_email = $9,
+           union_admin_phone = $10,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $8
+       WHERE id = $11
        RETURNING *`,
-      [name, address, city, area, total_blocks, total_floors, total_units, id]
+      [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, id]
     );
 
     res.json({

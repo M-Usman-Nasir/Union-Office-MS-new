@@ -120,9 +120,12 @@ export const API_ENDPOINTS = {
   // Super Admin
   SUPER_ADMIN_REPORTS_GLOBAL: '/super-admin/reports/global',
   SUPER_ADMIN_SUBSCRIPTION_PLANS: '/super-admin/subscription/plans',
+  SUPER_ADMIN_SUBSCRIPTION_PLAN_BY_ID: (id) => `/super-admin/subscription/plans/${id}`,
   SUPER_ADMIN_SUBSCRIPTION_ADMINS: '/super-admin/subscription/admins',
   SUPER_ADMIN_SUBSCRIPTION: '/super-admin/subscription',
   SUPER_ADMIN_SUBSCRIPTION_BY_ID: (id) => `/super-admin/subscription/${id}`,
+  SUPER_ADMIN_INVOICES: '/super-admin/invoices',
+  SUPER_ADMIN_INVOICE_BY_ID: (id) => `/super-admin/invoices/${id}`,
   // Societies cascading (City → Area → Apartment)
   SOCIETIES_CITIES: '/societies/cities',
   SOCIETIES_AREAS: '/societies/areas',
@@ -150,8 +153,10 @@ export const ROUTES = {
   SUPER_ADMIN_UNITS: '/super-admin/units',
   SUPER_ADMIN_USERS: '/super-admin/users',
   SUPER_ADMIN_ADMINS: '/super-admin/admins',
+  SUPER_ADMIN_INVOICES: '/super-admin/invoices',
+  SUPER_ADMIN_SETTINGS: '/super-admin/settings',
   SUPER_ADMIN_PROFILE: '/super-admin/profile',
-  
+
   // Admin
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_RESIDENTS: '/admin/residents',

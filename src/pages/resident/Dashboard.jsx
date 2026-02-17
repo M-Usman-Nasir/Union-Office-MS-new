@@ -31,17 +31,18 @@ const ResidentDashboard = () => {
     () => complaintApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
   )
 
+  const societyId = user?.society_apartment_id
+  const unitId = user?.unit_id
+
   const { data: maintenanceData, isLoading: maintenanceLoading } = useSWR(
-    user ? '/maintenance/my' : null,
-    () => maintenanceApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
+    user && unitId ? ['/maintenance/my', unitId] : null,
+    () => maintenanceApi.getAll({ limit: 5, page: 1, unit_id: unitId }).then(res => res.data)
   )
 
   const { data: announcementsData, isLoading: announcementsLoading } = useSWR(
-    '/announcements/recent',
-    () => announcementApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
+    societyId ? ['/announcements/recent', societyId] : null,
+    () => announcementApi.getAll({ limit: 5, page: 1, society_id: societyId }).then(res => res.data)
   )
-
-  const societyId = user?.society_apartment_id
 
   // Check visibility settings
   const { data: settingsData } = useSWR(
@@ -52,9 +53,12 @@ const ResidentDashboard = () => {
   const defaulterListVisible = settingsData?.defaulter_list_visible !== false
 
   const { data: defaulterData, isLoading: defaulterLoading } = useSWR(
-    user && defaulterListVisible ? '/defaulters/my' : null,
-    () => defaulterApi.getAll({ unit_id: user?.unit_id }).then(res => res.data)
+    user && defaulterListVisible && societyId ? ['/defaulters/my', societyId] : null,
+    () => defaulterApi.getAll({ society_id: societyId, limit: 100 }).then(res => res.data)
   )
+
+  // Resident's own defaulter row (backend returns society defaulters; we show only this unit's status)
+  const myDefaulter = defaulterData?.data?.find((d) => Number(d.unit_id) === Number(unitId)) ?? null
 
   const isLoading = complaintsLoading || maintenanceLoading || announcementsLoading
 
@@ -146,10 +150,14 @@ const ResidentDashboard = () => {
                     <Typography variant="h6" gutterBottom>
                       Defaulter Status
                     </Typography>
-                    {defaulterData?.data && defaulterData.data.length > 0 ? (
+                    {defaulterLoading ? (
+                      <Box display="flex" justifyContent="center" py={2}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : myDefaulter ? (
                       <>
                         <Typography variant="h6" color="error" component="div">
-                          {formatCurrency(defaulterData.data[0].amount_due)}
+                          {formatCurrency(myDefaulter.amount_due)}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Amount due

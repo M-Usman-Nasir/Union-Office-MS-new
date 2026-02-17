@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -19,6 +19,7 @@ import {
   MenuItem,
   TextField,
   InputAdornment,
+  Badge,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -32,6 +33,7 @@ import WarningIcon from '@mui/icons-material/Warning'
 import FeedbackIcon from '@mui/icons-material/Feedback'
 import AnnouncementIcon from '@mui/icons-material/Announcement'
 import SettingsIcon from '@mui/icons-material/Settings'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import MessageIcon from '@mui/icons-material/Message'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -44,6 +46,7 @@ import useMediaQuery from '@mui/material/useMediaQuery'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme as useAppTheme } from '@/contexts/ThemeContext'
 import { ROUTES, ROLES } from '@/utils/constants'
+import { messagesApi } from '@/api/messagesApi'
 import PushNotificationEnabler from '@/components/notifications/PushNotificationEnabler'
 import superAdminAvatar from '@/assets/images/users/super_admin.webp'
 
@@ -71,6 +74,7 @@ const MainLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [anchorEl, setAnchorEl] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const effectiveDrawerWidth = sidebarOpen ? drawerWidth : drawerWidthCollapsed
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('sm'))
@@ -78,6 +82,23 @@ const MainLayout = ({ children }) => {
   const { mode, toggleMode } = useAppTheme()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Fetch unread message count for admin and resident (shown in toolbar chat icon badge)
+  useEffect(() => {
+    if (user?.role !== ROLES.ADMIN && user?.role !== ROLES.RESIDENT) return
+    const fetchUnread = () => {
+      messagesApi.getConversations()
+        .then((res) => {
+          const list = res.data?.data || []
+          const total = list.reduce((sum, c) => sum + (c.unread_count || 0), 0)
+          setUnreadMessagesCount(total)
+        })
+        .catch(() => setUnreadMessagesCount(0))
+    }
+    fetchUnread()
+    const interval = setInterval(fetchUnread, 60000) // refresh every minute
+    return () => clearInterval(interval)
+  }, [user?.role])
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
@@ -117,6 +138,8 @@ const MainLayout = ({ children }) => {
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.SUPER_ADMIN_DASHBOARD },
         { text: 'Leads', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
         { text: 'Clients', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
+        { text: 'Invoices', icon: <ReceiptLongIcon />, path: ROUTES.SUPER_ADMIN_INVOICES },
+        { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.SUPER_ADMIN_SETTINGS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
         { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
       ]
@@ -447,6 +470,22 @@ const MainLayout = ({ children }) => {
               '& .MuiInputBase-input::placeholder': { color: 'inherit', opacity: 0.7 },
             }}
           />
+          {(user?.role === ROLES.ADMIN || user?.role === ROLES.RESIDENT) && (
+            <IconButton
+              color="inherit"
+              aria-label="Messages"
+              onClick={() => navigate(user?.role === ROLES.ADMIN ? ROUTES.ADMIN_MESSAGES : ROUTES.RESIDENT_MESSAGES)}
+              sx={{
+                mr: 0.5,
+                transition: 'transform 0.2s ease',
+                '&:hover': { transform: 'scale(1.08)' },
+              }}
+            >
+              <Badge badgeContent={unreadMessagesCount} color="error">
+                <MessageIcon />
+              </Badge>
+            </IconButton>
+          )}
           <IconButton
             onClick={toggleMode}
             color="inherit"

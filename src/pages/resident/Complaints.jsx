@@ -15,8 +15,15 @@ import {
   Tabs,
   Tab,
   Alert,
+  FormHelperText,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import CloseIcon from '@mui/icons-material/Close'
+import AttachFileIcon from '@mui/icons-material/AttachFile'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
@@ -34,13 +41,25 @@ const validationSchema = Yup.object({
   priority: Yup.string().oneOf(['low', 'medium', 'high', 'urgent']).required('Priority is required'),
 })
 
+const SUGGESTED_COMPLAINT_TITLES = [
+  { title: 'Plumbing Issue', description: 'e.g. Leaks, clogged drains, no water supply, low pressure, broken taps or pipes.' },
+  { title: 'Electrical Problem', description: 'e.g. Power cuts, fuse trips, faulty switches, lighting issues, socket not working.' },
+  { title: 'Pest / Insect Issue', description: 'e.g. Cockroaches, ants, mosquitoes, rodents, or other pests in common areas or unit.' },
+  { title: 'Lift / Elevator Not Working', description: 'e.g. Lift stuck, not stopping at floors, door malfunction, or safety concerns.' },
+  { title: 'Parking or Common Area', description: 'e.g. Unauthorized parking, damaged common area, corridor or lobby maintenance.' },
+  { title: 'Noise or Nuisance', description: 'e.g. Loud music, construction noise, neighbour disturbance, or other nuisance.' },
+  { title: 'Security or Access', description: 'e.g. Gate not working, key/card issue, CCTV concern, or access control.' },
+  { title: 'Cleaning or Garbage', description: 'e.g. Garbage not collected, common area dirty, bin overflow, or hygiene issue.' },
+  { title: 'Other', description: 'Describe your complaint in detail below.' },
+]
+
 const ResidentComplaints = () => {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [openDialog, setOpenDialog] = useState(false)
   const [attachmentFiles, setAttachmentFiles] = useState([])
-  const [filterType, setFilterType] = useState('all') // 'all', 'my', 'public'
+  const [filterType, setFilterType] = useState('my') // 'all', 'my', 'public' — default to My Complaints
   const societyId = user?.society_apartment_id
 
   // Check visibility settings
@@ -140,7 +159,7 @@ const ResidentComplaints = () => {
     )},
     {
       id: 'unit_number',
-      label: 'Unit',
+      label: 'Unit No.',
       render: (row) => row.unit_number || 'N/A',
     },
     {
@@ -178,12 +197,12 @@ const ResidentComplaints = () => {
     { id: 'created_at', label: 'Submitted', render: (row) => formatDate(row.created_at) },
   ]
 
-  // Filter complaints based on selected filter
+  // Filter complaints based on selected filter (use submitted_by for "my" so it works even when complaint.unit_id is null)
   const filteredData = data?.data ? data.data.filter((complaint) => {
     if (filterType === 'my') {
-      return complaint.unit_id === user?.unit_id
+      return complaint.submitted_by === user?.id
     } else if (filterType === 'public') {
-      return complaint.unit_id !== user?.unit_id && complaint.is_public
+      return complaint.submitted_by !== user?.id && complaint.is_public
     }
     return true // 'all' - show all complaints
   }) : []
@@ -237,7 +256,7 @@ const ResidentComplaints = () => {
         </>
       )}
 
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { overflowX: 'hidden' } }}>
         <Formik
           initialValues={{
             title: '',
@@ -247,22 +266,49 @@ const ResidentComplaints = () => {
           validationSchema={validationSchema}
           onSubmit={handleSubmit}
         >
-          {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
+          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => {
+            const selectedSuggestion = SUGGESTED_COMPLAINT_TITLES.find(s => s.title === values.title)
+            return (
             <Form>
               <DialogTitle>Submit New Complaint</DialogTitle>
-              <DialogContent>
-                <Grid container spacing={2} sx={{ mt: 1 }}>
+              <DialogContent sx={{ overflowX: 'hidden', minWidth: 0 }}>
+                <Grid container spacing={2} sx={{ mt: 1, minWidth: 0 }}>
                   <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                      Suggested titles (click to use)
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
+                      {SUGGESTED_COMPLAINT_TITLES.map((s) => (
+                        <Chip
+                          key={s.title}
+                          label={s.title}
+                          onClick={() => {
+                            setFieldValue('title', s.title)
+                            setFieldValue('description', s.description)
+                          }}
+                          variant={values.title === s.title ? 'filled' : 'outlined'}
+                          color={values.title === s.title ? 'primary' : 'default'}
+                          size="small"
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Box>
                     <TextField
                       fullWidth
                       label="Title"
                       name="title"
+                      placeholder="Or type your own title"
                       value={values.title}
                       onChange={handleChange}
                       onBlur={handleBlur}
                       error={touched.title && !!errors.title}
                       helperText={touched.title && errors.title}
                     />
+                    {selectedSuggestion && (
+                      <FormHelperText sx={{ mt: 0.5, display: 'block' }}>
+                        {selectedSuggestion.description}
+                      </FormHelperText>
+                    )}
                   </Grid>
                   <Grid item xs={12}>
                     <TextField
@@ -300,7 +346,7 @@ const ResidentComplaints = () => {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       Attachments (optional): Images or PDF, max 5 files, 5MB each
                     </Typography>
-                    <Button variant="outlined" component="label" size="small">
+                    <Button variant="outlined" component="label" size="small" startIcon={<AttachFileIcon />}>
                       Choose files
                       <input
                         type="file"
@@ -311,9 +357,31 @@ const ResidentComplaints = () => {
                       />
                     </Button>
                     {attachmentFiles.length > 0 && (
-                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                        {attachmentFiles.length} file(s) selected
-                      </Typography>
+                      <List dense disablePadding sx={{ mt: 1, bgcolor: 'action.hover', borderRadius: 1, py: 0 }}>
+                        {attachmentFiles.map((file, index) => (
+                          <ListItem
+                            key={`${file.name}-${index}`}
+                            sx={{ py: 0.5 }}
+                            secondaryAction={
+                              <IconButton
+                                edge="end"
+                                size="small"
+                                aria-label={`Remove ${file.name}`}
+                                onClick={() => setAttachmentFiles((prev) => prev.filter((_, i) => i !== index))}
+                              >
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            }
+                          >
+                            <ListItemText
+                              primary={file.name}
+                              secondary={file.size != null ? (file.size >= 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : `${(file.size / 1024).toFixed(1)} KB`) : null}
+                              primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                              secondaryTypographyProps={{ variant: 'caption' }}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
                     )}
                   </Grid>
                 </Grid>
@@ -325,7 +393,8 @@ const ResidentComplaints = () => {
                 </Button>
               </DialogActions>
             </Form>
-          )}
+            )
+          }}
         </Formik>
       </Dialog>
     </Container>

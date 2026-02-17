@@ -8,7 +8,9 @@ export const getAll = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let sql = `
-      SELECT c.*, u.unit_number, s.name as society_name, 
+      SELECT c.*,
+             COALESCE(u.unit_number, (SELECT u2.unit_number FROM users u0 JOIN units u2 ON u2.id = u0.unit_id WHERE u0.id = c.submitted_by LIMIT 1)) AS unit_number,
+             s.name as society_name,
              submitter.name as submitted_by_name, assignee.name as assigned_to_name
       FROM complaints c
       LEFT JOIN units u ON c.unit_id = u.id
@@ -160,7 +162,9 @@ export const getById = async (req, res) => {
     const { id } = req.params;
 
     const result = await query(
-      `SELECT c.*, u.unit_number, s.name as society_name,
+      `SELECT c.*,
+              COALESCE(u.unit_number, (SELECT u2.unit_number FROM users u0 JOIN units u2 ON u2.id = u0.unit_id WHERE u0.id = c.submitted_by LIMIT 1)) AS unit_number,
+              s.name as society_name,
               submitter.name as submitted_by_name, assignee.name as assigned_to_name
        FROM complaints c
        LEFT JOIN units u ON c.unit_id = u.id
@@ -213,12 +217,15 @@ export const create = async (req, res) => {
       });
     }
 
+    // Use resident's unit_id from profile when not provided so Unit column displays correctly
+    const effectiveUnitId = unit_id != null && unit_id !== '' ? unit_id : (req.user.role === 'resident' ? req.user.unit_id : null);
+
     const result = await query(
       `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, title, description, priority, is_public, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
        RETURNING *`,
       [
-        unit_id || null,
+        effectiveUnitId || null,
         society_apartment_id,
         req.user.id,
         complaintTitle,
@@ -279,6 +286,9 @@ export const createWithAttachments = async (req, res) => {
       });
     }
 
+    // Use resident's unit_id from profile when not provided so Unit column displays correctly
+    const effectiveUnitId = unit_id != null && unit_id !== '' ? unit_id : (req.user.role === 'resident' ? req.user.unit_id : null);
+
     const attachmentPaths = (req.files || []).map((f) => `/uploads/complaints/${f.filename}`);
 
     const result = await query(
@@ -286,7 +296,7 @@ export const createWithAttachments = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
        RETURNING *`,
       [
-        unit_id || null,
+        effectiveUnitId || null,
         society_apartment_id,
         req.user.id,
         complaintTitle,

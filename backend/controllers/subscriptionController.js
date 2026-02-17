@@ -1,10 +1,13 @@
 import { query } from '../config/database.js';
 
-// Get all subscription plans (for super admin)
+// Get all subscription plans (for super admin). Query ?all=true returns inactive too.
 export const getPlans = async (req, res) => {
   try {
+    const all = req.query.all === 'true';
     const result = await query(
-      'SELECT * FROM subscription_plans WHERE is_active = true ORDER BY interval_months'
+      all
+        ? 'SELECT * FROM subscription_plans ORDER BY interval_months, id'
+        : 'SELECT * FROM subscription_plans WHERE is_active = true ORDER BY interval_months'
     );
     res.json({ success: true, data: result.rows });
   } catch (error) {
@@ -12,6 +15,66 @@ export const getPlans = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch subscription plans',
+      error: error.message,
+    });
+  }
+};
+
+// Create subscription plan (Super Admin only)
+export const createPlan = async (req, res) => {
+  try {
+    const { name, amount, interval_months } = req.body;
+    if (!name || amount == null || interval_months == null) {
+      return res.status(400).json({
+        success: false,
+        message: 'name, amount, and interval_months are required',
+      });
+    }
+    const result = await query(
+      `INSERT INTO subscription_plans (name, amount, interval_months, is_active)
+       VALUES ($1, $2, $3, true)
+       RETURNING *`,
+      [name, Math.max(0, parseFloat(amount)), Math.max(1, parseInt(interval_months, 10))]
+    );
+    res.status(201).json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('Create plan error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create subscription plan',
+      error: error.message,
+    });
+  }
+};
+
+// Update subscription plan (Super Admin only)
+export const updatePlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, amount, interval_months, is_active } = req.body;
+    const result = await query(
+      `UPDATE subscription_plans
+       SET name = COALESCE($1, name), amount = COALESCE($2, amount), interval_months = COALESCE($3, interval_months),
+           is_active = COALESCE($4, is_active), updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5
+       RETURNING *`,
+      [
+        name,
+        amount != null ? Math.max(0, parseFloat(amount)) : null,
+        interval_months != null ? Math.max(1, parseInt(interval_months, 10)) : null,
+        is_active,
+        id,
+      ]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('Update plan error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update subscription plan',
       error: error.message,
     });
   }

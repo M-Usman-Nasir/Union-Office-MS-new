@@ -8,7 +8,6 @@ import {
   Grid,
   TextField,
   Button,
-  Alert,
   Divider,
   Avatar,
 } from '@mui/material'
@@ -120,11 +119,11 @@ const ResidentProfile = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
+      {/* <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1">
           My Profile
         </Typography>
-      </Box>
+      </Box> */}
 
       {/* Profile is now fully functional; no placeholder warning needed */}
 

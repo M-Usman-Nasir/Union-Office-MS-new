@@ -227,7 +227,7 @@ const AdminDashboard = () => {
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
           <Box>
             <Typography variant="h4" component="h1" gutterBottom>
-              Admin Dashboard
+              Union Admin Dashboard
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2, flexWrap: 'wrap' }}>

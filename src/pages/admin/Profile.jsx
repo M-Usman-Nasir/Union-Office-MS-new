@@ -15,8 +15,10 @@ import {
 import SaveIcon from '@mui/icons-material/Save'
 import PersonIcon from '@mui/icons-material/Person'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
+import LockIcon from '@mui/icons-material/Lock'
 import { useAuth } from '@/contexts/AuthContext'
 import { authApi } from '@/api/authApi'
+import { userApi } from '@/api/userApi'
 import useSWR from 'swr'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -30,9 +32,19 @@ const validationSchema = Yup.object({
   cnic: Yup.string(),
 })
 
+const passwordSchema = Yup.object({
+  new_password: Yup.string()
+    .min(6, 'Password must be at least 6 characters')
+    .required('New password is required'),
+  confirm_password: Yup.string()
+    .oneOf([Yup.ref('new_password'), null], 'Passwords must match')
+    .required('Confirm password is required'),
+})
+
 const AdminProfile = () => {
   const { user, mutate: mutateAuth } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const fileInputRef = useRef(null)
@@ -115,19 +127,33 @@ const AdminProfile = () => {
     }
   }
 
+  const handlePasswordSubmit = async (values, resetForm) => {
+    if (!user?.id) return
+    setIsPasswordSubmitting(true)
+    try {
+      await userApi.updatePassword(user.id, { new_password: values.new_password })
+      toast.success('Password updated successfully')
+      if (resetForm) resetForm()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update password')
+    } finally {
+      setIsPasswordSubmitting(false)
+    }
+  }
+
   const profileData = userData || user
   const displayImage = imagePreview || getImageUrl(profileData?.profile_image)
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
+      {/* <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" sx={{ mb: 1 }}>
           My Profile
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Manage your account information and personal details
         </Typography>
-      </Box>
+      </Box> */}
 
       <Card>
         <CardContent>
@@ -338,6 +364,70 @@ const AdminProfile = () => {
               </Form>
             )}
           </Formik>
+
+          {/* Password Update Section (separate form to avoid nested forms) */}
+          <Box sx={{ mt: 4, pt: 3, borderTop: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <LockIcon sx={{ mr: 1, color: 'primary.main' }} />
+              <Typography variant="h6">Password</Typography>
+            </Box>
+            <Divider sx={{ mb: 3 }} />
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              For security, your current password is not shown. Use the form below to set a new password.
+            </Typography>
+            <Formik
+              initialValues={{ new_password: '', confirm_password: '' }}
+              validationSchema={passwordSchema}
+              onSubmit={(values, { resetForm }) => handlePasswordSubmit(values, resetForm)}
+            >
+              {({ values, errors, touched, handleChange, handleBlur, handleSubmit }) => (
+                <Form onSubmit={handleSubmit}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="New Password"
+                        name="new_password"
+                        type="password"
+                        value={values.new_password}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.new_password && !!errors.new_password}
+                        helperText={touched.new_password && errors.new_password}
+                        placeholder="Min 6 characters"
+                        autoComplete="new-password"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Confirm New Password"
+                        name="confirm_password"
+                        type="password"
+                        value={values.confirm_password}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.confirm_password && !!errors.confirm_password}
+                        helperText={touched.confirm_password && errors.confirm_password}
+                        placeholder="Re-enter new password"
+                        autoComplete="new-password"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Button
+                        type="submit"
+                        variant="outlined"
+                        startIcon={<LockIcon />}
+                        disabled={isPasswordSubmitting}
+                      >
+                        {isPasswordSubmitting ? 'Updating...' : 'Update Password'}
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </Form>
+              )}
+            </Formik>
+          </Box>
         </CardContent>
       </Card>
     </Container>

@@ -1,6 +1,7 @@
 import express from 'express';
 import * as superAdminController from '../controllers/superAdminController.js';
 import * as subscriptionController from '../controllers/subscriptionController.js';
+import * as invoiceController from '../controllers/invoiceController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -8,8 +9,16 @@ router.use(authenticate);
 
 router.get('/reports/global', requireRole('super_admin'), superAdminController.getGlobalReports);
 
+// Invoices (Super Admin only)
+router.get('/invoices', requireRole('super_admin'), invoiceController.listInvoices);
+router.post('/invoices', requireRole('super_admin'), invoiceController.createInvoice);
+router.post('/invoices/auto-generate', requireRole('super_admin'), invoiceController.autoGenerateInvoices);
+router.patch('/invoices/:id', requireRole('super_admin'), invoiceController.updateInvoiceStatus);
+
 // Subscription & admins (Super Admin only)
 router.get('/subscription/plans', requireRole('super_admin'), subscriptionController.getPlans);
+router.post('/subscription/plans', requireRole('super_admin'), subscriptionController.createPlan);
+router.patch('/subscription/plans/:id', requireRole('super_admin'), subscriptionController.updatePlan);
 router.get('/subscription/admins', requireRole('super_admin'), subscriptionController.getAdminsWithSubscriptions);
 router.post('/subscription', requireRole('super_admin'), subscriptionController.createSubscription);
 router.patch('/subscription/:id', requireRole('super_admin'), subscriptionController.updateSubscriptionStatus);

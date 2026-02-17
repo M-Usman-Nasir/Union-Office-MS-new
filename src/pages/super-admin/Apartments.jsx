@@ -31,6 +31,7 @@ import LayersIcon from '@mui/icons-material/Layers'
 import DomainIcon from '@mui/icons-material/Domain'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
+import VisibilityIcon from '@mui/icons-material/Visibility'
 import useSWR from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
@@ -56,7 +57,9 @@ const validationSchema = Yup.object({
     address: Yup.string(),
     city: Yup.string(),
     total_floors: Yup.number().min(0).nullable(),
-    assigned_union_admin_id: Yup.number().nullable(),
+    union_admin_name: Yup.string().nullable(),
+    union_admin_email: Yup.string().nullable().test('email', 'Invalid email', (v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
+    union_admin_phone: Yup.string().nullable(),
   })
 
 const Apartments = () => {
@@ -69,6 +72,8 @@ const Apartments = () => {
   const [actionMenu, setActionMenu] = useState({ anchorEl: null, row: null })
   const [assignAdminRow, setAssignAdminRow] = useState(null)
   const [assignSelectedAdmin, setAssignSelectedAdmin] = useState(null)
+  const [viewDialogOpen, setViewDialogOpen] = useState(false)
+  const [viewingRow, setViewingRow] = useState(null)
 
   const openActionMenu = (e, row) => {
     e.stopPropagation()
@@ -161,10 +166,10 @@ const Apartments = () => {
           total_blocks: values.total_blocks,
           total_floors: values.total_floors,
           total_units: values.total_units,
+          union_admin_name: values.union_admin_name || null,
+          union_admin_email: values.union_admin_email || null,
+          union_admin_phone: values.union_admin_phone || null,
         })
-        if (values.assigned_union_admin_id && !assignedAdminForEdit) {
-          await userApi.update(values.assigned_union_admin_id, { society_apartment_id: editingSociety.id })
-        }
         toast.success('Apartment updated successfully')
       } else {
         const payload = {
@@ -175,6 +180,9 @@ const Apartments = () => {
           total_blocks: values.total_blocks || 0,
           total_floors: values.total_floors || 0,
           total_units: values.total_units || 0,
+          union_admin_name: values.union_admin_name || null,
+          union_admin_email: values.union_admin_email || null,
+          union_admin_phone: values.union_admin_phone || null,
         }
         const res = await apartmentApi.create(payload)
         const newId = res?.data?.data?.id
@@ -195,11 +203,7 @@ const Apartments = () => {
             })
           }
         }
-        // Assign selected unassigned Union Admin to this apartment
-        if (newId && values.assigned_union_admin_id) {
-          await userApi.update(values.assigned_union_admin_id, { society_apartment_id: newId })
-        }
-        toast.success(values.assigned_union_admin_id ? 'Apartment created and Union Admin assigned.' : 'Apartment created successfully.')
+        toast.success('Apartment created successfully.')
       }
       mutate()
       handleCloseDialog()
@@ -263,41 +267,88 @@ const Apartments = () => {
 
   const columns = [
     {
-      id: 'name',
-      label: 'Name',
-      minWidth: 180,
-      render: (row) => (
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-          {row.name || '—'}
-        </Typography>
-      ),
-    },
-    { id: 'address', label: 'Address' },
-    {
       id: 'union_admin',
       label: 'Union Admin',
       minWidth: 160,
       render: (row) => {
         const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const label = admin ? admin.name : (row.union_admin_name || '—')
         return (
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            {admin ? admin.name : '—'}
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 600,
+              cursor: label !== '—' ? 'pointer' : 'default',
+              color: label !== '—' ? 'primary.main' : 'text.primary',
+              '&:hover': label !== '—' ? { textDecoration: 'underline' } : {},
+            }}
+            onClick={() => label !== '—' && (setViewingRow(row), setViewDialogOpen(true))}
+          >
+            {label}
           </Typography>
         )
       },
     },
-    { id: 'city', label: 'City' },
-    { id: 'area', label: 'Area' },
-    { id: 'total_blocks', label: 'Block' },
-    { id: 'total_floors', label: 'Floor' },
     {
-      id: 'total_units',
-      label: 'Unit',
-      render: (row) => (row.total_units == null || Number(row.total_units) === 0 ? 'N/A' : row.total_units),
+      id: 'union_admin_phone',
+      label: 'Phone No.',
+      minWidth: 120,
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const phone = admin?.contact_number || row.union_admin_phone || '—'
+        return <Typography variant="body2">{phone}</Typography>
+      },
     },
     {
+      id: 'union_admin_email',
+      label: 'Email',
+      minWidth: 180,
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const email = admin?.email || row.union_admin_email || '—'
+        return <Typography variant="body2">{email}</Typography>
+      },
+    },
+    {
+      id: 'name',
+      label: 'Apartment Name',
+      minWidth: 180,
+      render: (row) => {
+        const label = row.name || '—'
+        return (
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: 'primary.main',
+              '&:hover': { textDecoration: 'underline' },
+            }}
+            onClick={() => (setViewingRow(row), setViewDialogOpen(true))}
+          >
+            {label}
+          </Typography>
+        )
+      },
+    },
+    {
+      id: 'next_billing_date',
+      label: 'Billing',
+      minWidth: 120,
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const date = admin?.next_billing_date
+        return (
+          <Typography variant="body2">
+            {date ? new Date(date).toLocaleDateString() : '—'}
+          </Typography>
+        )
+      },
+    },
+    { id: 'address', label: 'Address' },
+    {
       id: 'actions',
-      label: 'Action',
+      label: 'Actions',
       align: 'right',
       render: (row) => (
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -320,6 +371,17 @@ const Apartments = () => {
           >
             {actionMenu.row && (
               <>
+                <MenuItem
+                  onClick={() => {
+                    setViewingRow(actionMenu.row)
+                    setViewDialogOpen(true)
+                    closeActionMenu()
+                  }}
+                >
+                  <ListItemIcon><VisibilityIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>View</ListItemText>
+                </MenuItem>
+                <Divider />
                 <MenuItem
                   onClick={() => {
                     navigate(`/super-admin/blocks?society_id=${actionMenu.row.id}`)
@@ -412,7 +474,9 @@ const Apartments = () => {
         total_floors: editSource.total_floors ?? 0,
         total_units: editSource.total_units ?? 0,
         blockNames: [],
-        assigned_union_admin_id: assignedAdminForEdit?.id ?? null,
+        union_admin_name: editSource.union_admin_name ?? assignedAdminForEdit?.name ?? '',
+        union_admin_email: editSource.union_admin_email ?? assignedAdminForEdit?.email ?? '',
+        union_admin_phone: editSource.union_admin_phone ?? assignedAdminForEdit?.contact_number ?? '',
       }
     : {
         name: '',
@@ -423,7 +487,9 @@ const Apartments = () => {
         total_floors: 0,
         total_units: 0,
         blockNames: [],
-        assigned_union_admin_id: null,
+        union_admin_name: '',
+        union_admin_email: '',
+        union_admin_phone: '',
       }
 
   const totalLeads = data?.pagination?.total ?? (data?.data?.length ?? 0)
@@ -637,49 +703,50 @@ const Apartments = () => {
                       </Grid>
                     </Grid>
                   )}
-                  <Grid item xs={12} sx={{ position: 'relative', zIndex: 10 }}>
-                      <Typography variant="subtitle1" sx={{ mt: 1, mb: 0.5, fontWeight: 600 }}>
-                        Union Admin {editingSociety ? '(assigned to this apartment)' : '(assign to this apartment)'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                        {editingSociety && assignedAdminForEdit
-                          ? 'Assigned admin cannot be changed here.'
-                          : 'Type to search. Only unassigned Union Admins are shown.'}
-                      </Typography>
-                      <Autocomplete
-                        fullWidth
-                        options={
-                          assignedAdminForEdit
-                            ? [assignedAdminForEdit, ...unassignedUnionAdmins]
-                            : unassignedUnionAdmins
-                        }
-                        getOptionLabel={(option) => (option && option.name) || ''}
-                        value={
-                          assignedAdminForEdit ||
-                          unassignedUnionAdmins.find((a) => a.id === values.assigned_union_admin_id) ||
-                          null
-                        }
-                        onChange={(_, newValue) => {
-                          setFieldValue('assigned_union_admin_id', newValue ? newValue.id : null)
-                        }}
-                        onBlur={() => handleBlur({ target: { name: 'assigned_union_admin_id' } })}
-                        disabled={!!assignedAdminForEdit}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            name="assigned_union_admin_id"
-                            label="Select Union Admin"
-                            error={touched.assigned_union_admin_id && !!errors.assigned_union_admin_id}
-                            helperText={touched.assigned_union_admin_id && errors.assigned_union_admin_id}
-                          />
-                        )}
-                        renderOption={(props, option) => (
-                          <li {...props} key={option.id}>
-                            {option.name} {option.email ? `(${option.email})` : ''}
-                          </li>
-                        )}
-                        isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                      />
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }} color="text.secondary">
+                      Union Admin Name, Email &amp; Phone (optional — for lead contact)
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Union Admin Name"
+                      name="union_admin_name"
+                      value={values.union_admin_name || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.union_admin_name && !!errors.union_admin_name}
+                      helperText={touched.union_admin_name && errors.union_admin_name}
+                      placeholder="Optional"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Union Admin Email"
+                      name="union_admin_email"
+                      type="email"
+                      value={values.union_admin_email || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.union_admin_email && !!errors.union_admin_email}
+                      helperText={touched.union_admin_email && errors.union_admin_email}
+                      placeholder="Optional"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Union Admin Phone No."
+                      name="union_admin_phone"
+                      value={values.union_admin_phone || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.union_admin_phone && !!errors.union_admin_phone}
+                      helperText={touched.union_admin_phone && errors.union_admin_phone}
+                      placeholder="Optional"
+                    />
                   </Grid>
                 </Grid>
               </DialogContent>
@@ -692,6 +759,157 @@ const Apartments = () => {
             </Form>
           )}
         </Formik>
+      </Dialog>
+
+      <Dialog
+        open={viewDialogOpen}
+        onClose={() => { setViewDialogOpen(false); setViewingRow(null) }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Apartment &amp; Union Admin details</DialogTitle>
+        <DialogContent dividers>
+          {viewingRow && (
+            <Grid container spacing={2} sx={{ pt: 1 }}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">Apartment Name</Typography>
+                <Typography variant="body1">{viewingRow.name || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">Address</Typography>
+                <Typography variant="body1">{viewingRow.address || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">City</Typography>
+                <Typography variant="body1">{viewingRow.city || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Area</Typography>
+                <Typography variant="body1">{viewingRow.area || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Typography variant="body2" color="text.secondary">Total Blocks</Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                  onClick={() => {
+                    setViewDialogOpen(false)
+                    setViewingRow(null)
+                    navigate(`/super-admin/blocks?society_id=${viewingRow.id}`)
+                  }}
+                >
+                  {viewingRow.total_blocks ?? '—'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Typography variant="body2" color="text.secondary">Total Floors</Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                  onClick={() => {
+                    setViewDialogOpen(false)
+                    setViewingRow(null)
+                    navigate(`/super-admin/floors?society_id=${viewingRow.id}`)
+                  }}
+                >
+                  {viewingRow.total_floors ?? '—'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Typography variant="body2" color="text.secondary">Total Units</Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                  onClick={() => {
+                    setViewDialogOpen(false)
+                    setViewingRow(null)
+                    navigate(`/super-admin/units?society_id=${viewingRow.id}`)
+                  }}
+                >
+                  {viewingRow.total_units ?? '—'}
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Union Admin</Typography>
+              </Grid>
+              {(() => {
+                const admin = admins.find((a) => a.society_apartment_id === viewingRow.id)
+                if (!admin) {
+                  const hasStored = viewingRow.union_admin_name || viewingRow.union_admin_email || viewingRow.union_admin_phone
+                  return (
+                    <>
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">No Union Admin assigned.</Typography>
+                      </Grid>
+                      {hasStored && (
+                        <>
+                          {viewingRow.union_admin_name && (
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary">Lead contact name</Typography>
+                              <Typography variant="body1">{viewingRow.union_admin_name}</Typography>
+                            </Grid>
+                          )}
+                          {viewingRow.union_admin_email && (
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary">Lead contact email</Typography>
+                              <Typography variant="body1">{viewingRow.union_admin_email}</Typography>
+                            </Grid>
+                          )}
+                          {viewingRow.union_admin_phone && (
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary">Lead contact phone</Typography>
+                              <Typography variant="body1">{viewingRow.union_admin_phone}</Typography>
+                            </Grid>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )
+                }
+                const subscriptionActivated = ['active', 'trial'].includes((admin.subscription_status || '').toLowerCase())
+                return (
+                  <>
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary">Name</Typography>
+                      <Typography variant="body1">{admin.name || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" color="text.secondary">Email</Typography>
+                      <Typography variant="body1">{admin.email || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" color="text.secondary">Phone Number</Typography>
+                      <Typography variant="body1">{admin.contact_number || '—'}</Typography>
+                    </Grid>
+                    {subscriptionActivated && (
+                      <>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="text.secondary">Subscription Status</Typography>
+                          <Typography variant="body1">{admin.subscription_status || '—'}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="text.secondary">Plan</Typography>
+                          <Typography variant="body1">{admin.plan_name ? `${admin.plan_name} (${admin.plan_amount ?? 0} PKR)` : '—'}</Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="body2" color="text.secondary">Next Billing Date</Typography>
+                          <Typography variant="body1">{admin.next_billing_date ? new Date(admin.next_billing_date).toLocaleDateString() : '—'}</Typography>
+                        </Grid>
+                      </>
+                    )}
+                  </>
+                )
+              })()}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setViewDialogOpen(false); setViewingRow(null) }}>Close</Button>
+        </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(assignAdminRow)} onClose={handleCloseAssignAdmin} maxWidth="xs" fullWidth>

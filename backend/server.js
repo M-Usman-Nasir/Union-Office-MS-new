@@ -22,6 +22,7 @@ import settingsRoutes from './routes/settings.js';
 import staffRoutes from './routes/staff.js';
 import notificationRoutes from './routes/notifications.js';
 import messageRoutes from './routes/messages.js';
+import cronRoutes from './routes/cron.js';
 
 // Load environment variables
 dotenv.config();
@@ -89,6 +90,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/cron', cronRoutes);
 
 // Database connection test endpoint
 app.get('/api/test/db', async (req, res) => {
@@ -179,6 +181,13 @@ const startServer = async () => {
       console.log('✅ Reminder dues scheduler initialized');
     } catch (error) {
       console.warn('⚠️  Could not initialize reminder dues scheduler:', error.message);
+    }
+    try {
+      const { scheduleAutoGenerateInvoices } = await import('./jobs/autoGenerateInvoicesJob.js');
+      scheduleAutoGenerateInvoices();
+      console.log('✅ Invoice auto-generate scheduler initialized');
+    } catch (error) {
+      console.warn('⚠️  Could not initialize invoice auto-generate scheduler:', error.message);
     }
 
     // Start listening

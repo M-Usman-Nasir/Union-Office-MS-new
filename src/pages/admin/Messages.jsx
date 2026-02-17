@@ -20,6 +20,7 @@ import SendIcon from '@mui/icons-material/Send'
 import ChatIcon from '@mui/icons-material/Chat'
 import { useAuth } from '@/contexts/AuthContext'
 import { messagesApi } from '@/api/messagesApi'
+import { ROLES } from '@/utils/constants'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
 
@@ -51,10 +52,49 @@ export default function Messages() {
       .finally(() => setLoadingConv(false))
     messagesApi.getPartners()
       .then(res => {
-        setPartners(res.data?.data || [])
+        const list = res.data?.data || []
+        setPartners(list)
+        // For resident: auto-select union admin (first partner)
+        if (user?.role === ROLES.RESIDENT && list.length > 0) {
+          setSelectedUserId(list[0].id)
+        }
       })
       .catch(() => setPartners([]))
   }, [user])
+
+  // Union admin: restore last-chat resident or select most recent conversation
+  useEffect(() => {
+    if (user?.role !== ROLES.ADMIN || loadingConv || selectedUserId != null) return
+    const storageKey = user?.id ? `hums_admin_last_chat_${user.id}` : null
+    const savedId = (typeof window !== 'undefined' && storageKey && localStorage.getItem(storageKey))
+      ? parseInt(localStorage.getItem(storageKey), 10)
+      : null
+    const inConversations = savedId && conversations.some(c => c.id === savedId)
+    const inPartners = savedId && partners.some(p => p.id === savedId)
+    if (inConversations || inPartners) {
+      setSelectedUserId(savedId)
+      return
+    }
+    if (conversations.length > 0) {
+      setSelectedUserId(conversations[0].id)
+      return
+    }
+    if (partners.length > 0) {
+      setSelectedUserId(partners[0].id)
+    }
+  }, [user?.role, user?.id, loadingConv, conversations, partners, selectedUserId])
+
+  // Union admin: remember selected resident for next visit
+  useEffect(() => {
+    if (user?.role !== ROLES.ADMIN || !selectedUserId || typeof window === 'undefined') return
+    const storageKey = user?.id ? `hums_admin_last_chat_${user.id}` : null
+    if (!storageKey) return
+    try {
+      localStorage.setItem(storageKey, String(selectedUserId))
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [user?.role, user?.id, selectedUserId])
 
   useEffect(() => {
     if (!selectedUserId) {

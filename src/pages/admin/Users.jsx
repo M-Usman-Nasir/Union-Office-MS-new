@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -12,16 +13,23 @@ import {
   DialogActions,
   Grid,
   MenuItem,
+  Menu,
+  ListItemIcon,
+  ListItemText,
   IconButton,
   Tooltip,
   Chip,
   CircularProgress,
+  Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import LockIcon from '@mui/icons-material/Lock'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import WorkOutlineIcon from '@mui/icons-material/WorkOutline'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorIcon from '@mui/icons-material/Error'
 import { useAuth } from '@/contexts/AuthContext'
@@ -29,6 +37,7 @@ import useSWR from 'swr'
 import { userApi } from '@/api/userApi'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
+import { superAdminApi } from '@/api/superAdminApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -93,6 +102,7 @@ const passwordSchema = Yup.object({
 
 const Users = () => {
   const { user: currentUser } = useAuth()
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
@@ -117,6 +127,12 @@ const Users = () => {
   const [selectedBlockId, setSelectedBlockId] = useState('')
   /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
   const [emailCheckStatus, setEmailCheckStatus] = useState(null)
+  const [actionMenuAnchor, setActionMenuAnchor] = useState(null)
+  const [actionMenuRow, setActionMenuRow] = useState(null)
+  const [activatingSubscriptionId, setActivatingSubscriptionId] = useState(null)
+  const [createJobRow, setCreateJobRow] = useState(null)
+  const [selectedPlanIdForJob, setSelectedPlanIdForJob] = useState('')
+  const [givingSubscription, setGivingSubscription] = useState(false)
 
   const { data, isLoading, mutate } = useSWR(
     ['/users', page, limit, search, roleFilter],
@@ -140,6 +156,31 @@ const Users = () => {
   const areas = selectedCity
     ? [...new Set([...areasFromApi, ...(AREAS_BY_CITY[selectedCity] || AREAS_BY_CITY.Other || [])])].sort((a, b) => a.localeCompare(b))
     : areasFromApi
+
+  // Union admins with subscription (Super Admin - for Activate subscription in Actions)
+  const { data: adminsWithSubsData, mutate: mutateAdminsWithSubs } = useSWR(
+    currentUser?.role === 'super_admin' ? '/super-admin/subscription/admins' : null,
+    () => superAdminApi.getAdminsWithSubscriptions().then(res => res.data)
+  )
+  const subscriptionByUserId = useMemo(() => {
+    const list = adminsWithSubsData?.data ?? []
+    return Object.fromEntries(list.filter((a) => a.subscription_id).map((a) => [a.id, { subscription_id: a.subscription_id, subscription_status: a.subscription_status }]))
+  }, [adminsWithSubsData])
+  const adminsWithSubsList = adminsWithSubsData?.data ?? []
+
+  // Apartment detail for Create Job dialog (apartment + union admin details)
+  const { data: createJobApartmentData } = useSWR(
+    createJobRow?.society_apartment_id ? ['/apartment-detail', createJobRow.society_apartment_id] : null,
+    () => apartmentApi.getById(createJobRow.society_apartment_id).then(res => res.data)
+  )
+  const createJobApartment = createJobApartmentData?.data
+
+  // Subscription plans for Create Job "Give subscription" dropdown
+  const { data: subscriptionPlansData } = useSWR(
+    createJobRow && currentUser?.role === 'super_admin' ? '/super-admin/subscription-plans' : null,
+    () => superAdminApi.getSubscriptionPlans().then(res => res.data)
+  )
+  const subscriptionPlans = subscriptionPlansData?.data ?? []
 
   // Blocks by city/area (for City → Area → Block → Apartment flow)
   const { data: blocksByLocationData } = useSWR(
@@ -179,6 +220,22 @@ const Users = () => {
     currentUser?.role === 'super_admin' ? '/societies/all' : null,
     () => apartmentApi.getAll({ limit: 1000 }).then(res => res.data)
   )
+
+  // Leads (apartments) for "Select Lead" in Add User – only when dialog open and super_admin
+  const { data: leadsData } = useSWR(
+    openDialog && currentUser?.role === 'super_admin' ? '/societies/leads' : null,
+    () => apartmentApi.getAll({ limit: 500 }).then(res => res.data)
+  )
+  const { data: unionAdminsData } = useSWR(
+    openDialog && currentUser?.role === 'super_admin' ? '/users/union-admins-for-leads' : null,
+    () => userApi.getAll({ role: 'union_admin', limit: 500 }).then(res => res.data)
+  )
+  const assignedSocietyIds = new Set(
+    (unionAdminsData?.data ?? [])
+      .map((u) => u.society_apartment_id)
+      .filter(Boolean)
+  )
+  const unassignedLeads = (leadsData?.data ?? []).filter((a) => !assignedSocietyIds.has(a.id))
 
   // Fetch units (filtered by selected society)
   const { data: unitsData } = useSWR(
@@ -342,6 +399,146 @@ const Users = () => {
     )
   }
 
+  const handleActivateSubscription = async (subscriptionId) => {
+    if (!subscriptionId) return
+    setActivatingSubscriptionId(subscriptionId)
+    setActionMenuAnchor(null)
+    setActionMenuRow(null)
+    try {
+      await superAdminApi.updateSubscriptionStatus(subscriptionId, { status: 'active' })
+      toast.success('Subscription activated. Client can now log in.')
+      await Promise.all([mutate(), mutateAdminsWithSubs()])
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to activate subscription')
+    } finally {
+      setActivatingSubscriptionId(null)
+    }
+  }
+
+  const handleOpenCreateJob = (row) => {
+    setActionMenuAnchor(null)
+    setActionMenuRow(null)
+    if (!row.society_apartment_id) {
+      toast.error('User has no apartment assigned.')
+      return
+    }
+    const hasExistingSubscription = !!subscriptionByUserId[row.id]?.subscription_id
+    if (hasExistingSubscription) {
+      toast.custom(
+        (t) => (
+          <Box
+            sx={{
+              background: (theme) => theme.palette.background.paper,
+              color: (theme) => theme.palette.text.primary,
+              p: 2,
+              borderRadius: 2,
+              boxShadow: 3,
+              minWidth: 320,
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Re-create Job?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              This user already has a subscription. Do you want to open Create Job to renew or update it?
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+              <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  setCreateJobRow(row)
+                  setSelectedPlanIdForJob('')
+                  toast.dismiss(t.id)
+                }}
+              >
+                Open
+              </Button>
+            </Box>
+          </Box>
+        ),
+        { duration: Infinity }
+      )
+      return
+    }
+    setCreateJobRow(row)
+    setSelectedPlanIdForJob('')
+  }
+
+  const doGiveSubscriptionForMonth = async () => {
+    if (!createJobRow?.society_apartment_id || !createJobRow?.id) return
+    setGivingSubscription(true)
+    try {
+      const planId = selectedPlanIdForJob || subscriptionPlans.find((p) => p.is_active)?.id || null
+      await superAdminApi.createSubscription({
+        user_id: createJobRow.id,
+        society_apartment_id: createJobRow.society_apartment_id,
+        plan_id: planId || undefined,
+      })
+      const nextBilling = new Date()
+      nextBilling.setMonth(nextBilling.getMonth() + 1)
+      toast.success(`Subscription set. Next billing date: ${nextBilling.toLocaleDateString()}.`)
+      await Promise.all([mutate(), mutateAdminsWithSubs()])
+      setCreateJobRow(null)
+      setSelectedPlanIdForJob('')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to give subscription')
+    } finally {
+      setGivingSubscription(false)
+    }
+  }
+
+  const handleGiveSubscriptionForMonth = async () => {
+    if (!createJobRow?.society_apartment_id || !createJobRow?.id) return
+    const hasExistingSubscription = !!subscriptionByUserId[createJobRow.id]?.subscription_id
+    if (hasExistingSubscription) {
+      toast.custom(
+        (t) => (
+          <Box
+            sx={{
+              background: (theme) => theme.palette.background.paper,
+              color: (theme) => theme.palette.text.primary,
+              p: 2,
+              borderRadius: 2,
+              boxShadow: 3,
+              minWidth: 320,
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Update existing subscription?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              This user already has a subscription. This will update the plan and set next billing date to one month from today.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+              <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  toast.dismiss(t.id)
+                  doGiveSubscriptionForMonth()
+                }}
+              >
+                Yes, update
+              </Button>
+            </Box>
+          </Box>
+        ),
+        { duration: Infinity }
+      )
+      return
+    }
+    await doGiveSubscriptionForMonth()
+  }
+
   const getRoleColor = (role) => {
     switch (role) {
       case 'super_admin':
@@ -363,8 +560,29 @@ const Users = () => {
     return society?.name || `Apartment #${societyId}`
   }
 
+  const canOpenCreateJob = (row) =>
+    currentUser?.role === 'super_admin' && row.role === 'union_admin' && row.society_apartment_id
+
   const columns = [
-    { id: 'name', label: 'Name', minWidth: 140 },
+    {
+      id: 'name',
+      label: 'Name',
+      minWidth: 140,
+      render: (row) => {
+        const clickable = canOpenCreateJob(row)
+        return clickable ? (
+          <Typography
+            variant="body2"
+            sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+            onClick={() => handleOpenCreateJob(row)}
+          >
+            {row.name || '—'}
+          </Typography>
+        ) : (
+          <Typography variant="body2">{row.name || '—'}</Typography>
+        )
+      },
+    },
     { id: 'email', label: 'Email', minWidth: 200 },
     {
       id: 'role',
@@ -382,11 +600,21 @@ const Users = () => {
       id: 'society_apartment_id',
       label: 'Apartment',
       minWidth: 140,
-      render: (row) => (
-        <Typography variant="body2">
-          {row.society_apartment_id ? getSocietyName(row.society_apartment_id) : 'N/A'}
-        </Typography>
-      ),
+      render: (row) => {
+        const label = row.society_apartment_id ? getSocietyName(row.society_apartment_id) : 'N/A'
+        const clickable = canOpenCreateJob(row)
+        return clickable ? (
+          <Typography
+            variant="body2"
+            sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+            onClick={() => handleOpenCreateJob(row)}
+          >
+            {label}
+          </Typography>
+        ) : (
+          <Typography variant="body2">{label}</Typography>
+        )
+      },
     }] : []),
     {
       id: 'is_active',
@@ -404,27 +632,20 @@ const Users = () => {
       id: 'actions',
       label: 'Actions',
       align: 'right',
-      minWidth: 120,
+      minWidth: 56,
       render: (row) => (
-        <Box>
-          <Tooltip title="Change Password">
-            <IconButton size="small" onClick={() => handleOpenPasswordDialog(row)}>
-              <LockIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => handleOpenDialog(row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          {row.id !== currentUser?.id && (
-            <Tooltip title="Delete">
-              <IconButton size="small" color="error" onClick={() => confirmDelete(row.id)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
+        <Tooltip title="Actions">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation()
+              setActionMenuAnchor(e.currentTarget)
+              setActionMenuRow(row)
+            }}
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       ),
     },
   ]
@@ -433,7 +654,7 @@ const Users = () => {
     ? {
         email: editingUser.email || '',
         name: editingUser.name || '',
-        role: editingUser.role || 'resident',
+        role: editingUser.role || (currentUser?.role === 'super_admin' ? 'union_admin' : 'resident'),
         society_apartment_id: editingUser.society_apartment_id || null,
         unit_id: editingUser.unit_id || null,
         cnic: editingUser.cnic || '',
@@ -451,7 +672,7 @@ const Users = () => {
         email: '',
         password: '',
         name: '',
-        role: 'resident',
+        role: currentUser?.role === 'super_admin' ? 'union_admin' : 'resident',
         society_apartment_id: currentUser?.role === 'union_admin' ? currentUser.society_apartment_id : null,
         unit_id: null,
         cnic: '',
@@ -522,6 +743,234 @@ const Users = () => {
         }}
       />
 
+      {/* Row actions menu (single instance) */}
+      <Menu
+        anchorEl={actionMenuAnchor}
+        open={Boolean(actionMenuAnchor)}
+        onClose={() => { setActionMenuAnchor(null); setActionMenuRow(null) }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        {actionMenuRow && (
+          <>
+            <MenuItem
+              onClick={() => {
+                setActionMenuAnchor(null)
+                setActionMenuRow(null)
+                handleOpenDialog(actionMenuRow)
+              }}
+            >
+              <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Edit</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setActionMenuAnchor(null)
+                setActionMenuRow(null)
+                handleOpenPasswordDialog(actionMenuRow)
+              }}
+            >
+              <ListItemIcon><LockIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Change Password</ListItemText>
+            </MenuItem>
+            {currentUser?.role === 'super_admin' && actionMenuRow.role === 'union_admin' && (subscriptionByUserId[actionMenuRow.id]?.subscription_status || '').toLowerCase() === 'pending' && subscriptionByUserId[actionMenuRow.id]?.subscription_id && (
+              <MenuItem
+                onClick={() => handleActivateSubscription(subscriptionByUserId[actionMenuRow.id].subscription_id)}
+                disabled={activatingSubscriptionId === subscriptionByUserId[actionMenuRow.id]?.subscription_id}
+              >
+                <ListItemIcon><PlayArrowIcon fontSize="small" /></ListItemIcon>
+                <ListItemText>Activate subscription</ListItemText>
+              </MenuItem>
+            )}
+            {currentUser?.role === 'super_admin' && actionMenuRow.role === 'union_admin' && actionMenuRow.society_apartment_id && (
+              <MenuItem onClick={() => handleOpenCreateJob(actionMenuRow)}>
+                <ListItemIcon><WorkOutlineIcon fontSize="small" /></ListItemIcon>
+                <ListItemText>Create Job</ListItemText>
+              </MenuItem>
+            )}
+            {actionMenuRow.id !== currentUser?.id && (
+              <MenuItem
+                onClick={() => {
+                  setActionMenuAnchor(null)
+                  setActionMenuRow(null)
+                  confirmDelete(actionMenuRow.id)
+                }}
+                sx={{ color: 'error.main' }}
+              >
+                <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            )}
+          </>
+        )}
+      </Menu>
+
+      {/* Create Job dialog – Apartment & Union Admin details + package + Give subscription */}
+      <Dialog
+        open={Boolean(createJobRow)}
+        onClose={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create Job — Apartment &amp; Union Admin details</DialogTitle>
+        <DialogContent dividers>
+          {createJobRow && (
+            <Grid container spacing={2} sx={{ pt: 1 }}>
+              {adminsWithSubsList.find((a) => a.id === createJobRow.id)?.subscription_id && (
+                <Grid item xs={12}>
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    This user already has a subscription. Giving subscription again will update the plan and set next billing date to one month from today.
+                  </Alert>
+                </Grid>
+              )}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
+              </Grid>
+              {createJobApartment ? (
+                <>
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">Apartment Name</Typography>
+                    <Typography variant="body1">{createJobApartment.name || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">Address</Typography>
+                    <Typography variant="body1">{createJobApartment.address || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2" color="text.secondary">City</Typography>
+                    <Typography variant="body1">{createJobApartment.city || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2" color="text.secondary">Area</Typography>
+                    <Typography variant="body1">{createJobApartment.area || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">Total Blocks</Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                      onClick={() => {
+                        setCreateJobRow(null)
+                        navigate(`/super-admin/blocks?society_id=${createJobRow.society_apartment_id}`)
+                      }}
+                    >
+                      {createJobApartment.total_blocks ?? '—'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">Total Floors</Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                      onClick={() => {
+                        setCreateJobRow(null)
+                        navigate(`/super-admin/floors?society_id=${createJobRow.society_apartment_id}`)
+                      }}
+                    >
+                      {createJobApartment.total_floors ?? '—'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">Total Units</Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                      onClick={() => {
+                        setCreateJobRow(null)
+                        navigate(`/super-admin/units?society_id=${createJobRow.society_apartment_id}`)
+                      }}
+                    >
+                      {createJobApartment.total_units ?? '—'}
+                    </Typography>
+                  </Grid>
+                </>
+              ) : (
+                <Grid item xs={12}>
+                  <CircularProgress size={24} />
+                </Grid>
+              )}
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Union Admin</Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">Name</Typography>
+                <Typography variant="body1">{createJobRow.name || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Email</Typography>
+                <Typography variant="body1">{createJobRow.email || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Phone Number</Typography>
+                <Typography variant="body1">{createJobRow.contact_number || '—'}</Typography>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Package</Typography>
+              </Grid>
+              {(() => {
+                const adminDetail = adminsWithSubsList.find((a) => a.id === createJobRow.id)
+                const planName = adminDetail?.plan_name
+                const planAmount = adminDetail?.plan_amount
+                const nextBilling = adminDetail?.next_billing_date
+                return (
+                  <>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" color="text.secondary">Plan</Typography>
+                      <Typography variant="body1">
+                        {planName ? `${planName} (${planAmount ?? 0} PKR)` : '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" color="text.secondary">Next Billing Date</Typography>
+                      <Typography variant="body1">
+                        {nextBilling ? new Date(nextBilling).toLocaleDateString() : '—'}
+                      </Typography>
+                    </Grid>
+                  </>
+                )
+              })()}
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Give subscription (1 month)</Typography>
+                <TextField
+                  fullWidth
+                  select
+                  size="small"
+                  // label="Select plan"
+                  value={selectedPlanIdForJob}
+                  onChange={(e) => setSelectedPlanIdForJob(e.target.value)}
+                  SelectProps={{ displayEmpty: true }}
+                >
+                  <MenuItem value="">Default / first active plan</MenuItem>
+                  {subscriptionPlans.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.name} — {p.amount ?? 0} PKR
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  onClick={handleGiveSubscriptionForMonth}
+                  disabled={givingSubscription}
+                >
+                  {givingSubscription ? <CircularProgress size={20} /> : 'Give subscription for 1 month'}
+                </Button>
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+                  Next billing will be set to one month from today.
+                </Typography>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Add/Edit Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik
@@ -563,6 +1012,47 @@ const Users = () => {
                 </DialogTitle>
                 <DialogContent>
                   <Grid container spacing={2} sx={{ mt: 1 }}>
+                    {!editingUser && currentUser?.role === 'super_admin' && (
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }} color="text.secondary">
+                          Select Lead (Apartment)
+                        </Typography>
+                        <TextField
+                          fullWidth
+                          select
+                          // label="Assign to lead (apartments without Union Admin)"
+                          value={values.society_apartment_id ?? ''}
+                          onChange={(e) => {
+                            const id = e.target.value ? parseInt(e.target.value, 10) : null
+                            const lead = unassignedLeads.find((l) => l.id === id)
+                            setFieldValue('society_apartment_id', id)
+                            setFieldValue('unit_id', null)
+                            setSelectedSocietyId(id)
+                            if (lead) {
+                              if (lead.union_admin_name) setFieldValue('name', lead.union_admin_name)
+                              if (lead.union_admin_email) setFieldValue('email', lead.union_admin_email)
+                              if (lead.union_admin_phone) setFieldValue('contact_number', lead.union_admin_phone)
+                              if (lead.city) setSelectedCity(lead.city)
+                              if (lead.area !== undefined) setSelectedArea(lead.area || '')
+                              setFieldValue('role', 'union_admin')
+                            } else {
+                              setSelectedCity('')
+                              setSelectedArea('')
+                            }
+                          }}
+                          SelectProps={{ displayEmpty: true }}
+                        >
+                          <MenuItem value="">— None (create new without lead) —</MenuItem>
+                          {unassignedLeads.map((lead) => (
+                            <MenuItem key={lead.id} value={lead.id}>
+                              {lead.name}
+                              {lead.city ? ` — ${lead.city}` : ''}
+                              {lead.area ? `, ${lead.area}` : ''}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                    )}
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
@@ -641,33 +1131,35 @@ const Users = () => {
                         />
                       </Grid>
                     )}
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        select
-                        label="Role"
-                        name="role"
-                        value={values.role}
-                        onChange={(e) => {
-                          handleChange(e)
-                          // Reset society and unit when role changes to super_admin
-                          if (e.target.value === 'super_admin') {
-                            setFieldValue('society_apartment_id', null)
-                            setFieldValue('unit_id', null)
-                            setSelectedSocietyId(null)
-                            setSelectedCity('')
-                            setSelectedArea('')
-                          }
-                        }}
-                        onBlur={handleBlur}
-                        error={touched.role && !!errors.role}
-                        helperText={touched.role && errors.role}
+                    {/* Role selection: hidden for super_admin (always union_admin) */}
+                    {currentUser?.role !== 'super_admin' && (
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          select
+                          label="Role"
+                          name="role"
+                          value={values.role}
+                          onChange={(e) => {
+                            handleChange(e)
+                            if (e.target.value === 'super_admin') {
+                              setFieldValue('society_apartment_id', null)
+                              setFieldValue('unit_id', null)
+                              setSelectedSocietyId(null)
+                              setSelectedCity('')
+                              setSelectedArea('')
+                            }
+                          }}
+                          onBlur={handleBlur}
+                          error={touched.role && !!errors.role}
+                          helperText={touched.role && errors.role}
                         >
                           <MenuItem value="resident">Resident</MenuItem>
                           <MenuItem value="union_admin">Union Admin</MenuItem>
                           <MenuItem value="staff">Staff</MenuItem>
                         </TextField>
-                    </Grid>
+                      </Grid>
+                    )}
                     {showSocietyField && useCascading && (
                       <>
                         <Grid item xs={12} sm={4}>
