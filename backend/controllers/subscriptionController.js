@@ -125,10 +125,12 @@ export const createOrUpdateSubscription = async (userId, societyApartmentId, pla
     );
   } else {
     const status = initialStatus === 'pending' ? 'pending' : 'active';
+    // Pending subscriptions (e.g. from Add Apartment) get billing date only after Create Job / activation
+    const nextBillingVal = status === 'pending' ? null : nextBilling.toISOString().slice(0, 10);
     await query(
       `INSERT INTO subscriptions (user_id, society_apartment_id, plan_id, status, start_date, next_billing_date)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, societyApartmentId, planIdRes, status, startDate, nextBilling.toISOString().slice(0, 10)]
+      [userId, societyApartmentId, planIdRes, status, startDate, nextBillingVal]
     );
   }
 };

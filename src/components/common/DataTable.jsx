@@ -21,6 +21,7 @@ const DataTable = ({
   onRowsPerPageChange,
   emptyMessage = 'No data available',
   dense = false,
+  getRowSx,
 }) => {
   const headerPy = dense ? 0.5 : 1.5
   const cellPy = dense ? 0.5 : 1.25
@@ -89,6 +90,7 @@ const DataTable = ({
                           : 'rgba(0,0,0,0.02)'
                         : 'transparent',
                     '&:not(:last-child) td': { borderBottom: 1, borderColor: 'divider' },
+                    ...(typeof getRowSx === 'function' ? getRowSx(row, index) : {}),
                   }}
                 >
                   {columns.map((column) => {
@@ -101,7 +103,15 @@ const DataTable = ({
                         onClick={isClickable ? (e) => { e.stopPropagation(); column.onClick(row); } : undefined}
                         sx={{
                           ...getCellSx(column),
-                          ...(isClickable ? { cursor: 'pointer' } : {}),
+                          ...(isClickable
+                            ? {
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s ease',
+                                '&:hover': {
+                                  backgroundColor: 'action.hover',
+                                },
+                              }
+                            : {}),
                         }}
                       >
                         {cellContent}

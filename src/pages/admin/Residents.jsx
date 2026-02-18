@@ -29,7 +29,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import RemoveIcon from '@mui/icons-material/Remove'
 import { useAuth } from '@/contexts/AuthContext'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { residentApi } from '@/api/residentApi'
 import { userApi } from '@/api/userApi'
 import { propertyApi } from '@/api/propertyApi'
@@ -85,7 +85,12 @@ const Residents = () => {
   const [formFloorId, setFormFloorId] = useState('')
   /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
   const [emailCheckStatus, setEmailCheckStatus] = useState(null)
+  /** Add family member form (view dialog) */
+  const [familyMemberName, setFamilyMemberName] = useState('')
+  const [familyMemberRelation, setFamilyMemberRelation] = useState('')
+  const [addFamilyMemberLoading, setAddFamilyMemberLoading] = useState(false)
 
+  const { mutate: mutateSWR } = useSWRConfig()
   const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
   const fetchParams = { page, limit, search, society_id: societyId }
   if (selectedBlockId != null && selectedBlockId !== '') {
@@ -291,21 +296,65 @@ const Residents = () => {
     setActionMenuRow(null)
   }
 
+  const handleAddFamilyMember = async () => {
+    const name = familyMemberName.trim()
+    if (!name) {
+      toast.error('Name is required')
+      return
+    }
+    if (!viewingResident?.id) return
+    setAddFamilyMemberLoading(true)
+    try {
+      await residentApi.createFamilyMember(viewingResident.id, {
+        name,
+        relation: familyMemberRelation.trim() || undefined,
+      })
+      toast.success('Family member added')
+      setFamilyMemberName('')
+      setFamilyMemberRelation('')
+      await mutateSWR(['/family-members', viewingResident.id])
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to add family member')
+    } finally {
+      setAddFamilyMemberLoading(false)
+    }
+  }
+
   const columns = [
     {
       id: 'name',
       label: 'Full Name',
-      render: (row) =>
-        row.role === 'union_admin' ? (
+      render: (row) => {
+        const nameContent = row.name || '-'
+        const handleNameClick = (e) => {
+          e.stopPropagation()
+          handleView(row)
+        }
+        return row.role === 'union_admin' ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography component="span" variant="body2" fontWeight={600} color="primary.main">
-              {row.name || '-'}
+            <Typography
+              component="span"
+              variant="body2"
+              fontWeight={600}
+              color="primary.main"
+              onClick={handleNameClick}
+              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+            >
+              {nameContent}
             </Typography>
             <Chip label="Union Admin" size="small" color="primary" variant="outlined" sx={{ height: 22 }} />
           </Box>
         ) : (
-          (row.name || '-')
-        ),
+          <Typography
+            component="span"
+            variant="body2"
+            onClick={handleNameClick}
+            sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+          >
+            {nameContent}
+          </Typography>
+        )
+      },
     },
     { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '-' },
     {
@@ -557,7 +606,7 @@ const Residents = () => {
         dense
       />
 
-      <Dialog open={viewDialogOpen} onClose={() => { setViewDialogOpen(false); setViewingResident(null) }} maxWidth="sm" fullWidth>
+      <Dialog open={viewDialogOpen} onClose={() => { setViewDialogOpen(false); setViewingResident(null); setFamilyMemberName(''); setFamilyMemberRelation('') }} maxWidth="sm" fullWidth>
         <DialogTitle>Resident details</DialogTitle>
         <DialogContent dividers>
           {viewingResident && (
@@ -620,11 +669,40 @@ const Residents = () => {
                   </Box>
                 )}
               </Grid>
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mt: 1 }}>
+                  <TextField
+                    size="small"
+                    placeholder="Name"
+                    value={familyMemberName}
+                    onChange={(e) => setFamilyMemberName(e.target.value)}
+                    sx={{ minWidth: 140 }}
+                    disabled={addFamilyMemberLoading}
+                  />
+                  <TextField
+                    size="small"
+                    placeholder="Relation (e.g. Spouse, Child)"
+                    value={familyMemberRelation}
+                    onChange={(e) => setFamilyMemberRelation(e.target.value)}
+                    sx={{ minWidth: 160 }}
+                    disabled={addFamilyMemberLoading}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={addFamilyMemberLoading ? <CircularProgress size={16} /> : <AddIcon />}
+                    onClick={handleAddFamilyMember}
+                    disabled={addFamilyMemberLoading}
+                  >
+                    Add family member
+                  </Button>
+                </Box>
+              </Grid>
             </Grid>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setViewDialogOpen(false); setViewingResident(null) }}>Close</Button>
+          <Button onClick={() => { setViewDialogOpen(false); setViewingResident(null); setFamilyMemberName(''); setFamilyMemberRelation('') }}>Close</Button>
         </DialogActions>
       </Dialog>
 

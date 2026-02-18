@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Container,
   Typography,
@@ -28,13 +28,21 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Tooltip,
+  Popover,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { useAuth } from '@/contexts/AuthContext'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
 import { propertyApi } from '@/api/propertyApi'
 import DataTable from '@/components/common/DataTable'
@@ -46,15 +54,36 @@ const validationSchema = Yup.object({
   unit_id: Yup.number().required('Unit is required'),
   month: Yup.number().min(1).max(12).required('Month is required'),
   year: Yup.number().required('Year is required'),
-  base_amount: Yup.number().min(0).required('Base amount is required'),
-  total_amount: Yup.number().min(0).required('Total amount is required'),
+  amount: Yup.number().min(0).required('Amount is required'),
   due_date: Yup.date().nullable(),
+})
+
+const recordPaymentOnlySchema = Yup.object({
+  unit_id: Yup.number().required('Unit is required'),
+  month: Yup.number().min(1).max(12).required('Month is required'),
+  year: Yup.number().required('Year is required'),
 })
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+// Syncs form unit/month/year into recordPaymentLookup when on Record payment tab so the record auto-loads
+// eslint-disable-next-line react/prop-types
+function RecordPaymentLookupSync({ dialogMode, unitId, month, year, onSync }) {
+  useEffect(() => {
+    if (dialogMode !== 'record_payment' || !unitId || !month || !year) return
+    onSync((prev) => {
+      const next = { unit_id: unitId, month, year }
+      if (prev.unit_id === next.unit_id && prev.month === next.month && prev.year === next.year)
+        return prev
+      return next
+    })
+  }, [dialogMode, unitId, month, year, onSync])
+  return null
+}
+
 const Maintenance = () => {
   const { user } = useAuth()
+  const { mutate: globalMutate } = useSWRConfig()
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
   const [search, setSearch] = useState('')
@@ -64,7 +93,7 @@ const Maintenance = () => {
   const [generating, setGenerating] = useState(false)
   const [editingMaintenance, setEditingMaintenance] = useState(null)
   const [selectedMaintenance, setSelectedMaintenance] = useState(null)
-  const [societyId] = useState(user?.society_apartment_id)
+  const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
   const [selectedBlockId, setSelectedBlockId] = useState(null)
   const [selectedFloorId, setSelectedFloorId] = useState('')
   const [formBlockId, setFormBlockId] = useState('')
@@ -73,22 +102,60 @@ const Maintenance = () => {
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null)
   const [confirmGenerate, setConfirmGenerate] = useState(null) // { action: 'block' | 'floor', blockName?: string }
   const [selectedLedgerRow, setSelectedLedgerRow] = useState(null)
+  const [monthCellEdit, setMonthCellEdit] = useState(null) // { ledgerRow, month } → opens Add/Edit dialog with prefill
+  const [addPrefill, setAddPrefill] = useState(null) // { unit_id, block_id, floor_id, month, year } when adding from month cell
   const [recordToDelete, setRecordToDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [dueDateInfoAnchor, setDueDateInfoAnchor] = useState(null)
+  const [paymentReceivedAmount, setPaymentReceivedAmount] = useState('')
+  const [recordingPaymentInDialog, setRecordingPaymentInDialog] = useState(false)
+  const [markingFullyPaid, setMarkingFullyPaid] = useState(false)
+  const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false)
+  const [dialogMode, setDialogMode] = useState('create') // 'create' | 'record_payment'
+  const [recordPaymentLookup, setRecordPaymentLookup] = useState({ unit_id: null, month: null, year: null })
+
+  const unitIdForFetch = selectedLedgerRow?.unit_id ?? monthCellEdit?.ledgerRow?.unit_id
+  const { data: unitMaintenanceData, mutate: mutateUnitMaintenance } = useSWR(
+    societyId && unitIdForFetch && (selectedLedgerRow || monthCellEdit)
+      ? ['/maintenance/unit', unitIdForFetch, year]
+      : null,
+    (_, key) =>
+      maintenanceApi
+        .getAll({ unit_id: key[1], year, society_id: societyId, limit: 12 })
+        .then(res => res.data)
+  )
 
   const { data: ledgerData, isLoading, mutate } = useSWR(
     societyId ? ['/maintenance/yearly-ledger', societyId, year] : null,
     () => maintenanceApi.getYearlyLedger({ society_id: societyId, year }).then(res => res.data)
   )
 
-  const { data: unitMaintenanceData, mutate: mutateUnitMaintenance } = useSWR(
-    selectedLedgerRow && societyId
-      ? ['/maintenance/unit', selectedLedgerRow.unit_id, year]
-      : null,
+  const recordPaymentLookupKey = useMemo(
     () =>
-      maintenanceApi
-        .getAll({ unit_id: selectedLedgerRow.unit_id, year, society_id: societyId, limit: 12 })
-        .then(res => res.data)
+      openDialog &&
+      dialogMode === 'record_payment' &&
+      recordPaymentLookup.unit_id &&
+      recordPaymentLookup.month &&
+      recordPaymentLookup.year
+        ? ['/maintenance/record-payment-lookup', recordPaymentLookup.unit_id, recordPaymentLookup.month, recordPaymentLookup.year]
+        : null,
+    [openDialog, dialogMode, recordPaymentLookup.unit_id, recordPaymentLookup.month, recordPaymentLookup.year]
+  )
+  const { data: recordPaymentRecord, isLoading: recordPaymentLoading } = useSWR(
+    societyId && recordPaymentLookupKey
+      ? recordPaymentLookupKey
+      : null,
+    async ([, unitId, month, year]) => {
+      const res = await maintenanceApi.getAll({
+        unit_id: unitId,
+        year: Number(year),
+        society_id: societyId,
+        limit: 12,
+      })
+      const list = res.data?.data ?? res.data ?? []
+      const record = Array.isArray(list) ? list.find((r) => Number(r.month) === Number(month)) : null
+      return record || null
+    }
   )
 
   const { data: unitForEditData } = useSWR(
@@ -140,8 +207,13 @@ const Maintenance = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false)
     setEditingMaintenance(null)
+    setAddPrefill(null)
+    setPaymentReceivedAmount('')
+    setPaymentSectionExpanded(false)
     setFormBlockId('')
     setFormFloorId('')
+    setDialogMode('create')
+    setRecordPaymentLookup({ unit_id: null, month: null, year: null })
   }
 
   useEffect(() => {
@@ -151,6 +223,54 @@ const Maintenance = () => {
     }
   }, [openDialog, unitForEdit])
 
+  // When unit maintenance data arrives after a month-cell click: if a record exists, switch dialog to Edit mode
+  useEffect(() => {
+    if (!monthCellEdit || !unitMaintenanceData) return
+    const rowUnitId = monthCellEdit.ledgerRow?.unit_id
+    if (rowUnitId == null || String(unitIdForFetch) !== String(rowUnitId)) return
+    const monthRecord = (unitMaintenanceData?.data || []).find((r) => r.month === monthCellEdit.month)
+    if (monthRecord) {
+      setEditingMaintenance(monthRecord)
+      setAddPrefill(null)
+    }
+    setMonthCellEdit(null)
+  }, [monthCellEdit, unitMaintenanceData, unitIdForFetch, year])
+
+  // When dialog shows an existing record, pre-fill "Amount received" with current due so admin sees remaining to pay
+  useEffect(() => {
+    if (!openDialog || !editingMaintenance?.id) return
+    const total = Number(editingMaintenance.total_amount) || 0
+    const paid = Number(editingMaintenance.amount_paid) || 0
+    const due = Math.max(0, total - paid)
+    setPaymentReceivedAmount(due > 0 ? String(due) : '')
+  }, [openDialog, editingMaintenance?.id, editingMaintenance?.total_amount, editingMaintenance?.amount_paid])
+
+  // In record_payment mode: when auto-loaded record arrives, fetch full record by ID so total_amount/amount_paid are correct
+  useEffect(() => {
+    if (dialogMode !== 'record_payment' || !recordPaymentLookupKey) return
+    if (recordPaymentLoading) {
+      setEditingMaintenance(null)
+      return
+    }
+    if (!recordPaymentRecord) {
+      setEditingMaintenance(null)
+      return
+    }
+    let cancelled = false
+    maintenanceApi
+      .getById(recordPaymentRecord.id)
+      .then((res) => {
+        if (cancelled) return
+        const full = res.data?.data ?? res.data
+        setEditingMaintenance(full || recordPaymentRecord)
+        setPaymentSectionExpanded(true)
+      })
+      .catch(() => {
+        if (!cancelled) setEditingMaintenance(recordPaymentRecord)
+      })
+    return () => { cancelled = true }
+  }, [dialogMode, recordPaymentLookupKey, recordPaymentLoading, recordPaymentRecord])
+
   const handleClosePaymentDialog = () => {
     setOpenPaymentDialog(false)
     setSelectedMaintenance(null)
@@ -158,21 +278,35 @@ const Maintenance = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      const amount = Number(values.amount) || 0
       const payload = {
         ...values,
+        base_amount: amount,
+        total_amount: amount,
         due_date: values.due_date || null,
       }
       delete payload.block_id
       delete payload.floor_id
+      delete payload.amount
       if (editingMaintenance) {
         await maintenanceApi.update(editingMaintenance.id, payload)
         toast.success('Maintenance record updated successfully')
+        mutate()
+        mutateUnitMaintenance()
+        handleCloseDialog()
       } else {
-        await maintenanceApi.create({ ...payload, society_apartment_id: societyId })
+        const res = await maintenanceApi.create({ ...payload, society_apartment_id: societyId })
         toast.success('Maintenance record created successfully')
+        mutate()
+        mutateUnitMaintenance()
+        const created = res.data?.data ?? res.data
+        if (created?.id) {
+          setEditingMaintenance(created)
+          setAddPrefill(null)
+        } else {
+          handleCloseDialog()
+        }
       }
-      mutate()
-      handleCloseDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Operation failed')
     } finally {
@@ -197,6 +331,77 @@ const Maintenance = () => {
   const handleOpenPaymentForRecord = (record) => {
     setSelectedMaintenance(record)
     setOpenPaymentDialog(true)
+  }
+
+  const handleRecordPaymentInDialog = async (amountOverride) => {
+    if (!editingMaintenance?.id) return
+    const total = Number(editingMaintenance.total_amount ?? editingMaintenance.base_amount) || 0
+    const paid = Number(editingMaintenance.amount_paid) || 0
+    const due = Math.max(0, total - paid)
+    const amount = typeof amountOverride === 'number' ? amountOverride : parseFloat(String(paymentReceivedAmount).replace(/,/g, ''))
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+    const maxAllowed = due > 0 ? due : total
+    if (amount > maxAllowed) {
+      toast.error(`Amount cannot exceed ${due > 0 ? 'due amount' : 'total'} (${formatCurrency(maxAllowed)})`)
+      return
+    }
+    setRecordingPaymentInDialog(true)
+    try {
+      await maintenanceApi.recordPayment(editingMaintenance.id, { amount_paid: amount })
+      toast.success('Payment recorded successfully')
+      await mutate()
+      if (editingMaintenance.unit_id) {
+        await globalMutate(['/maintenance/unit', editingMaintenance.unit_id, year])
+      }
+      mutateUnitMaintenance()
+      const res = await maintenanceApi.getById(editingMaintenance.id)
+      const updated = res.data?.data ?? res.data
+      if (updated) {
+        setEditingMaintenance(updated)
+        const newDue = Math.max(0, (Number(updated.total_amount) || 0) - (Number(updated.amount_paid) || 0))
+        setPaymentReceivedAmount(newDue > 0 ? String(newDue) : '')
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Payment failed')
+    } finally {
+      setRecordingPaymentInDialog(false)
+    }
+  }
+
+  const handleMarkFullyPaid = async () => {
+    if (!editingMaintenance?.id) return
+    const total = Number(editingMaintenance.total_amount) || 0
+    const paid = Number(editingMaintenance.amount_paid) || 0
+    if (paid >= total) {
+      toast.success('Record is already fully paid')
+      return
+    }
+    setMarkingFullyPaid(true)
+    try {
+      await maintenanceApi.update(editingMaintenance.id, {
+        base_amount: editingMaintenance.base_amount ?? total,
+        total_amount: total,
+        status: 'paid',
+        amount_paid: total,
+        due_date: editingMaintenance.due_date || null,
+      })
+      toast.success('Marked as fully paid')
+      mutate()
+      mutateUnitMaintenance()
+      const res = await maintenanceApi.getById(editingMaintenance.id)
+      const updated = res.data?.data ?? res.data
+      if (updated) {
+        setEditingMaintenance(updated)
+        setPaymentReceivedAmount('')
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to mark as fully paid')
+    } finally {
+      setMarkingFullyPaid(false)
+    }
   }
 
   const handleCloseUnitDetailModal = () => {
@@ -253,11 +458,59 @@ const Maintenance = () => {
     },
     ...MONTH_LABELS.map((label, i) => {
       const key = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'][i]
+      const monthNum = i + 1
       return {
         id: key,
         label,
         align: 'right',
-        render: (row) => formatCurrency(Number(row[key]) || 0),
+        render: (row) => {
+          const amount = Number(row[key]) || 0
+          const now = new Date()
+          const currentYearNow = now.getFullYear()
+          const currentMonthNow = now.getMonth() + 1
+          const monthGone = year < currentYearNow || (year === currentYearNow && monthNum < currentMonthNow)
+          const isOverdueUnpaid = monthGone && amount > 0
+          return (
+            <Box
+              component="span"
+              sx={{
+                display: 'inline-block',
+                borderRadius: 1,
+                px: 0.75,
+                py: 0.25,
+                ...(isOverdueUnpaid
+                  ? {
+                      backgroundColor: (theme) =>
+                        theme.palette.mode === 'dark'
+                          ? 'rgba(244, 67, 54, 0.28)'
+                          : 'rgba(211, 47, 47, 0.2)',
+                      fontWeight: 600,
+                      color: (theme) =>
+                        theme.palette.mode === 'dark' ? 'rgb(255, 138, 128)' : theme.palette.error.dark,
+                    }
+                  : {}),
+              }}
+            >
+              {formatCurrency(amount)}
+            </Box>
+          )
+        },
+        onClick: (row) => {
+          const cellAmount = Number(row[key]) || 0
+          setMonthCellEdit({ ledgerRow: row, month: monthNum })
+          setAddPrefill({
+            unit_id: row.unit_id,
+            block_id: row.block_id ?? '',
+            floor_id: row.floor_id ?? '',
+            month: monthNum,
+            year,
+            amount: cellAmount,
+          })
+          setEditingMaintenance(null)
+          setFormBlockId(row.block_id ?? '')
+          setFormFloorId(row.floor_id ?? '')
+          setOpenDialog(true)
+        },
       }
     }),
     {
@@ -324,20 +577,30 @@ const Maintenance = () => {
         unit_id: editingMaintenance.unit_id || '',
         month: editingMaintenance.month || currentMonth,
         year: editingMaintenance.year || currentYear,
-        base_amount: editingMaintenance.base_amount ?? 0,
-        total_amount: editingMaintenance.total_amount ?? 0,
+        amount: editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0,
         due_date: editingMaintenance.due_date ? editingMaintenance.due_date.slice(0, 10) : '',
       }
-    : {
-        block_id: '',
-        floor_id: '',
-        unit_id: '',
-        month: currentMonth,
-        year: currentYear,
-        base_amount: 0,
-        total_amount: 0,
-        due_date: '',
-      }
+    : addPrefill
+      ? {
+          block_id: addPrefill.block_id ?? '',
+          floor_id: addPrefill.floor_id ?? '',
+          unit_id: addPrefill.unit_id ?? '',
+          month: addPrefill.month ?? currentMonth,
+          year: addPrefill.year ?? currentYear,
+          amount: addPrefill.amount ?? 0,
+          due_date: '',
+        }
+      : {
+          block_id: '',
+          floor_id: '',
+          unit_id: '',
+          month: currentMonth,
+          year: currentYear,
+          amount: 0,
+          due_date: '',
+        }
+
+  const formValidationSchema = dialogMode === 'record_payment' ? recordPaymentOnlySchema : validationSchema
 
   const handleGenerateMonthlyDues = async () => {
     setGenerating(true)
@@ -556,6 +819,11 @@ const Maintenance = () => {
         </Menu>
       </Box>
 
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        Month columns show <strong>remaining due</strong> per month. Click a cell to add/edit record or record payment.
+        Past months with amount due are <strong>highlighted</strong> for quick overview.
+      </Typography>
+
       <DataTable
         columns={visibleColumns.length > 0 ? visibleColumns : columns}
         data={filteredData}
@@ -563,22 +831,78 @@ const Maintenance = () => {
         pagination={undefined}
         onPageChange={() => {}}
         onRowsPerPageChange={() => {}}
+        getRowSx={(row) => {
+          const floorIndex = Number(row.floor_number) ?? 0
+          const lightShades = [
+            'rgba(25, 118, 210, 0.12)',
+            'rgba(46, 125, 50, 0.12)',
+            'rgba(245, 124, 0, 0.12)',
+            'rgba(123, 31, 162, 0.12)',
+            'rgba(0, 151, 167, 0.12)',
+            'rgba(229, 57, 53, 0.12)',
+            'rgba(156, 39, 176, 0.12)',
+            'rgba(121, 85, 72, 0.12)',
+            'rgba(2, 119, 189, 0.12)',
+            'rgba(27, 94, 32, 0.12)',
+          ]
+          const darkShades = [
+            'rgba(66, 165, 245, 0.16)',
+            'rgba(102, 187, 106, 0.16)',
+            'rgba(255, 167, 38, 0.16)',
+            'rgba(186, 104, 200, 0.16)',
+            'rgba(38, 166, 154, 0.16)',
+            'rgba(239, 83, 80, 0.16)',
+            'rgba(206, 147, 216, 0.16)',
+            'rgba(161, 136, 127, 0.16)',
+            'rgba(100, 181, 246, 0.16)',
+            'rgba(129, 199, 132, 0.16)',
+          ]
+          const shadeIndex = Math.abs(floorIndex) % lightShades.length
+          return {
+            backgroundColor: (theme) =>
+              theme.palette.mode === 'dark' ? darkShades[shadeIndex] : lightShades[shadeIndex],
+          }
+        }}
       />
 
       {/* Add/Edit Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik
           initialValues={initialValues}
-          validationSchema={validationSchema}
+          validationSchema={formValidationSchema}
           onSubmit={handleSubmit}
           enableReinitialize
         >
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
               <DialogTitle>
-                {editingMaintenance ? 'Edit Maintenance Record' : 'Add New Maintenance Record'}
+                {dialogMode === 'record_payment'
+                  ? 'Record payment (existing record)'
+                  : editingMaintenance
+                    ? 'Edit Maintenance Record'
+                    : 'Add New Maintenance Record'}
               </DialogTitle>
+              <Tabs
+                value={dialogMode}
+                onChange={(_, v) => {
+                  setDialogMode(v)
+                  setEditingMaintenance(null)
+                  setPaymentReceivedAmount('')
+                  setRecordPaymentLookup({ unit_id: null, month: null, year: null })
+                }}
+                sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+              >
+                <Tab label="Create new record" value="create" />
+                <Tab label="Record payment (existing)" value="record_payment" />
+              </Tabs>
               <DialogContent>
+                <RecordPaymentLookupSync
+                  dialogMode={dialogMode}
+                  unitId={values.unit_id}
+                  month={values.month}
+                  year={values.year}
+                  onSync={setRecordPaymentLookup}
+                />
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={12}>
                     <TextField
@@ -612,7 +936,11 @@ const Maintenance = () => {
                       select
                       label="Floor"
                       name="floor_id"
-                      value={values.floor_id}
+                      value={
+                        dialogFloors.some((f) => String(f.id) === String(values.floor_id))
+                          ? values.floor_id
+                          : ''
+                      }
                       onChange={(e) => {
                         const v = e.target.value
                         handleChange(e)
@@ -640,8 +968,22 @@ const Maintenance = () => {
                       select
                       label="Unit"
                       name="unit_id"
-                      value={values.unit_id}
-                      onChange={handleChange}
+                      value={
+                        dialogUnits.some((u) => String(u.id) === String(values.unit_id))
+                          ? values.unit_id
+                          : ''
+                      }
+                      onChange={(e) => {
+                        handleChange(e)
+                        if (dialogMode === 'record_payment') {
+                          setRecordPaymentLookup({
+                            unit_id: e.target.value || null,
+                            month: values.month || null,
+                            year: values.year || null,
+                          })
+                          setEditingMaintenance(null)
+                        }
+                      }}
                       onBlur={handleBlur}
                       error={touched.unit_id && !!errors.unit_id}
                       helperText={touched.unit_id && errors.unit_id}
@@ -663,7 +1005,17 @@ const Maintenance = () => {
                       label="Month"
                       name="month"
                       value={values.month}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        handleChange(e)
+                        if (dialogMode === 'record_payment') {
+                          setRecordPaymentLookup({
+                            unit_id: values.unit_id || null,
+                            month: e.target.value || null,
+                            year: values.year || null,
+                          })
+                          setEditingMaintenance(null)
+                        }
+                      }}
                       onBlur={handleBlur}
                       error={touched.month && !!errors.month}
                       helperText={touched.month && errors.month}
@@ -687,6 +1039,14 @@ const Maintenance = () => {
                         const raw = e.target.value
                         if (raw === '') {
                           handleChange(e)
+                          if (dialogMode === 'record_payment') {
+                            setRecordPaymentLookup({
+                              unit_id: values.unit_id || null,
+                              month: values.month || null,
+                              year: null,
+                            })
+                            setEditingMaintenance(null)
+                          }
                           return
                         }
                         const year = parseInt(raw, 10)
@@ -695,78 +1055,249 @@ const Maintenance = () => {
                           Math.max(2000, isNaN(year) ? 2000 : year)
                         )
                         handleChange({ target: { name: e.target.name, value: clamped } })
+                        if (dialogMode === 'record_payment') {
+                          setRecordPaymentLookup({
+                            unit_id: values.unit_id || null,
+                            month: values.month || null,
+                            year: clamped,
+                          })
+                          setEditingMaintenance(null)
+                        }
                       }}
                       onBlur={handleBlur}
                       error={touched.year && !!errors.year}
                       helperText={touched.year && errors.year}
                     />
                   </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      fullWidth
-                      label="Base Amount"
-                      name="base_amount"
-                      type="number"
-                      inputProps={{ min: 0 }}
-                      value={values.base_amount}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        if (raw === '') {
-                          handleChange(e)
-                          return
-                        }
-                        const num = Math.max(0, parseFloat(raw) || 0)
-                        handleChange({ target: { name: e.target.name, value: num } })
-                      }}
-                      onBlur={handleBlur}
-                      error={touched.base_amount && !!errors.base_amount}
-                      helperText={touched.base_amount && errors.base_amount}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      fullWidth
-                      label="Total Amount"
-                      name="total_amount"
-                      type="number"
-                      inputProps={{ min: 0 }}
-                      value={values.total_amount}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        if (raw === '') {
-                          handleChange(e)
-                          return
-                        }
-                        const num = Math.max(0, parseFloat(raw) || 0)
-                        handleChange({ target: { name: e.target.name, value: num } })
-                      }}
-                      onBlur={handleBlur}
-                      error={touched.total_amount && !!errors.total_amount}
-                      helperText={touched.total_amount && errors.total_amount}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Due Date"
-                      name="due_date"
-                      type="date"
-                      value={values.due_date}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                      error={touched.due_date && !!errors.due_date}
-                      helperText={touched.due_date && errors.due_date}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ max: '9999-12-31' }}
-                    />
-                  </Grid>
+                  {dialogMode === 'create' && (
+                    <>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Amount"
+                          name="amount"
+                          type="number"
+                          inputProps={{ min: 0 }}
+                          value={values.amount}
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            if (raw === '') {
+                              handleChange(e)
+                              return
+                            }
+                            const num = Math.max(0, parseFloat(raw) || 0)
+                            handleChange({ target: { name: e.target.name, value: num } })
+                          }}
+                          onBlur={handleBlur}
+                          error={touched.amount && !!errors.amount}
+                          helperText={touched.amount && errors.amount}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                          <Typography component="span" variant="body2" color="text.secondary">
+                            Due Date
+                          </Typography>
+                          <Tooltip
+                            title="Due Date is the payment deadline for this maintenance record. The 'Remind X days before due date' option in Settings uses this date to send payment reminders."
+                            placement="top"
+                            arrow
+                          >
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={(e) => setDueDateInfoAnchor(e.currentTarget)}
+                              sx={{ p: 0.25 }}
+                              aria-label="Due date info"
+                            >
+                              <InfoOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                        <Popover
+                          open={!!dueDateInfoAnchor}
+                          anchorEl={dueDateInfoAnchor}
+                          onClose={() => setDueDateInfoAnchor(null)}
+                          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                          disableRestoreFocus
+                        >
+                          <Box sx={{ p: 2, maxWidth: 320 }}>
+                            <Typography variant="subtitle2" color="primary" gutterBottom>
+                              Due Date
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Due Date is the <strong>payment deadline</strong> for this maintenance record. Residents see
+                              this date on their dashboard. The &quot;Remind X days before due date&quot; option in
+                              Settings uses this date to send payment reminders.
+                            </Typography>
+                          </Box>
+                        </Popover>
+                        <TextField
+                          fullWidth
+                          name="due_date"
+                          type="date"
+                          value={values.due_date}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={touched.due_date && !!errors.due_date}
+                          helperText={touched.due_date && errors.due_date}
+                          InputLabelProps={{ shrink: true }}
+                          inputProps={{ max: '9999-12-31' }}
+                        />
+                      </Grid>
+                    </>
+                  )}
                 </Grid>
+
+                <Divider sx={{ my: 2 }} />
+                <Accordion
+                  expanded={paymentSectionExpanded}
+                  onChange={(_, expanded) => setPaymentSectionExpanded(expanded)}
+                  sx={{ boxShadow: 'none', '&:before': { display: 'none' }, bgcolor: 'transparent' }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">
+                      Record payment (optional)
+                    </Typography>
+                    {editingMaintenance?.id && (() => {
+                      const total = Number(editingMaintenance.total_amount) || 0
+                      const paid = Number(editingMaintenance.amount_paid) || 0
+                      const due = Math.max(0, total - paid)
+                      return due > 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                          — {formatCurrency(due)} due
+                        </Typography>
+                      ) : null
+                    })()}
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {!editingMaintenance?.id ? (
+                      <>
+                        {dialogMode === 'record_payment' && recordPaymentLookupKey && recordPaymentLoading ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
+                            <CircularProgress size={20} />
+                            <Typography variant="body2" color="text.secondary">
+                              Loading record…
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                              {dialogMode === 'record_payment'
+                                ? (recordPaymentLookupKey && !recordPaymentLoading && recordPaymentRecord === null
+                                    ? 'No maintenance record found for this unit, month, and year.'
+                                    : 'Select unit, month, and year above. The record loads automatically — then you can pay full or enter any amount to record payment.')
+                                : 'Create the maintenance record above, then you can record payment here. The payment section will show Total, Paid, and Due after the record is saved.'}
+                            </Typography>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12} sm={4}>
+                                <Typography variant="body2" color="text.secondary">Total</Typography>
+                                <Typography variant="body1" color="text.secondary">—</Typography>
+                              </Grid>
+                              <Grid item xs={12} sm={4}>
+                                <Typography variant="body2" color="text.secondary">Paid</Typography>
+                                <Typography variant="body1" color="text.secondary">—</Typography>
+                              </Grid>
+                              <Grid item xs={12} sm={4}>
+                                <Typography variant="body2" color="text.secondary">Due</Typography>
+                                <Typography variant="body1" color="text.secondary">—</Typography>
+                              </Grid>
+                            </Grid>
+                          </>
+                        )}
+                      </>
+                    ) : (() => {
+                      const total = Number(String(editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0).replace(/,/g, '')) || 0
+                      const paid = Number(String(editingMaintenance.amount_paid ?? 0).replace(/,/g, '')) || 0
+                      const due = Math.max(0, total - paid)
+                      const amountNum = parseFloat(String(paymentReceivedAmount).replace(/,/g, ''))
+                      const isValidAmount = !isNaN(amountNum) && amountNum > 0
+                      const hasRemainingDue = due > 0
+                      return (
+                        <>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                            Amount below is the <strong>remaining due</strong>. Submit to record that payment (it is added to already paid). Change the amount for a partial payment.
+                          </Typography>
+                          <Grid container spacing={2}>
+                            <Grid item xs={12} sm={4}>
+                              <Typography variant="body2" color="text.secondary">Total</Typography>
+                              <Typography variant="body1" fontWeight={600}>{formatCurrency(total)}</Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                              <Typography variant="body2" color="text.secondary">Paid</Typography>
+                              <Typography variant="body1" fontWeight={600}>{formatCurrency(paid)}</Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                              <Typography variant="body2" color="text.secondary">Due</Typography>
+                              <Typography variant="body1" fontWeight={600}>{formatCurrency(due)}</Typography>
+                            </Grid>
+                            {due > 0 && (
+                              <Grid item xs={12}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  onClick={handleMarkFullyPaid}
+                                  disabled={markingFullyPaid || recordingPaymentInDialog}
+                                  startIcon={markingFullyPaid ? <CircularProgress size={16} /> : null}
+                                >
+                                  Mark fully paid (clear due)
+                                </Button>
+                              </Grid>
+                            )}
+                            <Grid item xs={12}>
+                              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                <TextField
+                                  size="small"
+                                  label="Amount to record (remaining due)"
+                                  type="number"
+                                  inputProps={{ min: 0, max: due, step: 0.01 }}
+                                  value={paymentReceivedAmount}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    if (v === '' || /^\d*\.?\d*$/.test(v)) setPaymentReceivedAmount(v)
+                                  }}
+                                  disabled={recordingPaymentInDialog}
+                                  sx={{ minWidth: 140 }}
+                                />
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => {
+                                    setPaymentReceivedAmount(String(due))
+                                    handleRecordPaymentInDialog(due)
+                                  }}
+                                  disabled={recordingPaymentInDialog || !hasRemainingDue}
+                                  startIcon={recordingPaymentInDialog ? <CircularProgress size={16} /> : null}
+                                >
+                                  Pay full & update record
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={handleRecordPaymentInDialog}
+                                  disabled={recordingPaymentInDialog || !isValidAmount}
+                                  startIcon={recordingPaymentInDialog ? <CircularProgress size={16} /> : null}
+                                >
+                                  Record payment
+                                </Button>
+                              </Box>
+                            </Grid>
+                          </Grid>
+                        </>
+                      )
+                    })()}
+                  </AccordionDetails>
+                </Accordion>
               </DialogContent>
               <DialogActions>
                 <Button onClick={handleCloseDialog}>Cancel</Button>
-                <Button type="submit" variant="contained" disabled={isSubmitting}>
-                  {editingMaintenance ? 'Update' : 'Create'}
-                </Button>
+                {dialogMode === 'create' && (
+                  <Button type="submit" variant="contained" disabled={isSubmitting}>
+                    {editingMaintenance ? 'Update' : 'Create'}
+                  </Button>
+                )}
               </DialogActions>
             </Form>
           )}

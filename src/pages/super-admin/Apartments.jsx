@@ -60,6 +60,13 @@ const validationSchema = Yup.object({
     union_admin_name: Yup.string().nullable(),
     union_admin_email: Yup.string().nullable().test('email', 'Invalid email', (v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
     union_admin_phone: Yup.string().nullable(),
+    union_admin_password: Yup.string()
+      .nullable()
+      .when('union_admin_email', {
+        is: (v) => v && String(v).trim(),
+        then: (schema) => schema.required('Password is required when adding Union Admin client').min(6, 'At least 6 characters'),
+        otherwise: (schema) => schema.nullable(),
+      }),
   })
 
 const Apartments = () => {
@@ -103,6 +110,13 @@ const Apartments = () => {
     () => apartmentApi.getById(editingSociety.id).then(res => res.data)
   )
   const apartmentDetail = apartmentDetailData?.data
+
+  // Full apartment detail for View dialog (so we show latest data and can show "—" for unset counts)
+  const { data: viewDetailData } = useSWR(
+    viewDialogOpen && viewingRow?.id ? ['/apartment-detail-view', viewingRow.id] : null,
+    () => apartmentApi.getById(viewingRow.id).then(res => res.data)
+  )
+  const viewApartmentDetail = viewDetailData?.data
 
   const [activatingId, setActivatingId] = useState(null)
 
@@ -183,6 +197,7 @@ const Apartments = () => {
           union_admin_name: values.union_admin_name || null,
           union_admin_email: values.union_admin_email || null,
           union_admin_phone: values.union_admin_phone || null,
+          union_admin_password: values.union_admin_password || undefined,
         }
         const res = await apartmentApi.create(payload)
         const newId = res?.data?.data?.id
@@ -477,6 +492,7 @@ const Apartments = () => {
         union_admin_name: editSource.union_admin_name ?? assignedAdminForEdit?.name ?? '',
         union_admin_email: editSource.union_admin_email ?? assignedAdminForEdit?.email ?? '',
         union_admin_phone: editSource.union_admin_phone ?? assignedAdminForEdit?.contact_number ?? '',
+        union_admin_password: '',
       }
     : {
         name: '',
@@ -490,6 +506,7 @@ const Apartments = () => {
         union_admin_name: '',
         union_admin_email: '',
         union_admin_phone: '',
+        union_admin_password: '',
       }
 
   const totalLeads = data?.pagination?.total ?? (data?.data?.length ?? 0)
@@ -705,7 +722,9 @@ const Apartments = () => {
                   )}
                   <Grid item xs={12}>
                     <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }} color="text.secondary">
-                      Union Admin Name, Email &amp; Phone (optional — for lead contact)
+                      {editingSociety
+                        ? 'Union Admin Name, Email &amp; Phone (optional — for lead contact)'
+                        : 'Union Admin details: if filled, a new client is added to Users with pending subscription. Activate later via Users → Create Job.'}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -748,6 +767,23 @@ const Apartments = () => {
                       placeholder="Optional"
                     />
                   </Grid>
+                  {!editingSociety && (
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Union Admin Password"
+                        name="union_admin_password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={values.union_admin_password || ''}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.union_admin_password && !!errors.union_admin_password}
+                        helperText={touched.union_admin_password && errors.union_admin_password}
+                        placeholder="Required if email is set (min 6)"
+                      />
+                    </Grid>
+                  )}
                 </Grid>
               </DialogContent>
               <DialogActions>
@@ -769,26 +805,29 @@ const Apartments = () => {
       >
         <DialogTitle>Apartment &amp; Union Admin details</DialogTitle>
         <DialogContent dividers>
-          {viewingRow && (
+          {viewingRow && (() => {
+            const viewApartment = viewApartmentDetail ?? viewingRow
+            const showCount = (v) => (v === 0 || v == null || v === '') ? '—' : v
+            return (
             <Grid container spacing={2} sx={{ pt: 1 }}>
               <Grid item xs={12}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
               </Grid>
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">Apartment Name</Typography>
-                <Typography variant="body1">{viewingRow.name || '—'}</Typography>
+                <Typography variant="body1">{viewApartment.name || '—'}</Typography>
               </Grid>
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">Address</Typography>
-                <Typography variant="body1">{viewingRow.address || '—'}</Typography>
+                <Typography variant="body1">{viewApartment.address || '—'}</Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Typography variant="body2" color="text.secondary">City</Typography>
-                <Typography variant="body1">{viewingRow.city || '—'}</Typography>
+                <Typography variant="body1">{viewApartment.city || '—'}</Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Typography variant="body2" color="text.secondary">Area</Typography>
-                <Typography variant="body1">{viewingRow.area || '—'}</Typography>
+                <Typography variant="body1">{viewApartment.area || '—'}</Typography>
               </Grid>
               <Grid item xs={12} sm={4}>
                 <Typography variant="body2" color="text.secondary">Total Blocks</Typography>
@@ -801,7 +840,7 @@ const Apartments = () => {
                     navigate(`/super-admin/blocks?society_id=${viewingRow.id}`)
                   }}
                 >
-                  {viewingRow.total_blocks ?? '—'}
+                  {showCount(viewApartment.total_blocks)}
                 </Typography>
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -815,7 +854,7 @@ const Apartments = () => {
                     navigate(`/super-admin/floors?society_id=${viewingRow.id}`)
                   }}
                 >
-                  {viewingRow.total_floors ?? '—'}
+                  {showCount(viewApartment.total_floors)}
                 </Typography>
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -829,7 +868,7 @@ const Apartments = () => {
                     navigate(`/super-admin/units?society_id=${viewingRow.id}`)
                   }}
                 >
-                  {viewingRow.total_units ?? '—'}
+                  {showCount(viewApartment.total_units)}
                 </Typography>
               </Grid>
 
@@ -839,7 +878,7 @@ const Apartments = () => {
               {(() => {
                 const admin = admins.find((a) => a.society_apartment_id === viewingRow.id)
                 if (!admin) {
-                  const hasStored = viewingRow.union_admin_name || viewingRow.union_admin_email || viewingRow.union_admin_phone
+                  const hasStored = viewApartment.union_admin_name || viewApartment.union_admin_email || viewApartment.union_admin_phone
                   return (
                     <>
                       <Grid item xs={12}>
@@ -847,22 +886,22 @@ const Apartments = () => {
                       </Grid>
                       {hasStored && (
                         <>
-                          {viewingRow.union_admin_name && (
+                          {viewApartment.union_admin_name && (
                             <Grid item xs={12} sm={6}>
                               <Typography variant="body2" color="text.secondary">Lead contact name</Typography>
-                              <Typography variant="body1">{viewingRow.union_admin_name}</Typography>
+                              <Typography variant="body1">{viewApartment.union_admin_name}</Typography>
                             </Grid>
                           )}
-                          {viewingRow.union_admin_email && (
+                          {viewApartment.union_admin_email && (
                             <Grid item xs={12} sm={6}>
                               <Typography variant="body2" color="text.secondary">Lead contact email</Typography>
-                              <Typography variant="body1">{viewingRow.union_admin_email}</Typography>
+                              <Typography variant="body1">{viewApartment.union_admin_email}</Typography>
                             </Grid>
                           )}
-                          {viewingRow.union_admin_phone && (
+                          {viewApartment.union_admin_phone && (
                             <Grid item xs={12} sm={6}>
                               <Typography variant="body2" color="text.secondary">Lead contact phone</Typography>
-                              <Typography variant="body1">{viewingRow.union_admin_phone}</Typography>
+                              <Typography variant="body1">{viewApartment.union_admin_phone}</Typography>
                             </Grid>
                           )}
                         </>
@@ -905,7 +944,8 @@ const Apartments = () => {
                 )
               })()}
             </Grid>
-          )}
+            )
+          })()}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setViewDialogOpen(false); setViewingRow(null) }}>Close</Button>

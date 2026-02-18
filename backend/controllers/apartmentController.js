@@ -1,4 +1,6 @@
+import bcrypt from 'bcryptjs';
 import { query } from '../config/database.js';
+import { createOrUpdateSubscription } from './subscriptionController.js';
 
 // Get distinct cities (for City → Area → Apartment cascading)
 export const getCities = async (req, res) => {
@@ -140,16 +142,40 @@ export const getById = async (req, res) => {
   }
 };
 
-// Create apartment
+// Create apartment (optionally create Union Admin user with pending subscription when details provided)
 export const create = async (req, res) => {
   try {
-    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone } = req.body;
+    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, union_admin_password } = req.body;
 
     if (!name) {
       return res.status(400).json({
         success: false,
         message: 'Apartment name is required',
       });
+    }
+
+    // If Union Admin email is provided, require name and password to auto-create client
+    const wantsUnionAdmin = !!(union_admin_email && String(union_admin_email).trim());
+    if (wantsUnionAdmin) {
+      if (!union_admin_name || !String(union_admin_name).trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Union Admin name is required when Union Admin email is provided',
+        });
+      }
+      if (!union_admin_password || String(union_admin_password).length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Union Admin password is required (min 6 characters) when creating a client from Union Admin details',
+        });
+      }
+      const existingUser = await query('SELECT id FROM users WHERE email = $1', [String(union_admin_email).toLowerCase().trim()]);
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'A user with this Union Admin email already exists',
+        });
+      }
     }
 
     const result = await query(
@@ -159,10 +185,41 @@ export const create = async (req, res) => {
       [name, address || null, city || null, area || null, total_blocks || 0, total_floors || 0, total_units || 0, union_admin_name || null, union_admin_email || null, union_admin_phone || null]
     );
 
+    const apartment = result.rows[0];
+    const apartmentId = apartment.id;
+
+    // Auto-create Union Admin user (client) with pending subscription so they appear in Users until super admin runs Create Job
+    if (wantsUnionAdmin) {
+      const email = String(union_admin_email).toLowerCase().trim();
+      const hashedPassword = await bcrypt.hash(union_admin_password, 10);
+      const createdBy = req.user?.id || null;
+
+      const userResult = await query(
+        `INSERT INTO users (email, password, name, role, society_apartment_id, contact_number, created_by)
+         VALUES ($1, $2, $3, 'union_admin', $4, $5, $6)
+         RETURNING id, email, name, role, society_apartment_id, created_at`,
+        [
+          email,
+          hashedPassword,
+          String(union_admin_name).trim(),
+          apartmentId,
+          union_admin_phone ? String(union_admin_phone).trim() : null,
+          createdBy,
+        ]
+      );
+
+      const newUser = userResult.rows[0];
+      try {
+        await createOrUpdateSubscription(newUser.id, apartmentId, null, 'pending');
+      } catch (subErr) {
+        console.warn('Subscription create skipped:', subErr.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
-      message: 'Apartment created successfully',
-      data: result.rows[0],
+      message: 'Apartment created successfully' + (wantsUnionAdmin ? '. Union Admin client added with pending subscription—activate from Users via Create Job.' : ''),
+      data: apartment,
     });
   } catch (error) {
     console.error('Create apartment error:', error);

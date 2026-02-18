@@ -20,7 +20,6 @@ import SaveIcon from '@mui/icons-material/Save'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { settingsApi } from '@/api/settingsApi'
-import { propertyApi } from '@/api/propertyApi'
 import toast from 'react-hot-toast'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -39,22 +38,10 @@ const Settings = () => {
     () => settingsApi.getSettings(societyId).then(res => res.data.data || res.data)
   )
 
-  // Fetch maintenance config (array: society-level and per-block/per-unit)
+  // Fetch maintenance config (society-level)
   const { data: configData, isLoading: configLoading, mutate: mutateConfig } = useSWR(
     societyId ? [`/settings/${societyId}/maintenance-config`, societyId] : null,
     () => settingsApi.getMaintenanceConfig(societyId).then(res => res.data.data || res.data).catch(() => [])
-  )
-
-  // Fetch blocks for per-block overrides
-  const { data: blocksData } = useSWR(
-    societyId ? ['/blocks', societyId] : null,
-    () => propertyApi.getBlocks({ society_id: societyId }).then(res => res.data).catch(() => null)
-  )
-
-  // Fetch units for per-unit (per-flat) overrides
-  const { data: unitsData } = useSWR(
-    societyId ? ['/units', societyId] : null,
-    () => propertyApi.getUnits({ society_id: societyId }).then(res => res.data).catch(() => null)
   )
 
   const settings = settingsData || {
@@ -72,14 +59,6 @@ const Settings = () => {
 
   const configList = Array.isArray(configData) ? configData : []
   const societyLevelConfig = configList.find((c) => c.block_id == null && c.unit_id == null)
-  const blocks = blocksData?.data || []
-  const units = unitsData?.data || []
-  const blockConfigByBlockId = configList
-    .filter((c) => c.block_id != null && c.unit_id == null)
-    .reduce((acc, c) => ({ ...acc, [c.block_id]: c }), {})
-  const unitConfigByUnitId = configList
-    .filter((c) => c.unit_id != null)
-    .reduce((acc, c) => ({ ...acc, [c.unit_id]: c }), {})
 
   const handleToggle = (key) => {
     const newSettings = {
@@ -127,30 +106,6 @@ const Settings = () => {
           base_amount: societyAmount,
         },
       ]
-      blocks.forEach((block) => {
-        const amount = values.blockAmounts?.[block.id]
-        if (amount !== undefined && amount !== '' && amount !== null) {
-          const blockConfig = blockConfigByBlockId[block.id]
-          configs.push({
-            id: blockConfig?.id,
-            block_id: block.id,
-            unit_id: null,
-            base_amount: Math.max(0, Number(amount) || 0),
-          })
-        }
-      })
-      units.forEach((unit) => {
-        const amount = values.unitAmounts?.[unit.id]
-        if (amount !== undefined && amount !== '' && amount !== null) {
-          const unitConfig = unitConfigByUnitId[unit.id]
-          configs.push({
-            id: unitConfig?.id,
-            unit_id: unit.id,
-            block_id: null,
-            base_amount: Math.max(0, Number(amount) || 0),
-          })
-        }
-      })
       await settingsApi.updateMaintenanceConfig(societyId, { configs })
       toast.success('Maintenance configuration saved successfully')
       await mutateConfig()
@@ -299,20 +254,6 @@ const Settings = () => {
                   <Formik
                     initialValues={{
                       base_amount: societyLevelConfig?.base_amount ?? 0,
-                      blockAmounts: blocks.reduce(
-                        (acc, block) => ({
-                          ...acc,
-                          [block.id]: blockConfigByBlockId[block.id]?.base_amount ?? '',
-                        }),
-                        {}
-                      ),
-                      unitAmounts: units.reduce(
-                        (acc, unit) => ({
-                          ...acc,
-                          [unit.id]: unitConfigByUnitId[unit.id]?.base_amount ?? '',
-                        }),
-                        {}
-                      ),
                     }}
                     validationSchema={Yup.object({
                       base_amount: Yup.number()
@@ -322,7 +263,7 @@ const Settings = () => {
                     onSubmit={handleSaveMaintenanceConfig}
                     enableReinitialize
                   >
-                    {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
+                    {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
                       <Form>
                         <Grid container spacing={2}>
                           <Grid item xs={12} sm={6}>
@@ -352,120 +293,9 @@ const Settings = () => {
                           </Grid>
                         </Grid>
 
-                        {blocks.length > 0 && (
-                          <>
-                            <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>
-                              Per-block overrides (optional)
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Set a different amount for a block. Leave empty to use the society default.
-                            </Typography>
-                            <Grid container spacing={2}>
-                              {blocks.map((block) => (
-                                <Grid item xs={12} sm={6} md={4} key={block.id}>
-                                  <TextField
-                                    fullWidth
-                                    label={`${block.name} (PKR)`}
-                                    type="number"
-                                    inputProps={{ min: 0 }}
-                                    value={values.blockAmounts?.[block.id] ?? ''}
-                                    onChange={(e) => {
-                                      const raw = e.target.value
-                                      setFieldValue('blockAmounts', {
-                                        ...values.blockAmounts,
-                                        [block.id]: raw === '' ? '' : Math.max(0, parseFloat(raw) || 0),
-                                      })
-                                    }}
-                                    placeholder="Use default"
-                                  />
-                                </Grid>
-                              ))}
-                            </Grid>
-                          </>
-                        )}
-
-                        {units.length > 0 && (
-                          <>
-                            <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>
-                              Per-unit / per-flat overrides (optional)
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Set a different amount for a specific unit (flat). Leave empty to use block or society default. Priority: unit → block → society.
-                            </Typography>
-                            <Grid container spacing={2}>
-                              {blocks.map((block) => {
-                                const unitsInBlock = units.filter((u) => u.block_id === block.id)
-                                if (unitsInBlock.length === 0) return null
-                                return (
-                                  <Grid item xs={12} key={block.id}>
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                      {block.name}
-                                    </Typography>
-                                    <Grid container spacing={1}>
-                                      {unitsInBlock.map((unit) => (
-                                        <Grid item xs={6} sm={4} md={3} key={unit.id}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            label={`Unit ${unit.unit_number} (PKR)`}
-                                            type="number"
-                                            inputProps={{ min: 0 }}
-                                            value={values.unitAmounts?.[unit.id] ?? ''}
-                                            onChange={(e) => {
-                                              const raw = e.target.value
-                                              setFieldValue('unitAmounts', {
-                                                ...values.unitAmounts,
-                                                [unit.id]: raw === '' ? '' : Math.max(0, parseFloat(raw) || 0),
-                                              })
-                                            }}
-                                            placeholder="Default"
-                                          />
-                                        </Grid>
-                                      ))}
-                                    </Grid>
-                                  </Grid>
-                                )
-                              })}
-                              {(() => {
-                                const unitsWithoutBlock = units.filter((u) => u.block_id == null)
-                                if (unitsWithoutBlock.length === 0) return null
-                                return (
-                                  <Grid item xs={12}>
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                      Other (no block)
-                                    </Typography>
-                                    <Grid container spacing={1}>
-                                      {unitsWithoutBlock.map((unit) => (
-                                        <Grid item xs={6} sm={4} md={3} key={unit.id}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            label={`Unit ${unit.unit_number} (PKR)`}
-                                            type="number"
-                                            inputProps={{ min: 0 }}
-                                            value={values.unitAmounts?.[unit.id] ?? ''}
-                                            onChange={(e) => {
-                                              const raw = e.target.value
-                                              setFieldValue('unitAmounts', {
-                                                ...values.unitAmounts,
-                                                [unit.id]: raw === '' ? '' : Math.max(0, parseFloat(raw) || 0),
-                                              })
-                                            }}
-                                            placeholder="Default"
-                                          />
-                                        </Grid>
-                                      ))}
-                                    </Grid>
-                                  </Grid>
-                                )
-                              })()}
-                            </Grid>
-                          </>
-                        )}
-
                         <Alert severity="info" sx={{ mt: 3 }}>
                           <Typography variant="body2">
-                            <strong>Note:</strong> Society amount is the default. Block overrides apply to all units in that block. Unit overrides apply to a single flat. Priority when generating monthly dues: unit → block → society.
+                            <strong>Note:</strong> This amount is used when generating monthly dues for your society.
                           </Typography>
                         </Alert>
 
