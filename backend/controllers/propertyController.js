@@ -30,8 +30,10 @@ export async function refreshBlockTotals(block_id) {
 }
 
 /**
- * Recompute and update an apartment's total_blocks, total_floors, total_units
- * from actual blocks, floors, and units tables. Keeps apartments table in sync.
+ * Recompute and update an apartment's total_blocks from block count; total_floors and total_units
+ * from blocks table (MAX total_floors, SUM total_units) when blocks exist. When no blocks exist,
+ * only total_blocks is set to 0 and total_floors/total_units are left unchanged (preserves
+ * user-configured values from Add Apartment form).
  */
 export async function refreshApartmentTotals(society_apartment_id) {
   if (society_apartment_id == null || society_apartment_id === '') return;
@@ -39,31 +41,26 @@ export async function refreshApartmentTotals(society_apartment_id) {
     const id = parseInt(society_apartment_id, 10);
     if (Number.isNaN(id)) return;
 
-    const blocksCount = await query(
-      'SELECT COUNT(*)::int AS c FROM blocks WHERE society_apartment_id = $1',
+    const blocksAgg = await query(
+      `SELECT COUNT(*)::int AS block_count,
+              COALESCE(MAX(total_floors), 0)::int AS total_floors,
+              COALESCE(SUM(total_units), 0)::int AS total_units
+       FROM blocks WHERE society_apartment_id = $1`,
       [id]
     );
-    const floorsCount = await query(
-      `SELECT COUNT(*)::int AS c FROM floors f
-       INNER JOIN blocks b ON f.block_id = b.id
-       WHERE b.society_apartment_id = $1`,
-      [id]
-    );
-    const unitsCount = await query(
-      'SELECT COUNT(*)::int AS c FROM units WHERE society_apartment_id = $1',
-      [id]
-    );
+    const row = blocksAgg.rows[0];
+    const blockCount = row?.block_count ?? 0;
+    const totalFloors = blockCount > 0 ? (row?.total_floors ?? 0) : null;
+    const totalUnits = blockCount > 0 ? (row?.total_units ?? 0) : null;
 
     await query(
       `UPDATE apartments
-       SET total_blocks = $1, total_floors = $2, total_units = $3, updated_at = CURRENT_TIMESTAMP
+       SET total_blocks = $1,
+           total_floors = COALESCE($2, total_floors),
+           total_units = COALESCE($3, total_units),
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = $4`,
-      [
-        blocksCount.rows[0]?.c ?? 0,
-        floorsCount.rows[0]?.c ?? 0,
-        unitsCount.rows[0]?.c ?? 0,
-        id,
-      ]
+      [blockCount, totalFloors, totalUnits, id]
     );
   } catch (err) {
     console.error('refreshApartmentTotals error:', err);

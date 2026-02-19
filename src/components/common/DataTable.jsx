@@ -71,7 +71,7 @@ const DataTable = ({
             >
               {columns.map((column) => (
                 <TableCell key={column.id} align={column.align || 'left'} sx={getHeaderSx(column)}>
-                  {column.label}
+                  {column.header != null ? column.header : column.label}
                 </TableCell>
               ))}
             </TableRow>

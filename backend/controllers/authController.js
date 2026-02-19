@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
@@ -123,14 +124,25 @@ export const login = async (req, res) => {
 // Register (for super admin to create users)
 export const register = async (req, res) => {
   try {
-    const { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status, address, city, postal_code, work_employer, work_title, work_phone } = req.body;
+    let { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status, address, city, postal_code, work_employer, work_title, work_phone } = req.body;
 
-    // Validation
-    if (!email || !password || !name || !role) {
+    // Validation: email, name, role always required
+    if (!email || !name || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Email, password, name, and role are required',
+        message: 'Email, name, and role are required',
       });
+    }
+    // Password required unless super_admin is assigning to a lead that already has union admin details (society_apartment_id set)
+    const passwordOptional = req.user?.role === 'super_admin' && society_apartment_id
+    if (!password || (typeof password === 'string' && !password.trim())) {
+      if (!passwordOptional) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password is required',
+        })
+      }
+      password = crypto.randomBytes(12).toString('hex')
     }
 
     // Only one Super Admin exists; creating another is not allowed

@@ -188,8 +188,4 @@ AddressAutocomplete.propTypes = {
   apiKey: PropTypes.string,
 }
 
-AddressAutocomplete.defaultProps = {
-  value: '',
-}
-
 export default AddressAutocomplete

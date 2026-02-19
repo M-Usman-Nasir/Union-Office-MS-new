@@ -42,33 +42,66 @@ export const getAreas = async (req, res) => {
   }
 };
 
-// Get all apartments (with optional city, area filter for cascading)
+// Get all apartments (with optional city, area filter for cascading; sortBy=name|union_admin, order=asc|desc)
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, city, area } = req.query;
+    const { page = 1, limit = 10, search, city, area, address, status, sortBy, order } = req.query;
     const offset = (page - 1) * limit;
+    const sortOrder = (order || '').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const sortByUnionAdmin = (sortBy || '').toLowerCase() === 'union_admin';
 
-    let sql = `SELECT * FROM apartments WHERE 1=1`;
+    let sql = `SELECT a.* FROM apartments a`;
+    if (sortByUnionAdmin) {
+      sql += ` LEFT JOIN users u ON u.society_apartment_id = a.id AND u.role = 'union_admin'`;
+    }
     const params = [];
     let paramCount = 0;
 
+    sql += ` WHERE 1=1`;
     if (city) {
       paramCount++;
-      sql += ` AND city = $${paramCount}`;
+      sql += ` AND a.city = $${paramCount}`;
       params.push(city);
     }
     if (area) {
       paramCount++;
-      sql += ` AND (area = $${paramCount} OR (area IS NULL AND $${paramCount} = ''))`;
+      sql += ` AND (a.area = $${paramCount} OR (a.area IS NULL AND $${paramCount} = ''))`;
       params.push(area || '');
     }
     if (search) {
       paramCount++;
-      sql += ` AND (name ILIKE $${paramCount} OR address ILIKE $${paramCount} OR city ILIKE $${paramCount} OR COALESCE(area, '') ILIKE $${paramCount})`;
+      sql += ` AND (a.name ILIKE $${paramCount} OR a.address ILIKE $${paramCount} OR a.city ILIKE $${paramCount} OR COALESCE(a.area, '') ILIKE $${paramCount})`;
       params.push(`%${search}%`);
     }
+    if (address && String(address).trim()) {
+      paramCount++;
+      sql += ` AND a.address ILIKE $${paramCount}`;
+      params.push(`%${String(address).trim()}%`);
+    }
+    const statusLower = (status || '').toLowerCase();
+    // Status filter by subscription: active = has active subscriber, inactive = waiting for subscription
+    if (statusLower === 'active') {
+      sql += ` AND a.id IN (
+        SELECT u.society_apartment_id FROM users u
+        INNER JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.role = 'union_admin' AND LOWER(TRIM(s.status)) = 'active'
+      )`;
+    } else if (statusLower === 'inactive') {
+      sql += ` AND a.id NOT IN (
+        SELECT u.society_apartment_id FROM users u
+        INNER JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.role = 'union_admin' AND LOWER(TRIM(s.status)) = 'active'
+      )`;
+    }
 
-    sql += ` ORDER BY city, area, name LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+    if (sortByUnionAdmin) {
+      sql += ` ORDER BY COALESCE(u.name, a.union_admin_name) ${sortOrder} NULLS LAST, a.city, a.name`;
+    } else if ((sortBy || '').toLowerCase() === 'name') {
+      sql += ` ORDER BY a.name ${sortOrder}, a.city, a.area`;
+    } else {
+      sql += ` ORDER BY a.city, a.area, a.name`;
+    }
+    sql += ` LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
     const result = await query(sql, params);
@@ -91,6 +124,24 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND (name ILIKE $${countParamCount} OR address ILIKE $${countParamCount} OR city ILIKE $${countParamCount} OR COALESCE(area, '') ILIKE $${countParamCount})`;
       countParams.push(`%${search}%`);
+    }
+    if (address && String(address).trim()) {
+      countParamCount++;
+      countSql += ` AND address ILIKE $${countParamCount}`;
+      countParams.push(`%${String(address).trim()}%`);
+    }
+    if (statusLower === 'active') {
+      countSql += ` AND id IN (
+        SELECT u.society_apartment_id FROM users u
+        INNER JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.role = 'union_admin' AND LOWER(TRIM(s.status)) = 'active'
+      )`;
+    } else if (statusLower === 'inactive') {
+      countSql += ` AND id NOT IN (
+        SELECT u.society_apartment_id FROM users u
+        INNER JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.role = 'union_admin' AND LOWER(TRIM(s.status)) = 'active'
+      )`;
     }
     const countResult = await query(countSql, countParams);
 
@@ -178,11 +229,15 @@ export const create = async (req, res) => {
       }
     }
 
+    const totalBlocks = Math.max(0, parseInt(total_blocks, 10) || 0);
+    const totalFloors = Math.max(0, parseInt(total_floors, 10) || 0);
+    const totalUnits = Math.max(0, parseInt(total_units, 10) || 0);
+
     const result = await query(
       `INSERT INTO apartments (name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [name, address || null, city || null, area || null, total_blocks || 0, total_floors || 0, total_units || 0, union_admin_name || null, union_admin_email || null, union_admin_phone || null]
+      [name, address || null, city || null, area || null, totalBlocks, totalFloors, totalUnits, union_admin_name || null, union_admin_email || null, union_admin_phone || null]
     );
 
     const apartment = result.rows[0];
@@ -235,7 +290,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone } = req.body;
+    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, is_active } = req.body;
 
     // Check if apartment exists
     const existing = await query('SELECT id FROM apartments WHERE id = $1', [id]);
@@ -246,23 +301,44 @@ export const update = async (req, res) => {
       });
     }
 
-    const result = await query(
-      `UPDATE apartments 
-       SET name = COALESCE($1, name),
-           address = COALESCE($2, address),
-           city = COALESCE($3, city),
-           area = COALESCE($4, area),
-           total_blocks = COALESCE($5, total_blocks),
-           total_floors = COALESCE($6, total_floors),
-           total_units = COALESCE($7, total_units),
-           union_admin_name = $8,
-           union_admin_email = $9,
-           union_admin_phone = $10,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $11
-       RETURNING *`,
-      [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, id]
-    );
+    const isActiveValue = typeof is_active === 'boolean' ? is_active : (is_active === 'true' || is_active === true);
+    const includeIsActive = req.body.hasOwnProperty('is_active');
+    const result = includeIsActive
+      ? await query(
+          `UPDATE apartments 
+           SET name = COALESCE($1, name),
+               address = COALESCE($2, address),
+               city = COALESCE($3, city),
+               area = COALESCE($4, area),
+               total_blocks = COALESCE($5, total_blocks),
+               total_floors = COALESCE($6, total_floors),
+               total_units = COALESCE($7, total_units),
+               union_admin_name = $8,
+               union_admin_email = $9,
+               union_admin_phone = $10,
+               is_active = $11,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $12
+           RETURNING *`,
+          [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, isActiveValue, id]
+        )
+      : await query(
+          `UPDATE apartments 
+           SET name = COALESCE($1, name),
+               address = COALESCE($2, address),
+               city = COALESCE($3, city),
+               area = COALESCE($4, area),
+               total_blocks = COALESCE($5, total_blocks),
+               total_floors = COALESCE($6, total_floors),
+               total_units = COALESCE($7, total_units),
+               union_admin_name = $8,
+               union_admin_email = $9,
+               union_admin_phone = $10,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $11
+           RETURNING *`,
+          [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, id]
+        );
 
     res.json({
       success: true,

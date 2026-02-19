@@ -20,6 +20,13 @@ import {
   Divider,
   IconButton,
   Autocomplete,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  FormControl,
+  FormLabel,
+  TableSortLabel,
+  Checkbox,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -57,6 +64,15 @@ const validationSchema = Yup.object({
     address: Yup.string(),
     city: Yup.string(),
     total_floors: Yup.number().min(0).nullable(),
+    total_units: Yup.number().min(0).nullable(),
+    unitInputMode: Yup.string().oneOf(['total', 'per_floor']).nullable(),
+    units_per_floor: Yup.number()
+      .nullable()
+      .when(['unitInputMode', 'total_blocks'], {
+        is: (mode, blocks) => mode === 'per_floor' && (blocks || 0) > 0,
+        then: (schema) => schema.required('Units per floor is required').min(1, 'At least 1'),
+        otherwise: (schema) => schema.nullable(),
+      }),
     union_admin_name: Yup.string().nullable(),
     union_admin_email: Yup.string().nullable().test('email', 'Invalid email', (v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
     union_admin_phone: Yup.string().nullable(),
@@ -81,6 +97,20 @@ const Apartments = () => {
   const [assignSelectedAdmin, setAssignSelectedAdmin] = useState(null)
   const [viewDialogOpen, setViewDialogOpen] = useState(false)
   const [viewingRow, setViewingRow] = useState(null)
+  const [sortBy, setSortBy] = useState('')
+  const [sortOrder, setSortOrder] = useState('asc')
+  const [addressFilter, setAddressFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+
+  const handleSort = (key) => {
+    if (sortBy === key) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(key)
+      setSortOrder('asc')
+    }
+    setPage(1)
+  }
 
   const openActionMenu = (e, row) => {
     e.stopPropagation()
@@ -89,8 +119,19 @@ const Apartments = () => {
   const closeActionMenu = () => setActionMenu({ anchorEl: null, row: null })
 
   const { data, isLoading, mutate } = useSWR(
-    ['/societies', page, limit, search],
-    () => apartmentApi.getAll({ page, limit, search }).then(res => res.data)
+    ['/societies', page, limit, search, addressFilter, statusFilter, sortBy, sortOrder],
+    () =>
+      apartmentApi
+        .getAll({
+          page,
+          limit,
+          search: search || undefined,
+          address: addressFilter || undefined,
+          status: statusFilter || undefined,
+          sortBy: sortBy || undefined,
+          order: sortBy ? sortOrder : undefined,
+        })
+        .then((res) => res.data)
   )
 
   const { data: adminsData, mutate: mutateAdmins } = useSWR(
@@ -180,20 +221,27 @@ const Apartments = () => {
           total_blocks: values.total_blocks,
           total_floors: values.total_floors,
           total_units: values.total_units,
+          is_active: values.is_active,
           union_admin_name: values.union_admin_name || null,
           union_admin_email: values.union_admin_email || null,
           union_admin_phone: values.union_admin_phone || null,
         })
         toast.success('Apartment updated successfully')
       } else {
+        const numBlocksForPayload = Array.isArray(values.blockNames) && values.blockNames.length > 0 ? values.blockNames.length : 0
+        const totalFloorsForPayload = Number(values.total_floors) || 0
+        const totalUnitsForPayload =
+          values.unitInputMode === 'per_floor' && numBlocksForPayload > 0
+            ? (Number(values.units_per_floor) || 0) * totalFloorsForPayload * numBlocksForPayload
+            : Number(values.total_units) || 0
         const payload = {
           name: values.name,
           address: values.address,
           city: values.city,
           area: values.area || null,
-          total_blocks: values.total_blocks || 0,
-          total_floors: values.total_floors || 0,
-          total_units: values.total_units || 0,
+          total_blocks: Number(values.total_blocks) || 0,
+          total_floors: totalFloorsForPayload,
+          total_units: totalUnitsForPayload,
           union_admin_name: values.union_admin_name || null,
           union_admin_email: values.union_admin_email || null,
           union_admin_phone: values.union_admin_phone || null,
@@ -202,19 +250,28 @@ const Apartments = () => {
         const res = await apartmentApi.create(payload)
         const newId = res?.data?.data?.id
         if (newId && Array.isArray(values.blockNames) && values.blockNames.length > 0) {
-          const totalFloors = values.total_floors || 0
-          const totalUnits = values.total_units || 0
+          const totalFloors = Number(values.total_floors) || 0
           const numBlocks = values.blockNames.length
-          const unitsPerBlock = Math.floor(totalUnits / numBlocks)
-          const remainder = totalUnits % numBlocks
+          const isPerFloor = values.unitInputMode === 'per_floor'
+          const totalUnits = isPerFloor
+            ? (Number(values.units_per_floor) || 0) * totalFloors * numBlocks
+            : (Number(values.total_units) || 0)
+          let blockUnits
+          if (isPerFloor) {
+            blockUnits = (Number(values.units_per_floor) || 0) * totalFloors
+          } else {
+            const unitsPerBlock = Math.floor(totalUnits / numBlocks)
+            const remainder = totalUnits % numBlocks
+            blockUnits = (i) => unitsPerBlock + (i < remainder ? 1 : 0)
+          }
           for (let i = 0; i < numBlocks; i++) {
             const name = (values.blockNames[i] || '').trim() || `Block ${i + 1}`
-            const blockUnits = unitsPerBlock + (i < remainder ? 1 : 0)
+            const unitsForBlock = typeof blockUnits === 'function' ? blockUnits(i) : blockUnits
             await propertyApi.createBlock({
               society_apartment_id: newId,
               name,
               total_floors: totalFloors,
-              total_units: blockUnits,
+              total_units: unitsForBlock,
             })
           }
         }
@@ -285,6 +342,15 @@ const Apartments = () => {
       id: 'union_admin',
       label: 'Union Admin',
       minWidth: 160,
+      header: (
+        <TableSortLabel
+          active={sortBy === 'union_admin'}
+          direction={sortBy === 'union_admin' ? sortOrder : 'asc'}
+          onClick={() => handleSort('union_admin')}
+        >
+          Union Admin
+        </TableSortLabel>
+      ),
       render: (row) => {
         const admin = admins.find((a) => a.society_apartment_id === row.id)
         const label = admin ? admin.name : (row.union_admin_name || '—')
@@ -328,6 +394,15 @@ const Apartments = () => {
       id: 'name',
       label: 'Apartment Name',
       minWidth: 180,
+      header: (
+        <TableSortLabel
+          active={sortBy === 'name'}
+          direction={sortBy === 'name' ? sortOrder : 'asc'}
+          onClick={() => handleSort('name')}
+        >
+          Apartment Name
+        </TableSortLabel>
+      ),
       render: (row) => {
         const label = row.name || '—'
         return (
@@ -488,7 +563,10 @@ const Apartments = () => {
         total_blocks: editSource.total_blocks ?? 0,
         total_floors: editSource.total_floors ?? 0,
         total_units: editSource.total_units ?? 0,
+        unitInputMode: 'total',
+        units_per_floor: 0,
         blockNames: [],
+        is_active: editSource.is_active !== false,
         union_admin_name: editSource.union_admin_name ?? assignedAdminForEdit?.name ?? '',
         union_admin_email: editSource.union_admin_email ?? assignedAdminForEdit?.email ?? '',
         union_admin_phone: editSource.union_admin_phone ?? assignedAdminForEdit?.contact_number ?? '',
@@ -502,7 +580,10 @@ const Apartments = () => {
         total_blocks: 0,
         total_floors: 0,
         total_units: 0,
+        unitInputMode: 'total',
+        units_per_floor: 0,
         blockNames: [],
+        is_active: true,
         union_admin_name: '',
         union_admin_email: '',
         union_admin_phone: '',
@@ -531,12 +612,12 @@ const Apartments = () => {
         </Button>
       </Box>
 
-      <Box sx={{ mb: 3 }}>
+      <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
         <TextField
-          fullWidth
+          sx={{ minWidth: 200, flex: '1 1 200px' }}
           placeholder="Search apartments..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -545,6 +626,30 @@ const Apartments = () => {
             ),
           }}
         />
+        <TextField
+          sx={{ minWidth: 200, flex: '1 1 200px' }}
+          placeholder="Filter by address"
+          value={addressFilter}
+          onChange={(e) => { setAddressFilter(e.target.value); setPage(1) }}
+          size="small"
+        />
+        <TextField
+          select
+          size="small"
+          label="Status"
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+          sx={{ minWidth: 160 }}
+          InputLabelProps={{ shrink: true }}
+          SelectProps={{
+            displayEmpty: true,
+            renderValue: (v) => (v === '' ? 'All' : v === 'active' ? 'Active (subscribed)' : 'Inactive (waiting)'),
+          }}
+        >
+          <MenuItem value="">All</MenuItem>
+          <MenuItem value="active">Active (subscribed)</MenuItem>
+          <MenuItem value="inactive">Inactive (waiting for subscription)</MenuItem>
+        </TextField>
       </Box>
 
       <DataTable
@@ -565,7 +670,7 @@ const Apartments = () => {
           initialValues={initialValues}
           validationSchema={validationSchema}
           onSubmit={handleSubmit}
-          enableReinitialize
+          enableReinitialize={!!editingSociety}
         >
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
@@ -675,26 +780,100 @@ const Apartments = () => {
                       onBlur={handleBlur}
                     />
                   </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Total Units"
-                      name="total_units"
-                      type="number"
-                      inputProps={{ min: 0 }}
-                      value={values.total_units}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        if (raw === '') {
-                          handleChange(e)
-                          return
-                        }
-                        const num = Math.max(0, parseInt(raw, 10) || 0)
-                        handleChange({ target: { name: e.target.name, value: num } })
-                      }}
-                      onBlur={handleBlur}
-                    />
-                  </Grid>
+                  {!editingSociety && Array.isArray(values.blockNames) && values.blockNames.length > 0 ? (
+                    <>
+                      <Grid item xs={12}>
+                        <FormControl component="fieldset" size="small">
+                          <FormLabel component="legend" sx={{ fontSize: '0.875rem' }}>
+                            How do you want to specify units?
+                          </FormLabel>
+                          <RadioGroup
+                            row
+                            name="unitInputMode"
+                            value={values.unitInputMode || 'total'}
+                            onChange={(e) => setFieldValue('unitInputMode', e.target.value)}
+                          >
+                            <FormControlLabel value="total" control={<Radio size="small" />} label="Total units (split across blocks)" />
+                            <FormControlLabel value="per_floor" control={<Radio size="small" />} label="Units per floor (same for each block)" />
+                          </RadioGroup>
+                        </FormControl>
+                      </Grid>
+                      {values.unitInputMode === 'per_floor' ? (
+                        <>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label="Units per floor"
+                              name="units_per_floor"
+                              type="number"
+                              inputProps={{ min: 1 }}
+                              value={values.units_per_floor ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value
+                                if (raw === '') {
+                                  setFieldValue('units_per_floor', '')
+                                  return
+                                }
+                                const num = Math.max(0, parseInt(raw, 10) || 0)
+                                setFieldValue('units_per_floor', num)
+                              }}
+                              onBlur={handleBlur}
+                              error={touched.units_per_floor && !!errors.units_per_floor}
+                              helperText={touched.units_per_floor && errors.units_per_floor}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6} sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Total units = {((Number(values.units_per_floor) || 0) * (Number(values.total_floors) || 0) * (values.blockNames?.length || 0)) || '—'} (units per floor × floors × blocks)
+                            </Typography>
+                          </Grid>
+                        </>
+                      ) : (
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="Total units (split across blocks)"
+                            name="total_units"
+                            type="number"
+                            inputProps={{ min: 0 }}
+                            value={values.total_units ?? ''}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              if (raw === '') {
+                                handleChange(e)
+                                return
+                              }
+                              const num = Math.max(0, parseInt(raw, 10) || 0)
+                              handleChange({ target: { name: e.target.name, value: num } })
+                            }}
+                            onBlur={handleBlur}
+                            helperText="e.g. 15 units in 2 blocks → 8 + 7"
+                          />
+                        </Grid>
+                      )}
+                    </>
+                  ) : (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Total Units"
+                        name="total_units"
+                        type="number"
+                        inputProps={{ min: 0 }}
+                        value={values.total_units ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          if (raw === '') {
+                            handleChange(e)
+                            return
+                          }
+                          const num = Math.max(0, parseInt(raw, 10) || 0)
+                          handleChange({ target: { name: e.target.name, value: num } })
+                        }}
+                        onBlur={handleBlur}
+                      />
+                    </Grid>
+                  )}
                   {!editingSociety && Array.isArray(values.blockNames) && values.blockNames.length > 0 && (
                     <Grid item xs={12}>
                       <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -718,6 +897,21 @@ const Apartments = () => {
                           </Grid>
                         ))}
                       </Grid>
+                    </Grid>
+                  )}
+                  {editingSociety && (
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={!!values.is_active}
+                            onChange={(e) => setFieldValue('is_active', e.target.checked)}
+                            name="is_active"
+                            size="small"
+                          />
+                        }
+                        label="Active"
+                      />
                     </Grid>
                   )}
                   <Grid item xs={12}>
@@ -806,8 +1000,8 @@ const Apartments = () => {
         <DialogTitle>Apartment &amp; Union Admin details</DialogTitle>
         <DialogContent dividers>
           {viewingRow && (() => {
-            const viewApartment = viewApartmentDetail ?? viewingRow
-            const showCount = (v) => (v === 0 || v == null || v === '') ? '—' : v
+            const viewApartment = { ...viewingRow, ...(viewApartmentDetail ?? {}) }
+            const showCount = (v) => (v == null || v === '') ? '—' : v
             return (
             <Grid container spacing={2} sx={{ pt: 1 }}>
               <Grid item xs={12}>
