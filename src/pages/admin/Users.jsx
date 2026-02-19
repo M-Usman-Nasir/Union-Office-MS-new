@@ -28,7 +28,6 @@ import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import LockIcon from '@mui/icons-material/Lock'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
-import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import WorkOutlineIcon from '@mui/icons-material/WorkOutline'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorIcon from '@mui/icons-material/Error'
@@ -112,7 +111,6 @@ const Users = () => {
   const [emailCheckStatus, setEmailCheckStatus] = useState(null)
   const [actionMenuAnchor, setActionMenuAnchor] = useState(null)
   const [actionMenuRow, setActionMenuRow] = useState(null)
-  const [activatingSubscriptionId, setActivatingSubscriptionId] = useState(null)
   const [createJobRow, setCreateJobRow] = useState(null)
   const [selectedPlanIdForJob, setSelectedPlanIdForJob] = useState('')
   const [givingSubscription, setGivingSubscription] = useState(false)
@@ -247,12 +245,33 @@ const Users = () => {
         submitData.society_apartment_id = null
       }
 
+      // When Super Admin adds user by selecting a lead, create pending subscription so plan is set via Create Job, not automatically
+      if (!editingUser && currentUser?.role === 'super_admin' && submitData.role === 'union_admin' && submitData.society_apartment_id) {
+        submitData.subscription_status = 'pending'
+      }
+
       if (editingUser) {
         await userApi.update(editingUser.id, submitData)
         toast.success('User updated successfully')
       } else {
-        await userApi.create(submitData)
+        const res = await userApi.create(submitData)
+        const createdUser = res?.data?.data
         toast.success('User created successfully')
+        const openedFromLead =
+          currentUser?.role === 'super_admin' &&
+          submitData.role === 'union_admin' &&
+          submitData.society_apartment_id
+        if (openedFromLead && createdUser?.id) {
+          setCreateJobRow({
+            id: createdUser.id,
+            name: createdUser.name,
+            email: createdUser.email,
+            role: createdUser.role,
+            society_apartment_id: createdUser.society_apartment_id,
+            unit_id: createdUser.unit_id ?? null,
+            contact_number: submitData.contact_number ?? null,
+          })
+        }
       }
       mutate()
       handleCloseDialog()
@@ -324,22 +343,6 @@ const Users = () => {
       ),
       { duration: Infinity }
     )
-  }
-
-  const handleActivateSubscription = async (subscriptionId) => {
-    if (!subscriptionId) return
-    setActivatingSubscriptionId(subscriptionId)
-    setActionMenuAnchor(null)
-    setActionMenuRow(null)
-    try {
-      await superAdminApi.updateSubscriptionStatus(subscriptionId, { status: 'active' })
-      toast.success('Subscription activated. Client can now log in.')
-      await Promise.all([mutate(), mutateAdminsWithSubs()])
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to activate subscription')
-    } finally {
-      setActivatingSubscriptionId(null)
-    }
   }
 
   const handleOpenCreateJob = (row) => {
@@ -700,15 +703,6 @@ const Users = () => {
               <ListItemIcon><LockIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Change Password</ListItemText>
             </MenuItem>
-            {currentUser?.role === 'super_admin' && actionMenuRow.role === 'union_admin' && (subscriptionByUserId[actionMenuRow.id]?.subscription_status || '').toLowerCase() === 'pending' && subscriptionByUserId[actionMenuRow.id]?.subscription_id && (
-              <MenuItem
-                onClick={() => handleActivateSubscription(subscriptionByUserId[actionMenuRow.id].subscription_id)}
-                disabled={activatingSubscriptionId === subscriptionByUserId[actionMenuRow.id]?.subscription_id}
-              >
-                <ListItemIcon><PlayArrowIcon fontSize="small" /></ListItemIcon>
-                <ListItemText>Activate subscription</ListItemText>
-              </MenuItem>
-            )}
             {currentUser?.role === 'super_admin' && actionMenuRow.role === 'union_admin' && actionMenuRow.society_apartment_id && (
               <MenuItem onClick={() => handleOpenCreateJob(actionMenuRow)}>
                 <ListItemIcon><WorkOutlineIcon fontSize="small" /></ListItemIcon>
@@ -904,6 +898,7 @@ const Users = () => {
           key={editingUser ? `edit-${editingUser.id}` : 'add-new'}
           initialValues={initialValues}
           validationSchema={(values) => {
+            if (!values) return getValidationSchema(!!editingUser, currentUser?.role, false)
             const lead = values.society_apartment_id ? (unassignedLeads || []).find((l) => l.id === values.society_apartment_id) : null
             const passwordOptional = currentUser?.role === 'super_admin' && values.society_apartment_id && lead && (lead.union_admin_email || lead.union_admin_name)
             return getValidationSchema(!!editingUser, currentUser?.role, passwordOptional)
