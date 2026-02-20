@@ -4,11 +4,7 @@ import Chart from 'react-apexcharts'
 const FinanceChart = ({ data }) => {
   const chartData = useMemo(() => {
     if (!data || !data.length) {
-      return {
-        income: [],
-        expense: [],
-        categories: [],
-      }
+      return null
     }
 
     // Group by date
@@ -31,6 +27,10 @@ const FinanceChart = ({ data }) => {
 
     return { income, expense, categories }
   }, [data])
+
+  if (!chartData) {
+    return null
+  }
 
   const options = {
     chart: {

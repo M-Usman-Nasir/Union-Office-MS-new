@@ -26,6 +26,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import RemoveIcon from '@mui/icons-material/Remove'
 import { useAuth } from '@/contexts/AuthContext'
@@ -89,6 +90,8 @@ const Residents = () => {
   const [familyMemberName, setFamilyMemberName] = useState('')
   const [familyMemberRelation, setFamilyMemberRelation] = useState('')
   const [addFamilyMemberLoading, setAddFamilyMemberLoading] = useState(false)
+  /** Toggle password visibility in Add New Resident dialog */
+  const [showPassword, setShowPassword] = useState(false)
 
   const { mutate: mutateSWR } = useSWRConfig()
   const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
@@ -165,6 +168,7 @@ const Residents = () => {
   const handleOpenDialog = (resident = null) => {
     setEditingResident(resident)
     setEmailCheckStatus(null)
+    setShowPassword(false)
     setFormBlockId('')
     setFormFloorId('')
     setOpenDialog(true)
@@ -199,6 +203,9 @@ const Residents = () => {
       // block_id and floor_id are only for cascading UI; backend expects only unit_id
       delete submitData.block_id
       delete submitData.floor_id
+
+      // Ensure is_active is boolean for API
+      submitData.is_active = submitData.is_active === true || submitData.is_active === 'true'
 
       // Clean up empty strings - convert to null for optional fields
       const optionalFields = ['contact_number', 'cnic', 'emergency_contact', 'move_in_date', 'unit_id', 'owner_name', 'license_plate']
@@ -359,7 +366,7 @@ const Residents = () => {
     { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '-' },
     {
       id: 'floor_number',
-      label: 'Floors No.',
+      label: 'Floor No.',
       render: (row) => {
         const fn = row.floor_number != null ? Number(row.floor_number) : null
         if (fn === null) return '-'
@@ -372,7 +379,7 @@ const Residents = () => {
     },
     {
       id: 'move_in_date',
-      label: 'Move in Date',
+      label: 'Move-in date',
       render: (row) => (row.move_in_date ? dayjs(row.move_in_date).format('DD MMM YYYY') : '-'),
     },
     { id: 'contact_number', label: 'Phone No.', render: (row) => row.contact_number || '-' },
@@ -439,6 +446,7 @@ const Residents = () => {
         license_plate: editingResident.license_plate || '',
         telephone_bills: Array.isArray(editingResident.telephone_bills) ? editingResident.telephone_bills : [],
         other_bills: Array.isArray(editingResident.other_bills) ? editingResident.other_bills : [],
+        is_active: editingResident.is_active !== false,
       }
     : {
         email: '',
@@ -456,6 +464,7 @@ const Residents = () => {
         license_plate: '',
         telephone_bills: [],
         other_bills: [],
+        is_active: false,
       }
 
   const floorsForBlock = flatsFloorsData?.data ?? []
@@ -800,13 +809,28 @@ const Residents = () => {
                         fullWidth
                         label="Password"
                         name="password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={values.password}
                         onChange={handleChange}
                         onBlur={handleBlur}
                         error={touched.password && !!errors.password}
                         helperText={touched.password && errors.password}
                         autoComplete="new-password"
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                onClick={() => setShowPassword((prev) => !prev)}
+                                onMouseDown={(e) => e.preventDefault()}
+                                edge="end"
+                                size="small"
+                              >
+                                {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
                       />
                     </Grid>
                   )}
@@ -895,6 +919,20 @@ const Residents = () => {
                         shrink: true,
                       }}
                     />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Status"
+                      name="is_active"
+                      value={values.is_active}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      <MenuItem value={true}>Active</MenuItem>
+                      <MenuItem value={false}>Inactive</MenuItem>
+                    </TextField>
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField

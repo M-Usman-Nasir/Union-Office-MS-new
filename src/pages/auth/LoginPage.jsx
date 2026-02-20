@@ -4,53 +4,34 @@ import PropTypes from 'prop-types'
 import {
   Box,
   Card,
-  CardContent,
   Container,
   TextField,
   Button,
   Typography,
   Alert,
-  Chip,
-  Divider,
   Grid,
-  IconButton,
   Paper,
   Stack,
-  Tooltip,
+  InputAdornment,
+  IconButton,
   useMediaQuery,
   useTheme,
   alpha,
   Fade,
 } from '@mui/material'
-import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import HomeIcon from '@mui/icons-material/Home'
 import SecurityIcon from '@mui/icons-material/Security'
 import PeopleIcon from '@mui/icons-material/People'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import Visibility from '@mui/icons-material/Visibility'
+import VisibilityOff from '@mui/icons-material/VisibilityOff'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import toast from 'react-hot-toast'
-import logo from '@/assets/images/logo.png'
 
-const TEST_USERS = [
-  {
-    role: 'Super Admin',
-    email: 'hasanshkh17@gmail.com',
-    password: 'admin123',
-    color: 'primary',
-  },
-  {
-    role: 'Union Admin',
-    email: 'unionadmin@homelandunion.com',
-    password: 'admin123',
-    color: 'secondary',
-  },
-  {
-    role: 'Resident',
-    email: 'resident@homelandunion.com',
-    password: 'resident123',
-    color: 'success',
-  },
-]
+// Simple email format validation
+const isValidEmail = (value) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value?.trim() || '')
 
 const FeatureCard = ({ icon, title, description }) => (
   <Paper
@@ -91,8 +72,11 @@ const LoginPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const emailValid = email.trim() !== '' && isValidEmail(email)
   const { login, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
 
@@ -108,23 +92,6 @@ const LoginPage = () => {
       }
     }
   }, [isAuthenticated, user, navigate])
-
-  const handleTestUserClick = (testUser) => {
-    setEmail(testUser.email)
-    setPassword(testUser.password)
-    setError('')
-    toast.success(`Filled credentials for ${testUser.role}`)
-  }
-
-  const handleCopyEmail = (email) => {
-    navigator.clipboard.writeText(email)
-    toast.success('Email copied to clipboard!')
-  }
-
-  const handleCopyPassword = (password) => {
-    navigator.clipboard.writeText(password)
-    toast.success('Password copied to clipboard!')
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -274,15 +241,6 @@ const LoginPage = () => {
                   overflow: 'visible',
                 }}
               >
-                {/* Logo */}
-                <Box sx={{ textAlign: 'center', mb: 2 }}>
-                  <Box
-                    component="img"
-                    src={logo}
-                    alt="Homeland Union"
-                    sx={{ height: 56, width: 'auto' }}
-                  />
-                </Box>
 
                 <Stack spacing={1} sx={{ textAlign: 'center', mb: 3 }}>
                   <Typography
@@ -317,16 +275,48 @@ const LoginPage = () => {
                     required
                     autoComplete="email"
                     autoFocus
+                    error={email.trim() !== '' && !emailValid}
+                    helperText={
+                      email.trim() !== '' && !emailValid
+                        ? 'Please enter a valid email address'
+                        : ''
+                    }
+                    InputProps={{
+                      endAdornment: emailValid ? (
+                        <InputAdornment position="end">
+                          <CheckCircleIcon sx={{ color: 'success.main', fontSize: 24 }} />
+                        </InputAdornment>
+                      ) : null,
+                    }}
                   />
                   <TextField
                     fullWidth
                     label="Password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     margin="normal"
                     required
                     autoComplete="current-password"
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            edge="end"
+                            size="small"
+                          >
+                            {showPassword ? (
+                              <VisibilityOff fontSize="small" />
+                            ) : (
+                              <Visibility fontSize="small" />
+                            )}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
                   />
                   <Button
                     type="submit"
@@ -338,85 +328,6 @@ const LoginPage = () => {
                     {loading ? 'Logging in...' : 'Login'}
                   </Button>
                 </form>
-
-                <Divider sx={{ my: 3 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Test Users
-                  </Typography>
-                </Divider>
-
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Click to auto-fill credentials:
-                  </Typography>
-                  {TEST_USERS.map((testUser) => (
-                    <Card
-                      key={testUser.email}
-                      variant="outlined"
-                      sx={{
-                        mt: 1.5,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                          borderColor: `${testUser.color}.main`,
-                        },
-                      }}
-                      onClick={() => handleTestUserClick(testUser)}
-                    >
-                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Box display="flex" alignItems="center" justifyContent="space-between">
-                          <Box flex={1}>
-                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                              <Chip
-                                label={testUser.role}
-                                size="small"
-                                color={testUser.color}
-                                variant="outlined"
-                              />
-                            </Box>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                              <strong>Email:</strong>{' '}
-                              <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                                {testUser.email}
-                              </Box>
-                              <Tooltip title="Copy email">
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleCopyEmail(testUser.email)
-                                  }}
-                                  sx={{ ml: 0.5, p: 0.25 }}
-                                >
-                                  <ContentCopyIcon fontSize="inherit" />
-                                </IconButton>
-                              </Tooltip>
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              <strong>Password:</strong>{' '}
-                              <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                                {testUser.password}
-                              </Box>
-                              <Tooltip title="Copy password">
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleCopyPassword(testUser.password)
-                                  }}
-                                  sx={{ ml: 0.5, p: 0.25 }}
-                                >
-                                  <ContentCopyIcon fontSize="inherit" />
-                                </IconButton>
-                              </Tooltip>
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Box>
               </Card>
             </Fade>
           </Grid>

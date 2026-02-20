@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Container,
@@ -27,6 +27,8 @@ import {
   FormLabel,
   TableSortLabel,
   Checkbox,
+  CircularProgress,
+  Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -36,10 +38,10 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import LayersIcon from '@mui/icons-material/Layers'
 import DomainIcon from '@mui/icons-material/Domain'
-import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
+import WorkOutlineIcon from '@mui/icons-material/WorkOutline'
 import VisibilityIcon from '@mui/icons-material/Visibility'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import { userApi } from '@/api/userApi'
@@ -118,8 +120,10 @@ const Apartments = () => {
   }
   const closeActionMenu = () => setActionMenu({ anchorEl: null, row: null })
 
+  const { mutate: globalMutate } = useSWRConfig()
+  const societiesKey = ['/societies', page, limit, search, addressFilter, statusFilter, sortBy, sortOrder]
   const { data, isLoading, mutate } = useSWR(
-    ['/societies', page, limit, search, addressFilter, statusFilter, sortBy, sortOrder],
+    societiesKey,
     () =>
       apartmentApi
         .getAll({
@@ -146,7 +150,7 @@ const Apartments = () => {
   )
   const unassignedUnionAdmins = unassignedAdminsData?.data ?? []
 
-  const { data: apartmentDetailData } = useSWR(
+  const { data: apartmentDetailData, isLoading: apartmentDetailLoading } = useSWR(
     openDialog && editingSociety?.id ? ['/apartment-detail', editingSociety.id] : null,
     () => apartmentApi.getById(editingSociety.id).then(res => res.data)
   )
@@ -159,21 +163,150 @@ const Apartments = () => {
   )
   const viewApartmentDetail = viewDetailData?.data
 
-  const [activatingId, setActivatingId] = useState(null)
+  const [createJobRow, setCreateJobRow] = useState(null)
+  const [selectedPlanIdForJob, setSelectedPlanIdForJob] = useState('')
+  const [givingSubscription, setGivingSubscription] = useState(false)
 
-  const handleActivateSubscription = async (subscriptionId) => {
-    if (!subscriptionId) return
-    setActivatingId(subscriptionId)
-    try {
-      await superAdminApi.updateSubscriptionStatus(subscriptionId, { status: 'active' })
-      toast.success('Subscription activated. Client can now log in.')
-      mutate()
-      mutateAdmins()
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Activation failed')
-    } finally {
-      setActivatingId(null)
+  const { data: createJobApartmentData } = useSWR(
+    createJobRow?.society_apartment_id ? ['/apartment-detail-create-job', createJobRow.society_apartment_id] : null,
+    () => apartmentApi.getById(createJobRow.society_apartment_id).then(res => res.data)
+  )
+  const createJobApartment = createJobApartmentData?.data
+
+  const { data: subscriptionPlansData } = useSWR(
+    createJobRow ? '/super-admin/subscription-plans' : null,
+    () => superAdminApi.getSubscriptionPlans().then(res => res.data)
+  )
+  const subscriptionPlans = subscriptionPlansData?.data ?? []
+
+  const subscriptionByUserId = useMemo(() => {
+    const list = adminsData?.data ?? []
+    return Object.fromEntries(list.filter((a) => a.subscription_id).map((a) => [a.id, { subscription_id: a.subscription_id, subscription_status: a.subscription_status }]))
+  }, [adminsData])
+
+  const handleOpenCreateJob = (adminRow) => {
+    closeActionMenu()
+    if (!adminRow?.society_apartment_id) {
+      toast.error('User has no apartment assigned.')
+      return
     }
+    const sub = subscriptionByUserId[adminRow.id]
+    const hasExistingSubscription = sub && ['active', 'trial'].includes((sub.subscription_status || '').toLowerCase())
+    if (hasExistingSubscription) {
+      toast.custom(
+        (t) => (
+          <Box
+            sx={{
+              background: (theme) => theme.palette.background.paper,
+              color: (theme) => theme.palette.text.primary,
+              p: 2,
+              borderRadius: 2,
+              boxShadow: 3,
+              minWidth: 320,
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Re-create Job?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              This user already has a subscription. Do you want to open Create Job to renew or update it?
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+              <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  setCreateJobRow(adminRow)
+                  setSelectedPlanIdForJob('')
+                  toast.dismiss(t.id)
+                }}
+              >
+                Open
+              </Button>
+            </Box>
+          </Box>
+        ),
+        { duration: Infinity }
+      )
+      return
+    }
+    setCreateJobRow(adminRow)
+    setSelectedPlanIdForJob('')
+  }
+
+  const doGiveSubscriptionForMonth = async () => {
+    if (!createJobRow?.society_apartment_id || !createJobRow?.id) return
+    setGivingSubscription(true)
+    try {
+      const planId = selectedPlanIdForJob || subscriptionPlans.find((p) => p.is_active)?.id || null
+      await superAdminApi.createSubscription({
+        user_id: createJobRow.id,
+        society_apartment_id: createJobRow.society_apartment_id,
+        plan_id: planId || undefined,
+      })
+      const nextBilling = new Date()
+      nextBilling.setMonth(nextBilling.getMonth() + 1)
+      toast.success(`Subscription set. Next billing date: ${nextBilling.toLocaleDateString()}.`)
+      await Promise.all([mutate(), mutateAdmins()])
+      setCreateJobRow(null)
+      setSelectedPlanIdForJob('')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to give subscription')
+    } finally {
+      setGivingSubscription(false)
+    }
+  }
+
+  const handleGiveSubscriptionForMonth = async () => {
+    if (!createJobRow?.society_apartment_id || !createJobRow?.id) return
+    const sub = subscriptionByUserId[createJobRow.id]
+    const hasExistingSubscription = sub && ['active', 'trial'].includes((sub.subscription_status || '').toLowerCase())
+    if (hasExistingSubscription) {
+      toast.custom(
+        (t) => (
+          <Box
+            sx={{
+              background: (theme) => theme.palette.background.paper,
+              color: (theme) => theme.palette.text.primary,
+              p: 2,
+              borderRadius: 2,
+              boxShadow: 3,
+              minWidth: 320,
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Update existing subscription?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              This user already has a subscription. This will update the plan and set next billing date to one month from today.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+              <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  toast.dismiss(t.id)
+                  doGiveSubscriptionForMonth()
+                }}
+              >
+                Yes, update
+              </Button>
+            </Box>
+          </Box>
+        ),
+        { duration: Infinity }
+      )
+      return
+    }
+    await doGiveSubscriptionForMonth()
   }
 
   const handleOpenDialog = (society = null) => {
@@ -213,20 +346,28 @@ const Apartments = () => {
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
       if (editingSociety) {
-        await apartmentApi.update(editingSociety.id, {
+        const id = editingSociety.id
+        await apartmentApi.update(id, {
           name: values.name,
           address: values.address,
           city: values.city,
           area: values.area,
-          total_blocks: values.total_blocks,
-          total_floors: values.total_floors,
-          total_units: values.total_units,
-          is_active: values.is_active,
+          total_blocks: Math.max(0, parseInt(values.total_blocks, 10) || 0),
+          total_floors: Math.max(0, parseInt(values.total_floors, 10) || 0),
+          total_units: Math.max(0, parseInt(values.total_units, 10) || 0),
+          is_active: values.is_active === true || values.is_active === 'true',
           union_admin_name: values.union_admin_name || null,
           union_admin_email: values.union_admin_email || null,
           union_admin_phone: values.union_admin_phone || null,
         })
         toast.success('Apartment updated successfully')
+        // Defer close and revalidate so dialog closes and list updates reliably
+        setTimeout(() => {
+          setOpenDialog(false)
+          setEditingSociety(null)
+          globalMutate(societiesKey)
+        }, 0)
+        return
       } else {
         const numBlocksForPayload = Array.isArray(values.blockNames) && values.blockNames.length > 0 ? values.blockNames.length : 0
         const totalFloorsForPayload = Number(values.total_floors) || 0
@@ -277,8 +418,11 @@ const Apartments = () => {
         }
         toast.success('Apartment created successfully.')
       }
-      mutate()
-      handleCloseDialog()
+      setTimeout(() => {
+        setOpenDialog(false)
+        setEditingSociety(null)
+        globalMutate(societiesKey)
+      }, 0)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Operation failed')
     } finally {
@@ -501,22 +645,16 @@ const Apartments = () => {
                 </MenuItem>
                 <Divider />
                 {(() => {
-                  const pendingAdmin = admins.find(
-                    (a) => a.society_apartment_id === actionMenu.row.id && (a.subscription_status || '').toLowerCase() === 'pending'
-                  )
-                  return pendingAdmin?.subscription_id ? (
+                  const assignedAdmin = admins.find((a) => a.society_apartment_id === actionMenu.row.id)
+                  if (!assignedAdmin?.id) return null
+                  return (
                     <MenuItem
-                      onClick={() => {
-                        handleActivateSubscription(pendingAdmin.subscription_id)
-                        closeActionMenu()
-                      }}
-                      disabled={activatingId === pendingAdmin.subscription_id}
-                      sx={{ color: 'success.main' }}
+                      onClick={() => handleOpenCreateJob(assignedAdmin)}
                     >
-                      <ListItemIcon><PlayArrowIcon fontSize="small" color="success" /></ListItemIcon>
-                      <ListItemText>Activate subscription</ListItemText>
+                      <ListItemIcon><WorkOutlineIcon fontSize="small" /></ListItemIcon>
+                      <ListItemText>Create Job</ListItemText>
                     </MenuItem>
-                  ) : null
+                  )
                 })()}
                 {!admins.find((a) => a.society_apartment_id === actionMenu.row.id) && (
                   <MenuItem onClick={() => handleOpenAssignAdmin(actionMenu.row)}>
@@ -666,11 +804,22 @@ const Apartments = () => {
       />
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        {editingSociety && apartmentDetailLoading ? (
+          <>
+            <DialogTitle>Edit Apartment</DialogTitle>
+            <DialogContent>
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 120 }}>
+                <CircularProgress />
+              </Box>
+            </DialogContent>
+          </>
+        ) : (
         <Formik
+          key={editingSociety ? `edit-${editingSociety.id}` : 'add'}
           initialValues={initialValues}
           validationSchema={validationSchema}
           onSubmit={handleSubmit}
-          enableReinitialize={!!editingSociety}
+          enableReinitialize={!editingSociety}
         >
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
@@ -696,6 +845,11 @@ const Apartments = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sx={{ position: 'relative', zIndex: 10 }}>
+                    {editingSociety && (values.address || '').trim() ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Saved address: {values.address}
+                      </Typography>
+                    ) : null}
                     <AddressAutocomplete
                       fullWidth
                       label="Address (from map or type manually)"
@@ -989,6 +1143,7 @@ const Apartments = () => {
             </Form>
           )}
         </Formik>
+        )}
       </Dialog>
 
       <Dialog
@@ -1180,6 +1335,173 @@ const Apartments = () => {
           >
             Assign
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Job dialog – Apartment & Union Admin details + package + Give subscription */}
+      <Dialog
+        open={Boolean(createJobRow)}
+        onClose={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create Job — Apartment &amp; Union Admin details</DialogTitle>
+        <DialogContent dividers>
+          {createJobRow && (
+            <Grid container spacing={2} sx={{ pt: 1 }}>
+              {(() => {
+                const adminDetail = admins.find((a) => a.id === createJobRow.id)
+                const hasActiveSubscription = adminDetail?.subscription_id && ['active', 'trial'].includes((adminDetail?.subscription_status || '').toLowerCase())
+                return hasActiveSubscription ? (
+                  <Grid item xs={12}>
+                    <Alert severity="info" sx={{ mb: 1 }}>
+                      This user already has a subscription. Giving subscription again will update the plan and set next billing date to one month from today.
+                    </Alert>
+                  </Grid>
+                ) : null
+              })()}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
+              </Grid>
+              {createJobApartment ? (
+                <>
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">Apartment Name</Typography>
+                    <Typography variant="body1">{createJobApartment.name || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">Address</Typography>
+                    <Typography variant="body1">{createJobApartment.address || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2" color="text.secondary">City</Typography>
+                    <Typography variant="body1">{createJobApartment.city || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2" color="text.secondary">Area</Typography>
+                    <Typography variant="body1">{createJobApartment.area || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">Total Blocks</Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                      onClick={() => {
+                        setCreateJobRow(null)
+                        navigate(`/super-admin/blocks?society_id=${createJobRow.society_apartment_id}`)
+                      }}
+                    >
+                      {createJobApartment.total_blocks ?? '—'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">Total Floors</Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                      onClick={() => {
+                        setCreateJobRow(null)
+                        navigate(`/super-admin/floors?society_id=${createJobRow.society_apartment_id}`)
+                      }}
+                    >
+                      {createJobApartment.total_floors ?? '—'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">Total Units</Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
+                      onClick={() => {
+                        setCreateJobRow(null)
+                        navigate(`/super-admin/units?society_id=${createJobRow.society_apartment_id}`)
+                      }}
+                    >
+                      {createJobApartment.total_units ?? '—'}
+                    </Typography>
+                  </Grid>
+                </>
+              ) : (
+                <Grid item xs={12}>
+                  <CircularProgress size={24} />
+                </Grid>
+              )}
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Union Admin</Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">Name</Typography>
+                <Typography variant="body1">{createJobRow.name || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Email</Typography>
+                <Typography variant="body1">{createJobRow.email || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Phone Number</Typography>
+                <Typography variant="body1">{createJobRow.contact_number || '—'}</Typography>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Package</Typography>
+              </Grid>
+              {(() => {
+                const adminDetail = admins.find((a) => a.id === createJobRow.id)
+                const planName = adminDetail?.plan_name
+                const planAmount = adminDetail?.plan_amount
+                const nextBilling = adminDetail?.next_billing_date
+                return (
+                  <>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" color="text.secondary">Plan</Typography>
+                      <Typography variant="body1">
+                        {planName ? `${planName} (${planAmount ?? 0} PKR)` : '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" color="text.secondary">Next Billing Date</Typography>
+                      <Typography variant="body1">
+                        {nextBilling ? new Date(nextBilling).toLocaleDateString() : '—'}
+                      </Typography>
+                    </Grid>
+                  </>
+                )
+              })()}
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Give subscription (1 month)</Typography>
+                <TextField
+                  fullWidth
+                  select
+                  size="small"
+                  value={selectedPlanIdForJob || subscriptionPlans.find((p) => p.is_active)?.id || subscriptionPlans[0]?.id || ''}
+                  onChange={(e) => setSelectedPlanIdForJob(e.target.value)}
+                >
+                  {subscriptionPlans.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.name} — {p.amount ?? 0} PKR
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  onClick={handleGiveSubscriptionForMonth}
+                  disabled={givingSubscription}
+                >
+                  {givingSubscription ? <CircularProgress size={20} /> : 'Give subscription for 1 month'}
+                </Button>
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+                  Next billing will be set to one month from today.
+                </Typography>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}>Close</Button>
         </DialogActions>
       </Dialog>
     </Container>

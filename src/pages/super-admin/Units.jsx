@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, Link as RouterLink } from 'react-router-dom'
 import {
   Container,
@@ -116,6 +116,16 @@ const Units = () => {
     () => propertyApi.getUnits({ society_id: societyFilter, block_id: blockFilter, floor_id: floorFilter, search }).then(res => res.data)
   )
 
+  // Sort units by unit_number numerically so 1, 2, 3... 10, 11 display in correct order
+  const sortedUnits = useMemo(() => {
+    const list = unitsData?.data || []
+    return [...list].sort((a, b) => {
+      const sa = String(a.unit_number ?? '')
+      const sb = String(b.unit_number ?? '')
+      return sa.localeCompare(sb, undefined, { numeric: true })
+    })
+  }, [unitsData?.data])
+
   const resolvedBlockId = blockFilter || blockIdFromUrl
   const currentBlockName = resolvedBlockId && blocksData?.data
     ? blocksData.data.find((b) => String(b.id) === String(resolvedBlockId))?.name
@@ -211,7 +221,16 @@ const Units = () => {
   const columns = [
     { id: 'unit_number', label: 'Unit Number' },
     { id: 'block_name', label: 'Block', render: (row) => row.block_name || 'N/A' },
-    { id: 'floor_number', label: 'Floor', render: (row) => row.floor_number || 'N/A' },
+    {
+      id: 'floor_number',
+      label: 'Floor',
+      render: (row) =>
+        floorFilter && currentFloorLabel
+          ? currentFloorLabel
+          : (row.floor_number != null
+            ? (row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`)
+            : 'N/A'),
+    },
     { id: 'owner_name', label: 'Owner', render: (row) => row.owner_name || '-' },
     { id: 'resident_name', label: 'Resident', render: (row) => row.resident_name || '-' },
     { id: 'contact_number', label: 'Contact', render: (row) => row.contact_number || '-' },
@@ -436,7 +455,7 @@ const Units = () => {
 
       <DataTable
         columns={columns}
-        data={unitsData?.data || []}
+        data={sortedUnits}
         loading={isLoading}
         pagination={null}
         onPageChange={() => {}}

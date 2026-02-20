@@ -145,17 +145,8 @@ const AdminProfile = () => {
   const displayImage = imagePreview || getImageUrl(profileData?.profile_image)
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" sx={{ mb: 1 }}>
-          My Profile
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Manage your account information and personal details
-        </Typography>
-      </Box> */}
-
-      <Card>
+    <Container maxWidth="lg" sx={{ py: 1.5, px: { xs: 1.5, sm: 2 } }}>
+      <Card sx={{ '& .MuiCardContent-root': { p: 2 } }}>
         <CardContent>
           <Formik
             initialValues={{
@@ -171,25 +162,25 @@ const AdminProfile = () => {
           >
             {({ values, errors, touched, handleChange, handleBlur }) => (
               <Form>
-                <Grid container spacing={3}>
+                <Grid container spacing={2}>
                   {/* Profile Image Section */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">Profile Picture</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Profile Picture</Typography>
                     </Box>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 1.5 }} />
                   </Grid>
 
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0 }}>
                       <Avatar
                         src={displayImage}
                         alt={profileData?.name || 'Profile'}
                         sx={{
-                          width: 120,
-                          height: 120,
-                          fontSize: '3rem',
+                          width: 80,
+                          height: 80,
+                          fontSize: '2rem',
                           bgcolor: 'primary.main',
                         }}
                       >
@@ -208,8 +199,9 @@ const AdminProfile = () => {
                           <Button
                             variant="outlined"
                             component="span"
-                            startIcon={<PhotoCameraIcon />}
-                            sx={{ mr: 1 }}
+                            size="small"
+                            startIcon={<PhotoCameraIcon sx={{ fontSize: 18 }} />}
+                            sx={{ mr: 0.5 }}
                           >
                             {displayImage ? 'Change Photo' : 'Upload Photo'}
                           </Button>
@@ -218,14 +210,15 @@ const AdminProfile = () => {
                           <Button
                             variant="outlined"
                             color="error"
+                            size="small"
                             onClick={handleRemoveImage}
-                            sx={{ ml: 1 }}
+                            sx={{ ml: 0.5 }}
                           >
                             Remove
                           </Button>
                         )}
-                        <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
-                          Recommended: Square image, max 2MB (JPG, PNG)
+                        <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                          Square image, max 2MB (JPG, PNG)
                         </Typography>
                       </Box>
                     </Box>
@@ -233,16 +226,17 @@ const AdminProfile = () => {
 
                   {/* Account Information Section */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, mt: 2 }}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">Account Information</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, mt: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Account Information</Typography>
                     </Box>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 1.5 }} />
                   </Grid>
 
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Name"
                       name="name"
                       value={values.name}
@@ -257,6 +251,7 @@ const AdminProfile = () => {
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Email"
                       name="email"
                       type="email"
@@ -267,30 +262,25 @@ const AdminProfile = () => {
                   </Grid>
 
                   <Grid item xs={12} md={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Role:
-                      </Typography>
-                      <Chip
-                        label="Union Admin"
-                        color="primary"
-                        size="small"
-                      />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">Role:</Typography>
+                      <Chip label="Union Admin" color="primary" size="small" />
                     </Box>
                   </Grid>
 
                   {/* Contact Information Section */}
-                  <Grid item xs={12} sx={{ mt: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">Contact Information</Typography>
+                  <Grid item xs={12} sx={{ mt: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Contact Information</Typography>
                     </Box>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 1.5 }} />
                   </Grid>
 
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Contact Number"
                       name="contact_number"
                       value={values.contact_number}
@@ -303,6 +293,7 @@ const AdminProfile = () => {
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Emergency Contact"
                       name="emergency_contact"
                       value={values.emergency_contact}
@@ -315,6 +306,7 @@ const AdminProfile = () => {
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="CNIC"
                       name="cnic"
                       value={values.cnic}
@@ -329,6 +321,7 @@ const AdminProfile = () => {
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
+                        size="small"
                         label="Last Login"
                         value={new Date(profileData.last_login).toLocaleString()}
                         disabled
@@ -340,6 +333,7 @@ const AdminProfile = () => {
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
+                        size="small"
                         label="Account Created"
                         value={new Date(profileData.created_at).toLocaleDateString()}
                         disabled
@@ -348,13 +342,13 @@ const AdminProfile = () => {
                   )}
 
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                       <Button
                         type="submit"
                         variant="contained"
-                        startIcon={<SaveIcon />}
+                        size="medium"
+                        startIcon={<SaveIcon sx={{ fontSize: 18 }} />}
                         disabled={isSubmitting}
-                        size="large"
                       >
                         {isSubmitting ? 'Saving...' : 'Save Changes'}
                       </Button>
@@ -366,13 +360,13 @@ const AdminProfile = () => {
           </Formik>
 
           {/* Password Update Section (separate form to avoid nested forms) */}
-          <Box sx={{ mt: 4, pt: 3, borderTop: 1, borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <LockIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="h6">Password</Typography>
+          <Box sx={{ mt: 2, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <LockIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+              <Typography variant="subtitle1" fontWeight={600}>Password</Typography>
             </Box>
-            <Divider sx={{ mb: 3 }} />
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Divider sx={{ mb: 1.5 }} />
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               For security, your current password is not shown. Use the form below to set a new password.
             </Typography>
             <Formik
@@ -382,10 +376,11 @@ const AdminProfile = () => {
             >
               {({ values, errors, touched, handleChange, handleBlur, handleSubmit }) => (
                 <Form onSubmit={handleSubmit}>
-                  <Grid container spacing={2}>
+                  <Grid container spacing={1.5}>
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
+                        size="small"
                         label="New Password"
                         name="new_password"
                         type="password"
@@ -401,6 +396,7 @@ const AdminProfile = () => {
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
+                        size="small"
                         label="Confirm New Password"
                         name="confirm_password"
                         type="password"
@@ -417,7 +413,8 @@ const AdminProfile = () => {
                       <Button
                         type="submit"
                         variant="outlined"
-                        startIcon={<LockIcon />}
+                        size="small"
+                        startIcon={<LockIcon sx={{ fontSize: 18 }} />}
                         disabled={isPasswordSubmitting}
                       >
                         {isPasswordSubmitting ? 'Updating...' : 'Update Password'}

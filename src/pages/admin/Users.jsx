@@ -27,6 +27,8 @@ import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import LockIcon from '@mui/icons-material/Lock'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import WorkOutlineIcon from '@mui/icons-material/WorkOutline'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -109,6 +111,10 @@ const Users = () => {
   const [selectedSocietyId, setSelectedSocietyId] = useState(null)
   /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
   const [emailCheckStatus, setEmailCheckStatus] = useState(null)
+  /** Toggle password visibility in Add/Edit User dialog */
+  const [showPassword, setShowPassword] = useState(false)
+  /** Toggle new password visibility in Change Password dialog */
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [actionMenuAnchor, setActionMenuAnchor] = useState(null)
   const [actionMenuRow, setActionMenuRow] = useState(null)
   const [createJobRow, setCreateJobRow] = useState(null)
@@ -192,6 +198,7 @@ const Users = () => {
   const handleOpenDialog = (user = null) => {
     setEditingUser(user)
     setEmailCheckStatus(null)
+    setShowPassword(false)
     setOpenDialog(true)
   }
 
@@ -200,16 +207,19 @@ const Users = () => {
     setEditingUser(null)
     setSelectedSocietyId(null)
     setEmailCheckStatus(null)
+    setShowPassword(false)
   }
 
   const handleOpenPasswordDialog = (user) => {
     setSelectedUser(user)
+    setShowNewPassword(false)
     setOpenPasswordDialog(true)
   }
 
   const handleClosePasswordDialog = () => {
     setOpenPasswordDialog(false)
     setSelectedUser(null)
+    setShowNewPassword(false)
   }
 
   const handleSubmit = async (values, { setSubmitting }) => {
@@ -1044,13 +1054,28 @@ const Users = () => {
                           fullWidth
                           label="Password"
                           name="password"
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           value={values.password}
                           onChange={handleChange}
                           onBlur={handleBlur}
                           error={touched.password && !!errors.password}
                           helperText={touched.password && errors.password}
                           autoComplete="new-password"
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <IconButton
+                                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                  onClick={() => setShowPassword((prev) => !prev)}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  edge="end"
+                                  size="small"
+                                >
+                                  {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                                </IconButton>
+                              </InputAdornment>
+                            ),
+                          }}
                         />
                       </Grid>
                     )}
@@ -1299,12 +1324,27 @@ const Users = () => {
                       fullWidth
                       label="New Password"
                       name="new_password"
-                      type="password"
+                      type={showNewPassword ? 'text' : 'password'}
                       value={values.new_password}
                       onChange={handleChange}
                       onBlur={handleBlur}
                       error={touched.new_password && !!errors.new_password}
                       helperText={touched.new_password && errors.new_password}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                              onClick={() => setShowNewPassword((prev) => !prev)}
+                              onMouseDown={(e) => e.preventDefault()}
+                              edge="end"
+                              size="small"
+                            >
+                              {showNewPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
                     />
                   </Grid>
                 </Grid>

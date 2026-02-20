@@ -21,7 +21,6 @@ import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import DomainIcon from '@mui/icons-material/Domain'
 import useSWR from 'swr'
 import { propertyApi } from '@/api/propertyApi'
 import { apartmentApi } from '@/api/apartmentApi'
@@ -38,7 +37,7 @@ const Floors = () => {
   const [blockFilter, setBlockFilter] = useState('')
   const [openDialog, setOpenDialog] = useState(false)
   const [editingFloor, setEditingFloor] = useState(null)
-  const [addUnitsDialog, setAddUnitsDialog] = useState({ open: false, floor: null, count: 1 })
+  const [addUnitsCount, setAddUnitsCount] = useState(1)
   const [addDialogBlockId, setAddDialogBlockId] = useState(null)
 
   useEffect(() => {
@@ -136,6 +135,7 @@ const Floors = () => {
 
   const handleOpenDialog = (floor = null) => {
     setEditingFloor(floor)
+    if (floor) setAddUnitsCount(1)
     if (!floor) {
       setAddDialogBlockId(resolvedBlockId || blockFilter || blockIdFromUrl || null)
     }
@@ -147,22 +147,18 @@ const Floors = () => {
     setEditingFloor(null)
   }
 
-  const handleOpenAddUnitsDialog = (floor) => {
-    setAddUnitsDialog({ open: true, floor, count: 1 })
-  }
-
-  const handleCloseAddUnitsDialog = () => {
-    setAddUnitsDialog({ open: false, floor: null, count: 1 })
-  }
-
-  const handleAddUnitsSubmit = async () => {
-    const { floor, count } = addUnitsDialog
-    if (!floor?.id || !count || count < 1) return
+  const handleAddUnitsInEditDialog = async () => {
+    if (!editingFloor?.id || !addUnitsCount || addUnitsCount < 1) return
     try {
-      await propertyApi.addUnitsToFloor(floor.id, count)
-      toast.success(`${count} unit(s) added. They will appear on the Units page for this block.`)
+      await propertyApi.addUnitsToFloor(editingFloor.id, addUnitsCount)
+      toast.success(`${addUnitsCount} unit(s) added. They will appear on the Units page for this block.`)
       mutate()
-      handleCloseAddUnitsDialog()
+      setAddUnitsCount(1)
+      setEditingFloor((prev) => ({
+        ...prev,
+        total_units: (prev.total_units || 0) + addUnitsCount,
+        units_count: (prev.units_count || 0) + addUnitsCount,
+      }))
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add units')
     }
@@ -250,7 +246,7 @@ const Floors = () => {
       id: 'total_units',
       label: 'Total Units',
       render: (row) => {
-        const count = row.units_count != null ? row.units_count : row.total_units
+        const count = row.total_units ?? row.units_count
         return count == null || Number(count) === 0 ? 'N/A' : count
       },
     },
@@ -260,17 +256,7 @@ const Floors = () => {
       align: 'right',
       render: (row) => (
         <Box component="span" sx={{ display: 'inline-flex', gap: 0.5 }}>
-          <Tooltip title="Add units to this floor">
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={() => handleOpenAddUnitsDialog(row)}
-              aria-label={`Add units to ${row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`}`}
-            >
-              <DomainIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
+          <Tooltip title="Edit floor & add units">
             <IconButton
               size="small"
               color="primary"
@@ -509,11 +495,11 @@ const Floors = () => {
                         error={touched.floor_number && !!errors.floor_number}
                         helperText={
                           (touched.floor_number && errors.floor_number) ||
-                          'First floor (1) is for residents. Ground (0) is optional (e.g. shops/showrooms).'
+                          'First floor (1). Ground (0) is optional.'
                         }
                       >
-                        <MenuItem value={1}>1 – First floor (for residents)</MenuItem>
-                        <MenuItem value={0}>0 – Ground floor (optional, e.g. shops/showrooms)</MenuItem>
+                        <MenuItem value={1}>1 – First floor</MenuItem>
+                        <MenuItem value={0}>0 – Ground floor</MenuItem>
                       </TextField>
                     ) : (
                       <TextField
@@ -565,6 +551,40 @@ const Floors = () => {
                       onBlur={handleBlur}
                     />
                   </Grid>
+                  {editingFloor && (
+                    <>
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>
+                          Add units to this floor
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          type="number"
+                          label="Number of units to add"
+                          inputProps={{ min: 1, max: 999 }}
+                          value={addUnitsCount}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10)
+                            setAddUnitsCount(isNaN(v) || v < 1 ? 1 : v)
+                          }}
+                        />
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          New unit rows will appear on the Units page with empty fields. Union admin can then add residents.
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Button
+                          type="button"
+                          variant="outlined"
+                          onClick={handleAddUnitsInEditDialog}
+                        >
+                          Add units
+                        </Button>
+                      </Grid>
+                    </>
+                  )}
                 </Grid>
               </DialogContent>
               <DialogActions>
@@ -576,36 +596,6 @@ const Floors = () => {
             </Form>
           )}
         </Formik>
-      </Dialog>
-
-      <Dialog open={addUnitsDialog.open} onClose={handleCloseAddUnitsDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>
-          Add units to {addUnitsDialog.floor ? (addUnitsDialog.floor.floor_number === 0 ? 'Ground floor' : `Floor ${addUnitsDialog.floor.floor_number}`) : ''}
-        </DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            type="number"
-            label="Number of units"
-            inputProps={{ min: 1, max: 999 }}
-            value={addUnitsDialog.count}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10)
-              setAddUnitsDialog((prev) => ({ ...prev, count: isNaN(v) || v < 1 ? 1 : v }))
-            }}
-            sx={{ mt: 1 }}
-          />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            New unit rows will appear on the Units page with empty fields. Union admin can then add residents.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAddUnitsDialog}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddUnitsSubmit}>
-            Add units
-          </Button>
-        </DialogActions>
       </Dialog>
     </Container>
   )

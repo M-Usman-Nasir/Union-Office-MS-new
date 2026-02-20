@@ -154,17 +154,8 @@ const SuperAdminProfile = () => {
   const displayImage = imagePreview || getImageUrl(profileData?.profile_image)
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" sx={{ mb: 1 }}>
-          My Profile
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Manage your account information and personal details
-        </Typography>
-      </Box> */}
-
-      <Card>
+    <Container maxWidth="lg" sx={{ py: 1.5, px: { xs: 1.5, sm: 2 } }}>
+      <Card sx={{ '& .MuiCardContent-root': { p: 2 } }}>
         <CardContent>
           <Formik
             initialValues={{
@@ -180,25 +171,25 @@ const SuperAdminProfile = () => {
           >
             {({ values, errors, touched, handleChange, handleBlur }) => (
               <Form>
-                <Grid container spacing={3}>
+                <Grid container spacing={2}>
                   {/* Profile Image Section */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">Profile Picture</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Profile Picture</Typography>
                     </Box>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 1.5 }} />
                   </Grid>
 
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0 }}>
                       <Avatar
                         src={displayImage}
                         alt={profileData?.name || 'Profile'}
                         sx={{
-                          width: 120,
-                          height: 120,
-                          fontSize: '3rem',
+                          width: 80,
+                          height: 80,
+                          fontSize: '2rem',
                           bgcolor: 'primary.main',
                         }}
                       >
@@ -217,8 +208,9 @@ const SuperAdminProfile = () => {
                           <Button
                             variant="outlined"
                             component="span"
-                            startIcon={<PhotoCameraIcon />}
-                            sx={{ mr: 1 }}
+                            size="small"
+                            startIcon={<PhotoCameraIcon sx={{ fontSize: 18 }} />}
+                            sx={{ mr: 0.5 }}
                           >
                             {displayImage ? 'Change Photo' : 'Upload Photo'}
                           </Button>
@@ -227,14 +219,15 @@ const SuperAdminProfile = () => {
                           <Button
                             variant="outlined"
                             color="error"
+                            size="small"
                             onClick={handleRemoveImage}
-                            sx={{ ml: 1 }}
+                            sx={{ ml: 0.5 }}
                           >
                             Remove
                           </Button>
                         )}
-                        <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
-                          Recommended: Square image, max 2MB (JPG, PNG)
+                        <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                          Square image, max 2MB (JPG, PNG)
                         </Typography>
                       </Box>
                     </Box>
@@ -242,16 +235,17 @@ const SuperAdminProfile = () => {
 
                   {/* Account Information Section */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, mt: 2 }}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">Account Information</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, mt: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Account Information</Typography>
                     </Box>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 1.5 }} />
                   </Grid>
 
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Name"
                       name="name"
                       value={values.name}
@@ -266,6 +260,7 @@ const SuperAdminProfile = () => {
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Email"
                       name="email"
                       type="email"
@@ -276,30 +271,25 @@ const SuperAdminProfile = () => {
                   </Grid>
 
                   <Grid item xs={12} md={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Role:
-                      </Typography>
-                      <Chip
-                        label="Super Admin"
-                        color="error"
-                        size="small"
-                      />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">Role:</Typography>
+                      <Chip label="Super Admin" color="error" size="small" />
                     </Box>
                   </Grid>
 
                   {/* Contact Information Section */}
-                  <Grid item xs={12} sx={{ mt: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6">Contact Information</Typography>
+                  <Grid item xs={12} sx={{ mt: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Contact Information</Typography>
                     </Box>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 1.5 }} />
                   </Grid>
 
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Contact Number"
                       name="contact_number"
                       value={values.contact_number}
@@ -312,6 +302,7 @@ const SuperAdminProfile = () => {
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Emergency Contact"
                       name="emergency_contact"
                       value={values.emergency_contact}
@@ -324,6 +315,7 @@ const SuperAdminProfile = () => {
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="CNIC"
                       name="cnic"
                       value={values.cnic}
@@ -338,6 +330,7 @@ const SuperAdminProfile = () => {
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
+                        size="small"
                         label="Last Login"
                         value={new Date(profileData.last_login).toLocaleString()}
                         disabled
@@ -349,6 +342,7 @@ const SuperAdminProfile = () => {
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
+                        size="small"
                         label="Account Created"
                         value={new Date(profileData.created_at).toLocaleDateString()}
                         disabled
@@ -357,13 +351,13 @@ const SuperAdminProfile = () => {
                   )}
 
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                       <Button
                         type="submit"
                         variant="contained"
-                        startIcon={<SaveIcon />}
+                        size="medium"
+                        startIcon={<SaveIcon sx={{ fontSize: 18 }} />}
                         disabled={isSubmitting}
-                        size="large"
                       >
                         {isSubmitting ? 'Saving...' : 'Save Changes'}
                       </Button>
@@ -377,19 +371,20 @@ const SuperAdminProfile = () => {
       </Card>
 
       {/* Change Password Section */}
-      <Card sx={{ mt: 3 }}>
+      <Card sx={{ mt: 1.5, '& .MuiCardContent-root': { p: 2 } }}>
         <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <LockIcon sx={{ mr: 1, color: 'primary.main' }} />
-            <Typography variant="h6">Security</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+            <LockIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+            <Typography variant="subtitle1" fontWeight={600}>Security</Typography>
           </Box>
-          <Divider sx={{ mb: 3 }} />
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Divider sx={{ mb: 1.5 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Change your account password. Use a strong password with at least 6 characters.
           </Typography>
           <Button
             variant="outlined"
-            startIcon={<LockIcon />}
+            size="small"
+            startIcon={<LockIcon sx={{ fontSize: 18 }} />}
             onClick={() => setPasswordDialogOpen(true)}
           >
             Change Password
@@ -398,7 +393,13 @@ const SuperAdminProfile = () => {
       </Card>
 
       {/* Change Password Dialog */}
-      <Dialog open={passwordDialogOpen} onClose={() => !isChangingPassword && setPasswordDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={passwordDialogOpen}
+        onClose={() => !isChangingPassword && setPasswordDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { '& .MuiDialogContent-root': { pt: 0 }, '& .MuiDialogActions-root': { px: 2, pb: 1.5 } } }}
+      >
         <Formik
           initialValues={{ new_password: '', confirm_password: '' }}
           validationSchema={passwordChangeSchema}
@@ -406,12 +407,13 @@ const SuperAdminProfile = () => {
         >
           {({ values, errors, touched, handleChange, handleBlur, handleSubmit }) => (
             <Form onSubmit={handleSubmit}>
-              <DialogTitle>Change Password</DialogTitle>
+              <DialogTitle sx={{ pb: 0, pt: 1.5 }}>Change Password</DialogTitle>
               <DialogContent>
-                <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid container spacing={1.5} sx={{ mt: 0 }}>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="New Password"
                       name="new_password"
                       type="password"
@@ -426,6 +428,7 @@ const SuperAdminProfile = () => {
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Confirm New Password"
                       name="confirm_password"
                       type="password"
@@ -439,11 +442,11 @@ const SuperAdminProfile = () => {
                   </Grid>
                 </Grid>
               </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setPasswordDialogOpen(false)} disabled={isChangingPassword}>
+              <DialogActions sx={{ pt: 0 }}>
+                <Button size="small" onClick={() => setPasswordDialogOpen(false)} disabled={isChangingPassword}>
                   Cancel
                 </Button>
-                <Button type="submit" variant="contained" disabled={isChangingPassword}>
+                <Button type="submit" variant="contained" size="small" disabled={isChangingPassword}>
                   {isChangingPassword ? 'Updating...' : 'Update Password'}
                 </Button>
               </DialogActions>

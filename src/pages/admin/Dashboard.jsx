@@ -118,13 +118,13 @@ const AdminDashboard = () => {
   )
 
   const { data: complaintsData, isLoading: complaintsLoading } = useSWR(
-    '/complaints/recent',
-    () => complaintApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
+    societyId ? ['/complaints/recent', societyId] : null,
+    () => complaintApi.getAll({ society_id: societyId, limit: 5, page: 1 }).then(res => res.data)
   )
 
   const { data: maintenanceData, isLoading: maintenanceLoading } = useSWR(
-    '/maintenance/recent',
-    () => maintenanceApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
+    societyId ? ['/maintenance/recent', societyId] : null,
+    () => maintenanceApi.getAll({ society_id: societyId, limit: 5, page: 1 }).then(res => res.data)
   )
 
   const { data: announcementsData, isLoading: announcementsLoading } = useSWR(
@@ -220,6 +220,19 @@ const AdminDashboard = () => {
   const monthlyIncome = monthlyFinance?.income ?? 0
   const monthlyExpense = monthlyFinance?.expense ?? 0
   const monthlyBalance = monthlyFinance?.balance ?? 0
+
+  // Show overview cards and charts only when there is at least some data
+  const hasAnySummaryData =
+    totalFlats > 0 ||
+    totalComplaints > 0 ||
+    defaultersCount > 0 ||
+    paymentsReceivedMonth > 0 ||
+    pendingPaymentsMonth > 0 ||
+    (monthlyIncome > 0 || monthlyExpense > 0)
+
+  const hasDefaulterChartData =
+    defaulterStats &&
+    ((defaulterStats.active_count || 0) + (defaulterStats.resolved_count || 0) + (defaulterStats.escalated_count || 0) > 0)
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -338,12 +351,23 @@ const AdminDashboard = () => {
         </Box>
       ) : (
         <>
-          {/* Month/Year selector and monthly summary cards */}
-          <Box sx={{ mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-              <FormControl size="small" sx={{ minWidth: 140 }}>
-                <InputLabel id="dashboard-month-label">Month</InputLabel>
-                <Select
+          {!hasAnySummaryData ? (
+            <Paper variant="outlined" sx={{ p: 4, mb: 4, textAlign: 'center' }}>
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No data yet
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Add finance, maintenance, or complaints to see the dashboard overview and charts.
+              </Typography>
+            </Paper>
+          ) : (
+            <>
+              {/* Month/Year selector and monthly summary cards */}
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel id="dashboard-month-label">Month</InputLabel>
+                    <Select
                   labelId="dashboard-month-label"
                   value={selectedMonth}
                   label="Month"
@@ -714,13 +738,17 @@ const AdminDashboard = () => {
                   <Typography variant="h6" gutterBottom>
                     Finance Overview
                   </Typography>
-                  {financeData?.data ? (
-                    <FinanceChart data={financeData.data} />
-                  ) : (
+                  {financeData === undefined ? (
                     <Box display="flex" justifyContent="center" p={4}>
                       <CircularProgress />
                     </Box>
-                  )}
+                  ) : (financeData?.data?.length > 0 ? (
+                    <FinanceChart data={financeData.data} />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                      No finance data available
+                    </Typography>
+                  ))}
                 </CardContent>
               </Card>
             </Grid>
@@ -759,7 +787,7 @@ const AdminDashboard = () => {
             <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
-                  {defaulterStats && (
+                  {hasDefaulterChartData ? (
                     <BarChart
                       data={[
                         { category: 'Active', value: defaulterStats.active_count || 0 },
@@ -770,11 +798,17 @@ const AdminDashboard = () => {
                       xLabel="Status"
                       yLabel="Count"
                     />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                      No defaulter data available
+                    </Typography>
                   )}
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
+            </>
+          )}
 
           {/* Recent Data Tables */}
           <Grid container spacing={3}>
@@ -789,6 +823,10 @@ const AdminDashboard = () => {
                     <Box display="flex" justifyContent="center" p={2}>
                       <CircularProgress size={24} />
                     </Box>
+                  ) : (!complaintsData?.data || complaintsData.data.length === 0) && occupiedFlats === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                      No residents yet. Complaints will appear here once you add residents and they submit issues.
+                    </Typography>
                   ) : (
                     <TableContainer>
                       <Table size="small">
@@ -847,6 +885,10 @@ const AdminDashboard = () => {
                     <Box display="flex" justifyContent="center" p={2}>
                       <CircularProgress size={24} />
                     </Box>
+                  ) : (!maintenanceData?.data || maintenanceData.data.length === 0) && occupiedFlats === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                      No residents yet. Maintenance records will appear here once you add residents.
+                    </Typography>
                   ) : (
                     <TableContainer>
                       <Table size="small">
