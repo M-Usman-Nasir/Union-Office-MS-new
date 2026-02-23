@@ -45,6 +45,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import useSWR, { useSWRConfig } from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
 import { propertyApi } from '@/api/propertyApi'
+import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -113,6 +114,17 @@ const Maintenance = () => {
   const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false)
   const [dialogMode, setDialogMode] = useState('create') // 'create' | 'record_payment'
   const [recordPaymentLookup, setRecordPaymentLookup] = useState({ unit_id: null, month: null, year: null })
+  const [markFullyPaidAnchor, setMarkFullyPaidAnchor] = useState(null) // { anchorEl, row, month, dueAmount }
+  const [markFullyPaidLoading, setMarkFullyPaidLoading] = useState(false)
+  const [applyingBaseYear, setApplyingBaseYear] = useState(false)
+
+  const { data: maintenanceConfigData } = useSWR(
+    societyId ? ['/settings/maintenance-config', societyId] : null,
+    () => settingsApi.getMaintenanceConfig(societyId).then(res => res.data?.data ?? res.data).catch(() => [])
+  )
+  const maintenanceConfigList = Array.isArray(maintenanceConfigData) ? maintenanceConfigData : []
+  const societyLevelConfig = maintenanceConfigList.find((c) => c.block_id == null && c.unit_id == null)
+  const baseAmount = Number(societyLevelConfig?.base_amount) || 0
 
   const unitIdForFetch = selectedLedgerRow?.unit_id ?? monthCellEdit?.ledgerRow?.unit_id
   const { data: unitMaintenanceData, mutate: mutateUnitMaintenance } = useSWR(
@@ -431,6 +443,69 @@ const Maintenance = () => {
     }
   }
 
+  const handleMarkFullyPaidFromCell = async () => {
+    if (!markFullyPaidAnchor || !societyId) return
+    const { row, month, dueAmount } = markFullyPaidAnchor
+    setMarkFullyPaidLoading(true)
+    try {
+      const res = await maintenanceApi.getAll({
+        society_id: societyId,
+        unit_id: row.unit_id,
+        month,
+        year,
+        limit: 1,
+        page: 1,
+      })
+      const list = res.data?.data ?? []
+      const record = Array.isArray(list) ? list[0] : null
+      if (!record?.id) {
+        toast.error('Maintenance record not found for this unit and month')
+        return
+      }
+      await maintenanceApi.recordPayment(record.id, { amount_paid: dueAmount })
+      toast.success('Marked as fully paid')
+      mutate()
+      mutateUnitMaintenance()
+      setMarkFullyPaidAnchor(null)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to mark as fully paid')
+    } finally {
+      setMarkFullyPaidLoading(false)
+    }
+  }
+
+  const handleOpenEditFromMarkFullyPaidPopover = () => {
+    if (!markFullyPaidAnchor) return
+    const anchor = markFullyPaidAnchor
+    setMarkFullyPaidAnchor(null)
+    setMonthCellEdit({ ledgerRow: anchor.row, month: anchor.month })
+    setAddPrefill({
+      unit_id: anchor.row.unit_id,
+      block_id: anchor.row.block_id ?? '',
+      floor_id: anchor.row.floor_id ?? '',
+      month: anchor.month,
+      year,
+      amount: anchor.dueAmount,
+    })
+    setFormBlockId(anchor.row.block_id ?? '')
+    setFormFloorId(anchor.row.floor_id ?? '')
+    setOpenDialog(true)
+  }
+
+  const handleApplyBaseForYear = async () => {
+    setApplyingBaseYear(true)
+    try {
+      const res = await maintenanceApi.applyBaseForYear({ year })
+      const msg = res.data?.message ?? res.data?.data ? `${res.data.data.created} record(s) created` : 'Base amount applied'
+      toast.success(msg)
+      mutate()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to apply base amount for year')
+    } finally {
+      setApplyingBaseYear(false)
+    }
+  }
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
@@ -495,21 +570,30 @@ const Maintenance = () => {
             </Box>
           )
         },
-        onClick: (row) => {
+        onClick: (row, e) => {
           const cellAmount = Number(row[key]) || 0
-          setMonthCellEdit({ ledgerRow: row, month: monthNum })
-          setAddPrefill({
-            unit_id: row.unit_id,
-            block_id: row.block_id ?? '',
-            floor_id: row.floor_id ?? '',
-            month: monthNum,
-            year,
-            amount: cellAmount,
-          })
-          setEditingMaintenance(null)
-          setFormBlockId(row.block_id ?? '')
-          setFormFloorId(row.floor_id ?? '')
-          setOpenDialog(true)
+          if (cellAmount > 0 && e?.currentTarget) {
+            setMarkFullyPaidAnchor({
+              anchorEl: e.currentTarget,
+              row,
+              month: monthNum,
+              dueAmount: cellAmount,
+            })
+          } else {
+            setMonthCellEdit({ ledgerRow: row, month: monthNum })
+            setAddPrefill({
+              unit_id: row.unit_id,
+              block_id: row.block_id ?? '',
+              floor_id: row.floor_id ?? '',
+              month: monthNum,
+              year,
+              amount: cellAmount || baseAmount,
+            })
+            setEditingMaintenance(null)
+            setFormBlockId(row.block_id ?? '')
+            setFormFloorId(row.floor_id ?? '')
+            setOpenDialog(true)
+          }
         },
       }
     }),
@@ -587,7 +671,7 @@ const Maintenance = () => {
           unit_id: addPrefill.unit_id ?? '',
           month: addPrefill.month ?? currentMonth,
           year: addPrefill.year ?? currentYear,
-          amount: addPrefill.amount ?? 0,
+          amount: addPrefill.amount ?? baseAmount,
           due_date: '',
         }
       : {
@@ -596,7 +680,7 @@ const Maintenance = () => {
           unit_id: '',
           month: currentMonth,
           year: currentYear,
-          amount: 0,
+          amount: baseAmount,
           due_date: '',
         }
 
@@ -663,6 +747,48 @@ const Maintenance = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Mark fully paid popover (month cell click when due > 0) */}
+      <Popover
+        open={Boolean(markFullyPaidAnchor)}
+        anchorEl={markFullyPaidAnchor?.anchorEl}
+        onClose={() => setMarkFullyPaidAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Box sx={{ p: 2, minWidth: 220 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Unit {markFullyPaidAnchor?.row?.unit_number ?? markFullyPaidAnchor?.row?.flat_no ?? '—'} · {markFullyPaidAnchor && MONTH_LABELS[(markFullyPaidAnchor.month || 1) - 1]} {year}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Due: {markFullyPaidAnchor && formatCurrency(markFullyPaidAnchor.dueAmount)}
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              onClick={handleMarkFullyPaidFromCell}
+              disabled={markFullyPaidLoading}
+              fullWidth
+            >
+              {markFullyPaidLoading ? 'Updating…' : 'Mark fully paid (clear due)'}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleOpenEditFromMarkFullyPaidPopover}
+              disabled={markFullyPaidLoading}
+              fullWidth
+            >
+              Edit record
+            </Button>
+            <Button size="small" onClick={() => setMarkFullyPaidAnchor(null)} fullWidth>
+              Cancel
+            </Button>
+          </Box>
+        </Box>
+      </Popover>
+
       <Typography variant="h6" sx={{ mb: 2 }}>
         Per Year Total Maintenance Amount = {formatCurrency(perYearTotalMaintenance)}
       </Typography>
@@ -679,6 +805,14 @@ const Maintenance = () => {
             disabled={generating}
           >
             Generate Monthly Dues
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleApplyBaseForYear}
+            disabled={generating || applyingBaseYear || baseAmount <= 0}
+            title={baseAmount <= 0 ? 'Set Base Amount in Settings first' : `Apply base amount (${formatCurrency(baseAmount)}) to all units for ${year}`}
+          >
+            {applyingBaseYear ? 'Applying…' : `Apply base to all units (${year})`}
           </Button>
           {selectedBlockId && (
             <Button

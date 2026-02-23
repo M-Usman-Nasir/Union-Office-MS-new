@@ -378,6 +378,79 @@ export const getYearlyLedger = async (req, res) => {
   }
 };
 
+// Apply society-level base amount to all units for all months of a year (create missing records only)
+export const applyBaseForYear = async (req, res) => {
+  try {
+    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : req.body.society_id;
+    const year = req.body.year ? parseInt(req.body.year, 10) : new Date().getFullYear();
+
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'society_id is required (or use as union_admin)',
+      });
+    }
+
+    const configResult = await query(
+      `SELECT base_amount FROM maintenance_config 
+       WHERE society_apartment_id = $1 AND block_id IS NULL AND unit_id IS NULL 
+       LIMIT 1`,
+      [societyId]
+    );
+    if (configResult.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maintenance Amount Configuration not set. Set Base Amount in Settings first.',
+      });
+    }
+    const baseAmount = parseFloat(configResult.rows[0].base_amount);
+    if (isNaN(baseAmount) || baseAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid base amount in Maintenance Amount Configuration',
+      });
+    }
+
+    const unitsResult = await query(
+      'SELECT id, society_apartment_id FROM units WHERE society_apartment_id = $1',
+      [societyId]
+    );
+    let created = 0;
+    const dueDate = new Date(year, 0, 1); // 1st of Jan for the year (or could use 1st of each month)
+
+    for (const unit of unitsResult.rows) {
+      for (let month = 1; month <= 12; month++) {
+        const existing = await query(
+          'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3',
+          [unit.id, month, year]
+        );
+        if (existing.rows.length > 0) continue;
+        const monthDueDate = new Date(year, month, 1);
+        await query(
+          `INSERT INTO maintenance 
+           (unit_id, society_apartment_id, month, year, base_amount, total_amount, status, due_date)
+           VALUES ($1, $2, $3, $4, $5, $5, 'pending', $6)`,
+          [unit.id, unit.society_apartment_id, month, year, baseAmount, monthDueDate]
+        );
+        created++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Applied base amount (${baseAmount}) to all units for ${year}. ${created} record(s) created.`,
+      data: { created, year, base_amount: baseAmount },
+    });
+  } catch (error) {
+    console.error('Apply base for year error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to apply base amount for year',
+      error: error.message,
+    });
+  }
+};
+
 // Generate monthly dues manually (union_admin: only their society; super_admin: all societies)
 export const generateMonthlyDues = async (req, res) => {
   try {

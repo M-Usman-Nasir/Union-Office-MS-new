@@ -1,3 +1,4 @@
+process.env.SASS_SILENCE_DEPRECATIONS = 'legacy-js-api'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'

@@ -191,6 +191,13 @@ const theme = createTheme({
         },
       },
     },
+    MuiTableCell: {
+      styleOverrides: {
+        head: {
+          padding: '12px',
+        },
+      },
+    },
   },
 });
 

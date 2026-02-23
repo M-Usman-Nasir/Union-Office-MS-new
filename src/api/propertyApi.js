@@ -56,4 +56,14 @@ export const propertyApi = {
   updateUnit: (id, data) => {
     return api.put(API_ENDPOINTS.UNIT_BY_ID(id), data)
   },
+
+  deleteUnit: (id) => {
+    return api.delete(API_ENDPOINTS.UNIT_BY_ID(id))
+  },
+
+  importUnits: (formData) => {
+    return api.post(API_ENDPOINTS.UNITS_IMPORT, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }

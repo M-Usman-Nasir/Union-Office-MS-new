@@ -210,12 +210,10 @@ export const register = async (req, res) => {
 
     const newUser = result.rows[0];
 
-    // Create subscription when creating a Union Admin (so Super Admin can track admins)
-    // subscription_status: 'pending' when adding from Apartments (client cannot login until activated); default 'active'
-    if (role === 'union_admin' && society_apartment_id) {
+    // Create subscription only when NOT adding from lead (lead flow uses Create Job dialog to assign plan later)
+    if (role === 'union_admin' && society_apartment_id && subscription_status !== 'pending') {
       try {
-        const subStatus = subscription_status === 'pending' ? 'pending' : 'active';
-        await createOrUpdateSubscription(newUser.id, society_apartment_id, plan_id || null, subStatus);
+        await createOrUpdateSubscription(newUser.id, society_apartment_id, plan_id || null, 'active');
       } catch (subErr) {
         console.warn('Subscription create skipped (table may not exist yet):', subErr.message);
       }

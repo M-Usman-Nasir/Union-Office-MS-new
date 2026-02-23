@@ -1,0 +1,4 @@
+society_apartment_id,block_id,floor_id,unit_number,owner_name,resident_name,contact_number,email
+1,1,1,101,John Doe,Jane Doe,+921234567890,john@example.com
+1,1,1,102,,,,
+1,1,2,201,Owner Name,Resident Name,03001234567,resident@example.com

@@ -1,6 +1,7 @@
 import express from 'express';
 import * as propertyController from '../controllers/propertyController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { uploadUnitsImport } from '../config/multer.js';
 
 const router = express.Router();
 
@@ -23,7 +24,9 @@ router.post('/floors/:id/units', requireRole('super_admin'), propertyController.
 // Units routes
 router.get('/units', propertyController.getUnits);
 router.get('/units/:id', propertyController.getUnitById);
+router.post('/units/import', requireRole('super_admin'), uploadUnitsImport, propertyController.importUnits);
 router.post('/units', requireRole('super_admin'), propertyController.createUnit);
 router.put('/units/:id', requireRole('super_admin'), propertyController.updateUnit);
+router.delete('/units/:id', requireRole('super_admin'), propertyController.deleteUnit);
 
 export default router;

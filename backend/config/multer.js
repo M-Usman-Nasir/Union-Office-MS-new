@@ -115,3 +115,48 @@ export const uploadComplaintAttachments = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
   fileFilter: complaintsFileFilter,
 }).array('attachments', 5);
+
+// --- Units import (XLSX, XML, CSV) ---
+const unitsImportDir = path.join(__dirname, '..', 'uploads', 'units-import');
+if (!fs.existsSync(unitsImportDir)) {
+  fs.mkdirSync(unitsImportDir, { recursive: true });
+}
+
+const unitsImportStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, unitsImportDir);
+  },
+  filename: (req, file, cb) => {
+    const userId = req.user?.id || 'unknown';
+    const timestamp = Date.now();
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+    const filename = `units_import_${userId}_${timestamp}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const ALLOWED_UNITS_IMPORT_MIMES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // .xls (legacy)
+  'text/csv',
+  'application/csv',
+  'text/plain', // CSV often sent as text/plain
+  'application/xml',
+  'text/xml',
+];
+
+const unitsImportFileFilter = (req, file, cb) => {
+  const ext = (path.extname(file.originalname) || '').toLowerCase();
+  const allowedExt = ['.xlsx', '.xls', '.csv', '.xml'];
+  if (allowedExt.includes(ext) || ALLOWED_UNITS_IMPORT_MIMES.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only XLSX, XML, and CSV files are allowed for unit import'), false);
+  }
+};
+
+export const uploadUnitsImport = multer({
+  storage: unitsImportStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: unitsImportFileFilter,
+}).single('file');

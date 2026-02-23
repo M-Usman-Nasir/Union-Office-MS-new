@@ -22,6 +22,7 @@ const DataTable = ({
   emptyMessage = 'No data available',
   dense = false,
   getRowSx,
+  noHorizontalScroll = false,
 }) => {
   const headerPy = dense ? 0.5 : 1.5
   const cellPy = dense ? 0.5 : 1.25
@@ -43,7 +44,7 @@ const DataTable = ({
     return base
   }
   const getHeaderSx = (column) => {
-    const base = { fontWeight: 600, py: headerPy }
+    const base = { fontWeight: 600, py: headerPy, px: 1 }
     if (headerPx !== undefined) base.px = headerPx
     if (column.minWidth) base.minWidth = column.minWidth
     if (column.width) base.width = column.width
@@ -52,8 +53,19 @@ const DataTable = ({
 
   return (
     <Paper sx={{ overflow: 'hidden' }}>
-      <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table size={dense ? 'small' : 'medium'} sx={{ tableLayout: 'auto', width: '100%', minWidth: 600 }}>
+      <TableContainer
+        sx={{
+          overflowX: noHorizontalScroll ? 'hidden' : 'auto',
+        }}
+      >
+        <Table
+          size={dense ? 'small' : 'medium'}
+          sx={{
+            tableLayout: 'auto',
+            width: '100%',
+            ...(noHorizontalScroll ? {} : { minWidth: 600 }),
+          }}
+        >
           <TableHead>
             <TableRow
               sx={{
@@ -100,7 +112,7 @@ const DataTable = ({
                       <TableCell
                         key={column.id}
                         align={column.align || 'left'}
-                        onClick={isClickable ? (e) => { e.stopPropagation(); column.onClick(row); } : undefined}
+                        onClick={isClickable ? (e) => { e.stopPropagation(); column.onClick(row, e); } : undefined}
                         sx={{
                           ...getCellSx(column),
                           ...(isClickable

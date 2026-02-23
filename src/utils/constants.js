@@ -55,6 +55,7 @@ export const API_ENDPOINTS = {
   MAINTENANCE_PAYMENT: (id) => `/maintenance/${id}/payment`,
   MAINTENANCE_GENERATE_DUES: '/maintenance/generate-monthly-dues',
   MAINTENANCE_GENERATE_FOR_SCOPE: '/maintenance/generate-for-scope',
+  MAINTENANCE_APPLY_BASE_YEAR: '/maintenance/apply-base-for-year',
   
   // Finance
   FINANCE: '/finance',
@@ -90,6 +91,7 @@ export const API_ENDPOINTS = {
   FLOOR_BY_ID: (id) => `/properties/floors/${id}`,
   FLOOR_ADD_UNITS: (id) => `/properties/floors/${id}/units`,
   UNITS: '/properties/units',
+  UNITS_IMPORT: '/properties/units/import',
   UNIT_BY_ID: (id) => `/properties/units/${id}`,
   
   // Users

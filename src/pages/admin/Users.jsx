@@ -20,7 +20,6 @@ import {
   Tooltip,
   Chip,
   CircularProgress,
-  Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -118,6 +117,7 @@ const Users = () => {
   const [actionMenuAnchor, setActionMenuAnchor] = useState(null)
   const [actionMenuRow, setActionMenuRow] = useState(null)
   const [createJobRow, setCreateJobRow] = useState(null)
+  const [createJobDialogMode, setCreateJobDialogMode] = useState('view') // 'view' | 'create'
   const [selectedPlanIdForJob, setSelectedPlanIdForJob] = useState('')
   const [givingSubscription, setGivingSubscription] = useState(false)
 
@@ -265,23 +265,31 @@ const Users = () => {
         toast.success('User updated successfully')
       } else {
         const res = await userApi.create(submitData)
-        const createdUser = res?.data?.data
+        const createdUser = res?.data?.data ?? res?.data
         toast.success('User created successfully')
+        // Close Add User dialog first so it always dismisses; then refresh and optionally open Create Job
+        handleCloseDialog()
+        setSelectedSocietyId(null)
+        mutate()
         const openedFromLead =
           currentUser?.role === 'super_admin' &&
           submitData.role === 'union_admin' &&
           submitData.society_apartment_id
         if (openedFromLead && createdUser?.id) {
-          setCreateJobRow({
-            id: createdUser.id,
-            name: createdUser.name,
-            email: createdUser.email,
-            role: createdUser.role,
-            society_apartment_id: createdUser.society_apartment_id,
-            unit_id: createdUser.unit_id ?? null,
-            contact_number: submitData.contact_number ?? null,
-          })
+          setTimeout(() => {
+            setCreateJobDialogMode('create')
+            setCreateJobRow({
+              id: createdUser.id,
+              name: createdUser.name,
+              email: createdUser.email,
+              role: createdUser.role,
+              society_apartment_id: createdUser.society_apartment_id,
+              unit_id: createdUser.unit_id ?? null,
+              contact_number: submitData.contact_number ?? null,
+            })
+          }, 0)
         }
+        return
       }
       mutate()
       handleCloseDialog()
@@ -355,57 +363,15 @@ const Users = () => {
     )
   }
 
-  const handleOpenCreateJob = (row) => {
+  const handleOpenCreateJob = (row, mode = 'view') => {
     setActionMenuAnchor(null)
     setActionMenuRow(null)
     if (!row.society_apartment_id) {
       toast.error('User has no apartment assigned.')
       return
     }
-    const hasExistingSubscription = !!subscriptionByUserId[row.id]?.subscription_id
-    if (hasExistingSubscription) {
-      toast.custom(
-        (t) => (
-          <Box
-            sx={{
-              background: (theme) => theme.palette.background.paper,
-              color: (theme) => theme.palette.text.primary,
-              p: 2,
-              borderRadius: 2,
-              boxShadow: 3,
-              minWidth: 320,
-              border: (theme) => `1px solid ${theme.palette.divider}`,
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-              Re-create Job?
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              This user already has a subscription. Do you want to open Create Job to renew or update it?
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" variant="outlined" onClick={() => toast.dismiss(t.id)}>
-                Cancel
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                onClick={() => {
-                  setCreateJobRow(row)
-                  setSelectedPlanIdForJob('')
-                  toast.dismiss(t.id)
-                }}
-              >
-                Open
-              </Button>
-            </Box>
-          </Box>
-        ),
-        { duration: Infinity }
-      )
-      return
-    }
     setCreateJobRow(row)
+    setCreateJobDialogMode(mode)
     setSelectedPlanIdForJob('')
   }
 
@@ -424,6 +390,7 @@ const Users = () => {
       toast.success(`Subscription set. Next billing date: ${nextBilling.toLocaleDateString()}.`)
       await Promise.all([mutate(), mutateAdminsWithSubs()])
       setCreateJobRow(null)
+      setCreateJobDialogMode('view')
       setSelectedPlanIdForJob('')
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to give subscription')
@@ -514,7 +481,7 @@ const Users = () => {
           <Typography
             variant="body2"
             sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
-            onClick={() => handleOpenCreateJob(row)}
+            onClick={() => handleOpenCreateJob(row, 'view')}
           >
             {row.name || '—'}
           </Typography>
@@ -547,7 +514,7 @@ const Users = () => {
           <Typography
             variant="body2"
             sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
-            onClick={() => handleOpenCreateJob(row)}
+            onClick={() => handleOpenCreateJob(row, 'view')}
           >
             {label}
           </Typography>
@@ -714,7 +681,7 @@ const Users = () => {
               <ListItemText>Change Password</ListItemText>
             </MenuItem>
             {currentUser?.role === 'super_admin' && actionMenuRow.role === 'union_admin' && actionMenuRow.society_apartment_id && (
-              <MenuItem onClick={() => handleOpenCreateJob(actionMenuRow)}>
+              <MenuItem onClick={() => handleOpenCreateJob(actionMenuRow, 'create')}>
                 <ListItemIcon><WorkOutlineIcon fontSize="small" /></ListItemIcon>
                 <ListItemText>Create Job</ListItemText>
               </MenuItem>
@@ -739,21 +706,16 @@ const Users = () => {
       {/* Create Job dialog – Apartment & Union Admin details + package + Give subscription */}
       <Dialog
         open={Boolean(createJobRow)}
-        onClose={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}
+        onClose={() => { setCreateJobRow(null); setCreateJobDialogMode('view'); setSelectedPlanIdForJob('') }}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Create Job — Apartment &amp; Union Admin details</DialogTitle>
+        <DialogTitle>
+          {createJobDialogMode === 'create' ? 'Create Job — Apartment & Union Admin details' : 'View — Apartment & Union Admin details'}
+        </DialogTitle>
         <DialogContent dividers>
           {createJobRow && (
             <Grid container spacing={2} sx={{ pt: 1 }}>
-              {adminsWithSubsList.find((a) => a.id === createJobRow.id)?.subscription_id && (
-                <Grid item xs={12}>
-                  <Alert severity="info" sx={{ mb: 1 }}>
-                    This user already has a subscription. Giving subscription again will update the plan and set next billing date to one month from today.
-                  </Alert>
-                </Grid>
-              )}
               <Grid item xs={12}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
               </Grid>
@@ -863,42 +825,47 @@ const Users = () => {
                 )
               })()}
 
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Give subscription (1 month)</Typography>
-                <TextField
-                  fullWidth
-                  select
-                  size="small"
-                  // label="Select plan"
-                  value={selectedPlanIdForJob}
-                  onChange={(e) => setSelectedPlanIdForJob(e.target.value)}
-                  SelectProps={{ displayEmpty: true }}
-                >
-                  <MenuItem value="">Default / first active plan</MenuItem>
-                  {subscriptionPlans.map((p) => (
-                    <MenuItem key={p.id} value={p.id}>
-                      {p.name} — {p.amount ?? 0} PKR
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <Button
-                  variant="contained"
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  onClick={handleGiveSubscriptionForMonth}
-                  disabled={givingSubscription}
-                >
-                  {givingSubscription ? <CircularProgress size={20} /> : 'Give subscription for 1 month'}
-                </Button>
-                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
-                  Next billing will be set to one month from today.
-                </Typography>
-              </Grid>
+              {createJobDialogMode === 'create' && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Give subscription (1 month)</Typography>
+                  <TextField
+                    fullWidth
+                    select
+                    size="small"
+                    value={
+                      selectedPlanIdForJob && subscriptionPlans.some((p) => p.id === selectedPlanIdForJob)
+                        ? selectedPlanIdForJob
+                        : subscriptionPlans[0]?.id ?? ''
+                    }
+                    onChange={(e) => setSelectedPlanIdForJob(e.target.value)}
+                  >
+                    {subscriptionPlans.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.name} — {p.amount ?? 0} PKR
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    onClick={handleGiveSubscriptionForMonth}
+                    disabled={givingSubscription}
+                  >
+                    {givingSubscription ? <CircularProgress size={20} /> : 'Give subscription for 1 month'}
+                  </Button>
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+                    {adminsWithSubsList.find((a) => a.id === createJobRow.id)?.subscription_id
+                      ? 'This user already has a subscription. This will update the plan and apply to next month only.'
+                      : 'Subscription and first billing are available for the current month.'}
+                  </Typography>
+                </Grid>
+              )}
             </Grid>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}>Close</Button>
+          <Button onClick={() => { setCreateJobRow(null); setCreateJobDialogMode('view'); setSelectedPlanIdForJob('') }}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -910,7 +877,7 @@ const Users = () => {
           validationSchema={(values) => {
             if (!values) return getValidationSchema(!!editingUser, currentUser?.role, false)
             const lead = values.society_apartment_id ? (unassignedLeads || []).find((l) => l.id === values.society_apartment_id) : null
-            const passwordOptional = currentUser?.role === 'super_admin' && values.society_apartment_id && lead && (lead.union_admin_email || lead.union_admin_name)
+            const passwordOptional = currentUser?.role === 'super_admin' && values.society_apartment_id && lead && lead.union_admin_email
             return getValidationSchema(!!editingUser, currentUser?.role, passwordOptional)
           }}
           onSubmit={handleSubmit}
@@ -940,7 +907,7 @@ const Users = () => {
             const isSocietyDisabled = currentUser?.role === 'union_admin' && !editingUser
             const simpleApartmentOptions = currentUser?.role === 'super_admin' ? (allSocietiesData?.data ?? []) : (societiesData?.data ?? [])
             const selectedLead = values.society_apartment_id ? (unassignedLeads || []).find((l) => l.id === values.society_apartment_id) : null
-            const leadHasUnionAdminDetails = selectedLead && (selectedLead.union_admin_email || selectedLead.union_admin_name)
+            const leadHasUnionAdminDetails = selectedLead && !!selectedLead.union_admin_email
             const showPasswordField = !editingUser && !(currentUser?.role === 'super_admin' && leadHasUnionAdminDetails)
 
             return (
@@ -959,7 +926,12 @@ const Users = () => {
                           fullWidth
                           select
                           // label="Assign to lead (apartments without Union Admin)"
-                          value={values.society_apartment_id ?? ''}
+                          value={
+                            values.society_apartment_id != null &&
+                            unassignedLeads.some((l) => l.id === values.society_apartment_id)
+                              ? values.society_apartment_id
+                              : ''
+                          }
                           onChange={(e) => {
                             const id = e.target.value ? parseInt(e.target.value, 10) : null
                             const lead = unassignedLeads.find((l) => l.id === id)
@@ -1113,7 +1085,12 @@ const Users = () => {
                           select
                           label="Apartment"
                           name="society_apartment_id"
-                          value={values.society_apartment_id || ''}
+                          value={
+                            values.society_apartment_id != null &&
+                            simpleApartmentOptions.some((s) => s.id === values.society_apartment_id)
+                              ? values.society_apartment_id
+                              : ''
+                          }
                           onChange={handleSocietyChange}
                           onBlur={handleBlur}
                           error={touched.society_apartment_id && !!errors.society_apartment_id}
@@ -1137,7 +1114,12 @@ const Users = () => {
                           select
                           label="Unit (Optional)"
                           name="unit_id"
-                          value={values.unit_id || ''}
+                          value={
+                            values.unit_id != null &&
+                            (unitsData?.data ?? []).some((u) => u.id === values.unit_id)
+                              ? values.unit_id
+                              : ''
+                          }
                           onChange={handleChange}
                           onBlur={handleBlur}
                           error={touched.unit_id && !!errors.unit_id}

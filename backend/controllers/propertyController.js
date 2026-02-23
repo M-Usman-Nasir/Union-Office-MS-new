@@ -1,4 +1,6 @@
 import { query } from '../config/database.js';
+import fs from 'fs';
+import { parseUnitsImportFile } from '../utils/parseUnitsImport.js';
 
 /**
  * Recompute and update a block's total_floors and total_units from actual
@@ -892,3 +894,254 @@ export const updateUnit = async (req, res) => {
     })
   }
 }
+
+/**
+ * Delete a unit. Fails if the unit is referenced by users, maintenance, complaints, or defaulters.
+ */
+export const deleteUnit = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await query(
+      'SELECT id, block_id, society_apartment_id FROM units WHERE id = $1',
+      [id]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Unit not found',
+      });
+    }
+
+    const usersRef = await query('SELECT 1 FROM users WHERE unit_id = $1 LIMIT 1', [id]);
+    if (usersRef.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete unit: it is assigned to one or more users (residents). Remove or reassign them first.',
+      });
+    }
+    const maintenanceRef = await query('SELECT 1 FROM maintenance WHERE unit_id = $1 LIMIT 1', [id]);
+    if (maintenanceRef.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete unit: it has maintenance records. Remove or reassign them first.',
+      });
+    }
+    const complaintsRef = await query('SELECT 1 FROM complaints WHERE unit_id = $1 LIMIT 1', [id]);
+    if (complaintsRef.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete unit: it has complaints linked. Remove or reassign them first.',
+      });
+    }
+    const defaultersRef = await query('SELECT 1 FROM defaulters WHERE unit_id = $1 LIMIT 1', [id]);
+    if (defaultersRef.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete unit: it has defaulter records. Resolve them first.',
+      });
+    }
+
+    await query('DELETE FROM units WHERE id = $1', [id]);
+
+    const { block_id, society_apartment_id } = existing.rows[0];
+    if (block_id) await refreshBlockTotals(block_id);
+    if (society_apartment_id) await refreshApartmentTotals(society_apartment_id);
+
+    res.json({
+      success: true,
+      message: 'Unit deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete unit error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete unit',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Import units from uploaded file
+ * Request: multipart with "file". Optional body: society_apartment_id, block_id, floor_id to apply to rows missing them.
+ * Rows must have: society_apartment_id, block_id, floor_id, unit_number. Optional: owner_name, resident_name, contact_number, email, etc.
+ * Upsert by (floor_id, unit_number): update existing, insert new.
+ */
+export const importUnits = async (req, res) => {
+  let filePath = null;
+  try {
+    if (!req.file || !req.file.path) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded. Upload a XLSX, XML, or CSV file.',
+      });
+    }
+    filePath = req.file.path;
+    const overrideSociety = req.body.society_apartment_id ? parseInt(req.body.society_apartment_id, 10) : null;
+    const overrideBlock = req.body.block_id ? parseInt(req.body.block_id, 10) : null;
+    const overrideFloor = req.body.floor_id ? parseInt(req.body.floor_id, 10) : null;
+
+    const { rows } = parseUnitsImportFile(filePath);
+    if (!rows || rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'File contains no data. Ensure the file has a header row (CSV/XLSX) or <units><unit>...</unit></units> (XML).',
+      });
+    }
+
+    const errors = [];
+    let created = 0;
+    let updated = 0;
+    const affectedBlockIds = new Set();
+    const affectedSocietyIds = new Set();
+    const MAX_ROWS = 2000;
+    if (rows.length > MAX_ROWS) {
+      return res.status(400).json({
+        success: false,
+        message: `Too many rows (${rows.length}). Maximum allowed is ${MAX_ROWS}.`,
+      });
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowIndex = i + 1;
+      const r = rows[i];
+      const society_apartment_id = overrideSociety ?? r.society_apartment_id;
+      const block_id = overrideBlock ?? r.block_id;
+      const floor_id = overrideFloor ?? r.floor_id;
+      const unit_number = r.unit_number != null ? String(r.unit_number).trim() : '';
+
+      if (!society_apartment_id || !floor_id || !unit_number) {
+        errors.push({
+          row: rowIndex,
+          message: 'Missing required: society_apartment_id, floor_id, and unit number or name.',
+        });
+        continue;
+      }
+
+      // Resolve block_id if not provided: get from floor
+      let resolvedBlockId = block_id;
+      if (!resolvedBlockId && floor_id) {
+        const floorRow = await query('SELECT block_id FROM floors WHERE id = $1', [floor_id]);
+        resolvedBlockId = floorRow.rows[0]?.block_id || null;
+      }
+      if (!resolvedBlockId) {
+        const blockRow = await query(
+          'SELECT id FROM blocks WHERE society_apartment_id = $1 ORDER BY id LIMIT 1',
+          [society_apartment_id]
+        );
+        resolvedBlockId = blockRow.rows[0]?.id || null;
+      }
+      if (!resolvedBlockId) {
+        errors.push({ row: rowIndex, message: 'Block not found for this society.' });
+        continue;
+      }
+
+      const floorCheck = await query(
+        'SELECT id, block_id FROM floors WHERE id = $1 AND block_id = $2',
+        [floor_id, resolvedBlockId]
+      );
+      if (floorCheck.rows.length === 0) {
+        errors.push({ row: rowIndex, message: 'Floor not found or does not belong to the block.' });
+        continue;
+      }
+
+      const existing = await query(
+        'SELECT id FROM units WHERE floor_id = $1 AND unit_number = $2',
+        [floor_id, unit_number]
+      );
+
+      const owner_name = r.owner_name || null;
+      const resident_name = r.resident_name || null;
+      const contact_number = r.contact_number || null;
+      const email = r.email || null;
+      const k_electric_account = r.k_electric_account || null;
+      const gas_account = r.gas_account || null;
+      const water_account = r.water_account || null;
+      const phone_tv_account = r.phone_tv_account || null;
+      const car_make_model = r.car_make_model || null;
+      const license_plate = r.license_plate || null;
+      const number_of_cars = parseInt(r.number_of_cars, 10) || 0;
+      const is_occupied = r.is_occupied === true || r.is_occupied === 'true' || r.is_occupied === 1;
+      const telephone_bills = Array.isArray(r.telephone_bills) ? r.telephone_bills : [];
+      const other_bills = Array.isArray(r.other_bills) ? r.other_bills : [];
+
+      if (existing.rows.length > 0) {
+        await query(
+          `UPDATE units SET
+            society_apartment_id = $1, block_id = $2, owner_name = $3, resident_name = $4,
+            contact_number = $5, email = $6, k_electric_account = $7, gas_account = $8,
+            water_account = $9, phone_tv_account = $10, car_make_model = $11, license_plate = $12,
+            number_of_cars = $13, is_occupied = $14, telephone_bills = $15::jsonb, other_bills = $16::jsonb,
+            updated_at = CURRENT_TIMESTAMP
+           WHERE id = $17`,
+          [
+            society_apartment_id, resolvedBlockId, owner_name, resident_name, contact_number, email,
+            k_electric_account, gas_account, water_account, phone_tv_account, car_make_model, license_plate,
+            number_of_cars, is_occupied, JSON.stringify(telephone_bills), JSON.stringify(other_bills),
+            existing.rows[0].id,
+          ]
+        );
+        updated++;
+      } else {
+        await query(
+          `INSERT INTO units (
+            society_apartment_id, block_id, floor_id, unit_number,
+            owner_name, resident_name, contact_number, email,
+            k_electric_account, gas_account, water_account, phone_tv_account,
+            car_make_model, license_plate, number_of_cars, is_occupied,
+            telephone_bills, other_bills
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, '[]'::jsonb, '[]'::jsonb)`,
+          [
+            society_apartment_id, resolvedBlockId, floor_id, unit_number,
+            owner_name, resident_name, contact_number, email,
+            k_electric_account, gas_account, water_account, phone_tv_account,
+            car_make_model, license_plate, number_of_cars, is_occupied,
+          ]
+        );
+        created++;
+      }
+      affectedBlockIds.add(resolvedBlockId);
+      affectedSocietyIds.add(society_apartment_id);
+    }
+
+    for (const bid of affectedBlockIds) {
+      await refreshBlockTotals(bid);
+    }
+    for (const sid of affectedSocietyIds) {
+      await refreshApartmentTotals(sid);
+    }
+
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (e) {
+        console.error('Could not delete temp import file:', e.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Import complete. ${created} created, ${updated} updated.${errors.length > 0 ? ` ${errors.length} row(s) had errors.` : ''}`,
+      data: {
+        created,
+        updated,
+        totalProcessed: created + updated,
+        errors: errors.slice(0, 50),
+        errorCount: errors.length,
+      },
+    });
+  } catch (error) {
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (e) {}
+    }
+    console.error('Import units error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to import units',
+      error: error.message,
+    });
+  }
+};

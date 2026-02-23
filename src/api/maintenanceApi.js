@@ -37,4 +37,8 @@ export const maintenanceApi = {
   generateForScope: (data) => {
     return api.post(API_ENDPOINTS.MAINTENANCE_GENERATE_FOR_SCOPE, data)
   },
+
+  applyBaseForYear: (data) => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_APPLY_BASE_YEAR, data)
+  },
 }

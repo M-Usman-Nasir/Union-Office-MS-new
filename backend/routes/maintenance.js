@@ -31,6 +31,9 @@ router.post('/generate-monthly-dues', requireRole(['super_admin', 'union_admin']
 // Generate monthly dues for a block or floor (union_admin only)
 router.post('/generate-for-scope', requireRole(['union_admin']), maintenanceController.generateForScope);
 
+// Apply base amount to all units for all months of a year (union_admin only)
+router.post('/apply-base-for-year', requireRole(['super_admin', 'union_admin']), maintenanceController.applyBaseForYear);
+
 // Delete maintenance record (admin only)
 router.delete('/:id', requireRole('super_admin', 'union_admin'), maintenanceController.remove);
 

@@ -18,11 +18,15 @@ import {
   Chip,
   Breadcrumbs,
   Link,
+  Checkbox,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
+import DownloadIcon from '@mui/icons-material/Download'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import useSWR from 'swr'
 import { propertyApi } from '@/api/propertyApi'
 import { apartmentApi } from '@/api/apartmentApi'
@@ -35,7 +39,7 @@ const validationSchema = Yup.object({
   society_apartment_id: Yup.number().required('Apartment is required'),
   block_id: Yup.number().required('Block is required'),
   floor_id: Yup.number().required('Floor is required'),
-  unit_number: Yup.string().required('Unit number is required'),
+  unit_number: Yup.string().required('Unit number or name is required'),
 })
 
 const Units = () => {
@@ -51,6 +55,17 @@ const Units = () => {
   const [openBulkDialog, setOpenBulkDialog] = useState(false)
   const [bulkCount, setBulkCount] = useState(1)
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [openImportDialog, setOpenImportDialog] = useState(false)
+  const [importFile, setImportFile] = useState(null)
+  const [importResult, setImportResult] = useState(null)
+  const [importSubmitting, setImportSubmitting] = useState(false)
+  const [importOverrideSociety, setImportOverrideSociety] = useState('')
+  const [importOverrideBlock, setImportOverrideBlock] = useState('')
+  const [importOverrideFloor, setImportOverrideFloor] = useState('')
+  const [unitToDelete, setUnitToDelete] = useState(null)
+  const [deletingUnit, setDeletingUnit] = useState(false)
+  const [selectedUnitIds, setSelectedUnitIds] = useState(() => new Set())
+  const [bulkDeleteIds, setBulkDeleteIds] = useState(null)
 
   useEffect(() => {
     if (societyIdFromUrl) setSocietyFilter(societyIdFromUrl)
@@ -59,6 +74,10 @@ const Units = () => {
   useEffect(() => {
     if (blockIdFromUrl) setBlockFilter(blockIdFromUrl)
   }, [blockIdFromUrl])
+
+  useEffect(() => {
+    setSelectedUnitIds(new Set())
+  }, [societyFilter, blockFilter, floorFilter])
 
   const { data: currentSocietyData } = useSWR(
     societyIdFromUrl ? ['/society', societyIdFromUrl] : null,
@@ -76,7 +95,7 @@ const Units = () => {
     () => propertyApi.getBlocks({ society_id: societyFilter }).then(res => res.data)
   )
 
-  const { data: floorsData } = useSWR(
+  const { data: floorsData, mutate: mutateFloors } = useSWR(
     blockFilter ? ['/floors', blockFilter] : null,
     () => propertyApi.getFloors({ block_id: blockFilter }).then(res => res.data)
   )
@@ -109,6 +128,15 @@ const Units = () => {
   const { data: dialogFloorsData } = useSWR(
     dialogBlockId ? ['/floors-dialog', dialogBlockId] : null,
     () => propertyApi.getFloors({ block_id: dialogBlockId }).then(res => res.data)
+  )
+
+  const { data: importBlocksData } = useSWR(
+    openImportDialog && importOverrideSociety ? ['/blocks-import', importOverrideSociety] : null,
+    () => propertyApi.getBlocks({ society_id: importOverrideSociety }).then(res => res.data)
+  )
+  const { data: importFloorsData } = useSWR(
+    openImportDialog && importOverrideBlock ? ['/floors-import', importOverrideBlock] : null,
+    () => propertyApi.getFloors({ block_id: importOverrideBlock }).then(res => res.data)
   )
 
   const { data: unitsData, isLoading, mutate } = useSWR(
@@ -167,6 +195,194 @@ const Units = () => {
     setBulkCount(1)
   }
 
+  const handleOpenImportDialog = () => {
+    setImportFile(null)
+    setImportResult(null)
+    setImportOverrideSociety(societyFilter || '')
+    setImportOverrideBlock(blockFilter || '')
+    setImportOverrideFloor(floorFilter || '')
+    setOpenImportDialog(true)
+  }
+
+  const handleCloseImportDialog = () => {
+    setOpenImportDialog(false)
+    setImportFile(null)
+    setImportResult(null)
+  }
+
+  const handleDeleteUnit = async (row) => {
+    setUnitToDelete(row)
+  }
+
+  const handleConfirmDeleteUnit = async () => {
+    if (!unitToDelete) return
+    setDeletingUnit(true)
+    try {
+      await propertyApi.deleteUnit(unitToDelete.id)
+      const payload = unitRowToCreatePayload(unitToDelete)
+      setSelectedUnitIds((prev) => {
+        const next = new Set(prev)
+        next.delete(unitToDelete.id)
+        return next
+      })
+      setUnitToDelete(null)
+      mutate()
+      mutateFloors()
+      toast(
+        (t) => (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <span>Unit deleted.</span>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                restoreUnits([payload]).then(() => toast.dismiss(t.id))
+              }}
+            >
+              Undo
+            </Button>
+          </Box>
+        ),
+        { duration: 5000 }
+      )
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete unit')
+    } finally {
+      setDeletingUnit(false)
+    }
+  }
+
+  const handleCancelDeleteUnit = () => {
+    setUnitToDelete(null)
+    setBulkDeleteIds(null)
+  }
+
+  const unitRowToCreatePayload = (row) => ({
+    society_apartment_id: row.society_apartment_id,
+    block_id: row.block_id,
+    floor_id: row.floor_id,
+    unit_number: row.unit_number,
+    owner_name: row.owner_name || null,
+    resident_name: row.resident_name || null,
+    contact_number: row.contact_number || null,
+    email: row.email || null,
+    k_electric_account: row.k_electric_account || null,
+    gas_account: row.gas_account || null,
+    water_account: row.water_account || null,
+    phone_tv_account: row.phone_tv_account || null,
+    car_make_model: row.car_make_model || null,
+    license_plate: row.license_plate || null,
+    number_of_cars: row.number_of_cars ?? 0,
+    is_occupied: row.is_occupied ?? false,
+    telephone_bills: Array.isArray(row.telephone_bills) ? row.telephone_bills : [],
+    other_bills: Array.isArray(row.other_bills) ? row.other_bills : [],
+  })
+
+  const restoreUnits = async (payloads) => {
+    try {
+      for (const p of payloads) {
+        await propertyApi.createUnit(p)
+      }
+      mutate()
+      mutateFloors()
+      toast.success(payloads.length === 1 ? 'Unit restored' : `${payloads.length} units restored`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to restore')
+    }
+  }
+
+  const handleDeleteSelected = () => {
+    if (selectedUnitIds.size === 0) return
+    setBulkDeleteIds(Array.from(selectedUnitIds))
+  }
+
+  const handleConfirmBulkDelete = async () => {
+    if (!bulkDeleteIds || bulkDeleteIds.length === 0) return
+    const payloads = (sortedUnits || [])
+      .filter((r) => bulkDeleteIds.includes(r.id))
+      .map(unitRowToCreatePayload)
+    setDeletingUnit(true)
+    let deleted = 0
+    let failed = 0
+    for (const id of bulkDeleteIds) {
+      try {
+        await propertyApi.deleteUnit(id)
+        deleted++
+      } catch {
+        failed++
+      }
+    }
+    setDeletingUnit(false)
+    setBulkDeleteIds(null)
+    setSelectedUnitIds(new Set())
+    mutate()
+    mutateFloors()
+    if (failed) toast.error(`${failed} unit(s) could not be deleted (in use or not found)`)
+    if (deleted > 0) {
+      toast(
+        (t) => (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <span>{deleted} unit(s) deleted.</span>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                restoreUnits(payloads).then(() => toast.dismiss(t.id))
+              }}
+            >
+              Undo
+            </Button>
+          </Box>
+        ),
+        { duration: 5000 }
+      )
+    }
+  }
+
+  const handleSelectAllUnits = (event) => {
+    if (!sortedUnits?.length) return
+    if (event.target.checked) {
+      setSelectedUnitIds(new Set(sortedUnits.map((r) => r.id)))
+    } else {
+      setSelectedUnitIds(new Set())
+    }
+  }
+
+  const handleToggleUnit = (id) => {
+    setSelectedUnitIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleImportUnits = async () => {
+    if (!importFile) {
+      toast.error('Please select a file (XLSX, XML, or CSV)')
+      return
+    }
+    setImportSubmitting(true)
+    setImportResult(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+      if (importOverrideSociety) formData.append('society_apartment_id', importOverrideSociety)
+      if (importOverrideBlock) formData.append('block_id', importOverrideBlock)
+      if (importOverrideFloor) formData.append('floor_id', importOverrideFloor)
+      const res = await propertyApi.importUnits(formData)
+      const data = res.data?.data ?? res.data
+      setImportResult(data)
+      toast.success(res.data?.message ?? 'Import completed')
+      mutate()
+      mutateFloors()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Import failed')
+    } finally {
+      setImportSubmitting(false)
+    }
+  }
+
   const handleBulkAddUnits = async () => {
     const count = Math.max(1, parseInt(bulkCount, 10) || 1)
     if (!floorFilter) return
@@ -175,6 +391,7 @@ const Units = () => {
       await propertyApi.addUnitsToFloor(floorFilter, count)
       toast.success(`${count} unit(s) added to ${currentFloorLabel || 'this floor'}. Union Admin can add resident details later.`)
       mutate()
+      mutateFloors()
       handleCloseBulkDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add units')
@@ -210,6 +427,7 @@ const Units = () => {
         toast.success('Unit created successfully')
       }
       mutate()
+      mutateFloors()
       handleCloseDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Operation failed')
@@ -219,7 +437,31 @@ const Units = () => {
   }
 
   const columns = [
-    { id: 'unit_number', label: 'Unit Number' },
+    {
+      id: 'select',
+      label: '',
+      width: 48,
+      header:
+        sortedUnits?.length > 0 ? (
+          <Checkbox
+            indeterminate={selectedUnitIds.size > 0 && selectedUnitIds.size < sortedUnits.length}
+            checked={sortedUnits.length > 0 && selectedUnitIds.size === sortedUnits.length}
+            onChange={handleSelectAllUnits}
+            size="small"
+            aria-label="Select all units"
+          />
+        ) : null,
+      render: (row) => (
+        <Checkbox
+          checked={selectedUnitIds.has(row.id)}
+          onChange={() => handleToggleUnit(row.id)}
+          size="small"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select unit ${row.unit_number || row.id}`}
+        />
+      ),
+    },
+    { id: 'unit_number', label: 'Unit No. / Name' },
     { id: 'block_name', label: 'Block', render: (row) => row.block_name || 'N/A' },
     {
       id: 'floor_number',
@@ -277,11 +519,23 @@ const Units = () => {
       label: 'Actions',
       align: 'right',
       render: (row) => (
-        <Tooltip title="Edit">
-          <IconButton size="small" onClick={() => handleOpenDialog(row)}>
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+          <Tooltip title="Edit">
+            <IconButton size="small" onClick={() => handleOpenDialog(row)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => handleDeleteUnit(row)}
+              aria-label={`Delete unit ${row.unit_number || row.id}`}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       ),
     },
   ]
@@ -329,7 +583,7 @@ const Units = () => {
       }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4, px: { xs: 1, sm: 2 } }}>
       {societyIdFromUrl && (
         <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
@@ -354,6 +608,24 @@ const Units = () => {
           Units Management
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedUnitIds.size > 0 && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteOutlineIcon />}
+              onClick={handleDeleteSelected}
+            >
+              Delete selected ({selectedUnitIds.size})
+            </Button>
+          )}
+          <Button
+            variant="outlined"
+            startIcon={<UploadFileIcon />}
+            onClick={handleOpenImportDialog}
+            title="Import units from XLSX, XML, or CSV file"
+          >
+            Import units
+          </Button>
           <Button
             variant="outlined"
             startIcon={<AddIcon />}
@@ -429,11 +701,13 @@ const Units = () => {
           onChange={(e) => setFloorFilter(e.target.value)}
           disabled={!blockFilter}
           sx={{ minWidth: 200 }}
+          helperText={floorFilter && resolvedFloor != null ? `${resolvedFloor.units_count ?? 0} unit(s) on this floor` : null}
         >
           <MenuItem value="">Select Floor</MenuItem>
           {floorsData?.data?.map((floor) => (
             <MenuItem key={floor.id} value={floor.id}>
-              Floor {floor.floor_number}
+              Floor {floor.floor_number === 0 ? 'Ground' : floor.floor_number}
+              {floor.units_count != null ? ` (${floor.units_count} unit${floor.units_count !== 1 ? 's' : ''})` : ''}
             </MenuItem>
           ))}
         </TextField>
@@ -453,14 +727,17 @@ const Units = () => {
         />
       </Box>
 
-      <DataTable
-        columns={columns}
-        data={sortedUnits}
-        loading={isLoading}
-        pagination={null}
-        onPageChange={() => {}}
-        onRowsPerPageChange={() => {}}
-      />
+      <Box sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden', m: 0 }}>
+        <DataTable
+          columns={columns}
+          data={sortedUnits}
+          loading={isLoading}
+          pagination={null}
+          onPageChange={() => {}}
+          onRowsPerPageChange={() => {}}
+          noHorizontalScroll
+        />
+      </Box>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <Formik
@@ -601,7 +878,7 @@ const Units = () => {
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
-                      label="Unit Number"
+                      label="Unit number or name"
                       name="unit_number"
                       value={values.unit_number}
                       onChange={handleChange}
@@ -655,6 +932,148 @@ const Units = () => {
             disabled={!floorFilter || bulkSubmitting}
           >
             {bulkSubmitting ? 'Adding…' : 'Add units'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openImportDialog} onClose={handleCloseImportDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Import units</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Upload a XLSX, XML, or CSV file. Required columns: society_apartment_id, block_id, floor_id, unit_number (or unit number or name). Optional: owner_name, resident_name, contact_number, email. If you set apartment/block/floor below, they will be applied to rows that do not have them.
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DownloadIcon />}
+              href="/templates/units-import-template.csv"
+              download="units-import-template.csv"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Download template (CSV)
+            </Button>
+            <Typography variant="caption" color="text.secondary">
+              Fill the template and upload below. You can open CSV in Excel and save as XLSX.
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            component="label"
+            startIcon={<UploadFileIcon />}
+            fullWidth
+            sx={{ mb: 2 }}
+          >
+            {importFile ? importFile.name : 'Choose XLSX, XML, or CSV'}
+            <input
+              type="file"
+              hidden
+              accept=".xlsx,.xls,.csv,.xml"
+              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+            />
+          </Button>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                select
+                fullWidth
+                label="Apply apartment to all rows (optional)"
+                value={importOverrideSociety}
+                onChange={(e) => {
+                  setImportOverrideSociety(e.target.value)
+                  setImportOverrideBlock('')
+                  setImportOverrideFloor('')
+                }}
+              >
+                <MenuItem value="">Use value from file</MenuItem>
+                {societiesData?.data?.map((s) => (
+                  <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                select
+                fullWidth
+                label="Apply block to all rows (optional)"
+                value={importOverrideBlock}
+                onChange={(e) => {
+                  setImportOverrideBlock(e.target.value)
+                  setImportOverrideFloor('')
+                }}
+                disabled={!importOverrideSociety}
+              >
+                <MenuItem value="">Use value from file</MenuItem>
+                {(importBlocksData?.data || []).map((b) => (
+                  <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                select
+                fullWidth
+                label="Apply floor to all rows (optional)"
+                value={importOverrideFloor}
+                onChange={(e) => setImportOverrideFloor(e.target.value)}
+                disabled={!importOverrideBlock}
+              >
+                <MenuItem value="">Use value from file</MenuItem>
+                {(importFloorsData?.data || []).map((f) => (
+                  <MenuItem key={f.id} value={f.id}>Floor {f.floor_number}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          </Grid>
+          {importResult && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+              <Typography variant="subtitle2">Result</Typography>
+              <Typography variant="body2">Created: {importResult.created ?? 0}, Updated: {importResult.updated ?? 0}, Errors: {importResult.errorCount ?? 0}</Typography>
+              {importResult.errors?.length > 0 && (
+                <Typography variant="caption" component="pre" sx={{ mt: 1, whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto' }}>
+                  {importResult.errors.map((e) => `Row ${e.row}: ${e.message}`).join('\n')}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseImportDialog}>{importResult ? 'Close' : 'Cancel'}</Button>
+          {!importResult && (
+            <Button
+              variant="contained"
+              onClick={handleImportUnits}
+              disabled={!importFile || importSubmitting}
+            >
+              {importSubmitting ? 'Importing…' : 'Import'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!unitToDelete || !!(bulkDeleteIds && bulkDeleteIds.length > 0)} onClose={handleCancelDeleteUnit} maxWidth="xs" fullWidth>
+        <DialogTitle>{bulkDeleteIds?.length ? 'Delete selected units' : 'Delete unit'}</DialogTitle>
+        <DialogContent>
+          <Typography>
+            {bulkDeleteIds?.length
+              ? `Delete ${bulkDeleteIds.length} selected unit(s)? This cannot be undone.`
+              : unitToDelete
+                ? `Delete unit ${unitToDelete.unit_number || unitToDelete.id}? This cannot be undone.`
+                : ''}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDeleteUnit} disabled={deletingUnit}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={bulkDeleteIds?.length ? handleConfirmBulkDelete : handleConfirmDeleteUnit}
+            disabled={deletingUnit}
+          >
+            {deletingUnit ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
