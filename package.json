@@ -32,6 +32,7 @@
     "axios": "^1.6.2",
     "react-hot-toast": "^2.4.1",
     "react-dropzone": "^14.2.3",
+    "jspdf": "^2.5.1",
     "@fontsource/inter": "^5.0.18",
     "@fontsource/poppins": "^5.0.18",
     "@fontsource/roboto": "^5.0.18"

@@ -7,7 +7,8 @@ export const getAll = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let sql = `
-      SELECT r.*, u.unit_number, u.owner_name, u.block_id, u.floor_id, f.floor_number, s.name as society_name
+      SELECT r.*, u.unit_number, u.owner_name, u.block_id, u.floor_id, f.floor_number, s.name as society_name,
+             EXISTS (SELECT 1 FROM defaulters d WHERE d.unit_id = r.unit_id AND (d.status IS NULL OR d.status = 'active')) AS is_defaulter
       FROM users r
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN floors f ON u.floor_id = f.id

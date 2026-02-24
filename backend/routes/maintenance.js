@@ -19,6 +19,9 @@ router.get('/:id', maintenanceController.getById);
 // Create maintenance record (admin only)
 router.post('/', requireRole('super_admin', 'union_admin'), maintenanceController.create);
 
+// Create maintenance for all units in one go (admin only)
+router.post('/create-for-all-units', requireRole('super_admin', 'union_admin'), maintenanceController.createForAllUnits);
+
 // Update maintenance record (admin only)
 router.put('/:id', requireRole('super_admin', 'union_admin'), maintenanceController.update);
 

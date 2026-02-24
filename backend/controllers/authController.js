@@ -49,6 +49,14 @@ export const login = async (req, res) => {
 
     const user = result.rows[0];
 
+    // Staff with placeholder email are record-only and cannot login
+    if ((user.email || '').endsWith('@no-login.local')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
+      });
+    }
+
     // Check if user is active
     if (!user.is_active) {
       return res.status(401).json({
@@ -124,25 +132,38 @@ export const login = async (req, res) => {
 // Register (for super admin to create users)
 export const register = async (req, res) => {
   try {
-    let { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status, address, city, postal_code, work_employer, work_title, work_phone } = req.body;
+    let { email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, plan_id, subscription_status, address, city, postal_code, work_employer, work_title, work_phone, department, designation, salary_rupees } = req.body;
 
-    // Validation: email, name, role always required
-    if (!email || !name || !role) {
+    // Name and role always required
+    if (!name || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Email, name, and role are required',
+        message: 'Name and role are required',
       });
     }
-    // Password required unless super_admin is assigning to a lead that already has union admin details (society_apartment_id set)
-    const passwordOptional = req.user?.role === 'super_admin' && society_apartment_id
+    // Email required except for staff created by union_admin (record-only, no login)
+    const staffNoLogin = role === 'staff' && req.user?.role === 'union_admin';
+    if (!staffNoLogin && (!email || !email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      });
+    }
+    // Password required unless super_admin lead flow or staff (record-only)
+    const passwordOptional = (req.user?.role === 'super_admin' && society_apartment_id) || staffNoLogin;
     if (!password || (typeof password === 'string' && !password.trim())) {
       if (!passwordOptional) {
         return res.status(400).json({
           success: false,
           message: 'Password is required',
-        })
+        });
       }
-      password = crypto.randomBytes(12).toString('hex')
+      password = crypto.randomBytes(24).toString('hex');
+    }
+
+    // Staff created by union_admin: use placeholder email so they cannot login
+    if (staffNoLogin && (!email || !email.trim())) {
+      email = `staff-${society_apartment_id || 0}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}@no-login.local`;
     }
 
     // Only one Super Admin exists; creating another is not allowed
@@ -209,6 +230,25 @@ export const register = async (req, res) => {
     );
 
     const newUser = result.rows[0];
+
+    // When union_admin creates staff, insert into employees (wired to society_apartment_id and created_by)
+    if (role === 'staff' && req.user?.role === 'union_admin' && req.user?.id) {
+      const empSocietyId = society_apartment_id || req.user.society_apartment_id;
+      if (empSocietyId) {
+        await query(
+          `INSERT INTO employees (user_id, society_apartment_id, created_by, department, designation, salary_rupees)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            newUser.id,
+            empSocietyId,
+            req.user.id,
+            department || null,
+            designation || work_title || null,
+            salary_rupees != null && salary_rupees !== '' ? parseFloat(salary_rupees) : null,
+          ]
+        );
+      }
+    }
 
     // Create subscription only when NOT adding from lead (lead flow uses Create Job dialog to assign plan later)
     if (role === 'union_admin' && society_apartment_id && subscription_status !== 'pending') {

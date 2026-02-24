@@ -5,38 +5,48 @@ import { createOrUpdateSubscription } from './subscriptionController.js';
 // Get all users (Super Admin: all users; Union Admin: only users in their society)
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, role, search, unassigned_only } = req.query;
+    const { page = 1, limit = 10, role, search, unassigned_only, work_title } = req.query;
     const offset = (page - 1) * limit;
 
-    let sql = 'SELECT id, email, name, role, society_apartment_id, unit_id, is_active, created_at, last_login, address, city, postal_code, work_employer, work_title, work_phone FROM users WHERE 1=1';
+    let sql = `SELECT u.id, u.email, u.name, u.role, u.society_apartment_id, u.unit_id, u.is_active, u.created_at, u.last_login, u.address, u.city, u.postal_code, u.work_employer, u.work_title, u.work_phone,
+       e.department, e.designation, e.salary_rupees
+       FROM users u
+       LEFT JOIN employees e ON e.user_id = u.id
+       WHERE 1=1`;
     const params = [];
     let paramCount = 0;
 
     // Union Admin can only see users in their assigned society
     if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
       paramCount++;
-      sql += ` AND society_apartment_id = $${paramCount}`;
+      sql += ` AND u.society_apartment_id = $${paramCount}`;
       params.push(req.user.society_apartment_id);
     }
 
     if (role) {
       paramCount++;
-      sql += ` AND role = $${paramCount}`;
+      sql += ` AND u.role = $${paramCount}`;
       params.push(role);
+    }
+
+    if (work_title !== undefined && work_title !== '') {
+      paramCount++;
+      sql += ` AND u.work_title = $${paramCount}`;
+      params.push(work_title);
     }
 
     // Super Admin: list only union admins not assigned to any apartment
     if (req.user.role === 'super_admin' && unassigned_only === 'true') {
-      sql += ' AND society_apartment_id IS NULL';
+      sql += ' AND u.society_apartment_id IS NULL';
     }
 
     if (search) {
       paramCount++;
-      sql += ` AND (name ILIKE $${paramCount} OR email ILIKE $${paramCount})`;
+      sql += ` AND (u.name ILIKE $${paramCount} OR u.email ILIKE $${paramCount})`;
       params.push(`%${search}%`);
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+    sql += ` ORDER BY u.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
     const result = await query(sql, params);
@@ -55,6 +65,11 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND role = $${countParamCount}`;
       countParams.push(role);
+    }
+    if (work_title !== undefined && work_title !== '') {
+      countParamCount++;
+      countSql += ` AND work_title = $${countParamCount}`;
+      countParams.push(work_title);
     }
     if (req.user.role === 'super_admin' && unassigned_only === 'true') {
       countSql += ' AND society_apartment_id IS NULL';
@@ -93,7 +108,11 @@ export const getById = async (req, res) => {
     const { id } = req.params;
 
     const result = await query(
-      'SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, is_active, created_at, last_login, address, city, postal_code, work_employer, work_title, work_phone FROM users WHERE id = $1',
+      `SELECT u.id, u.email, u.name, u.role, u.society_apartment_id, u.unit_id, u.cnic, u.contact_number, u.emergency_contact, u.move_in_date, u.is_active, u.created_at, u.last_login, u.address, u.city, u.postal_code, u.work_employer, u.work_title, u.work_phone,
+       e.department, e.designation, e.salary_rupees
+       FROM users u
+       LEFT JOIN employees e ON e.user_id = u.id
+       WHERE u.id = $1`,
       [id]
     );
 
@@ -181,7 +200,7 @@ export const checkEmail = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, address, city, postal_code, work_employer, work_title, work_phone } = req.body;
+    const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, address, city, postal_code, work_employer, work_title, work_phone, department, designation, salary_rupees } = req.body;
 
     const existing = await query(
       'SELECT id, role, society_apartment_id FROM users WHERE id = $1',
@@ -266,6 +285,28 @@ export const update = async (req, res) => {
       }
     }
 
+    // When updating a staff user, upsert employees row (department, designation, salary_rupees)
+    if (updatedUser.role === 'staff' && updatedUser.society_apartment_id) {
+      const createdBy = req.user?.role === 'union_admin' ? req.user.id : null;
+      await query(
+        `INSERT INTO employees (user_id, society_apartment_id, created_by, department, designation, salary_rupees)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id) DO UPDATE SET
+           department = COALESCE(EXCLUDED.department, employees.department),
+           designation = COALESCE(EXCLUDED.designation, employees.designation),
+           salary_rupees = COALESCE(EXCLUDED.salary_rupees, employees.salary_rupees),
+           updated_at = CURRENT_TIMESTAMP`,
+        [
+          id,
+          updatedUser.society_apartment_id,
+          createdBy,
+          department ?? null,
+          designation ?? work_title ?? null,
+          salary_rupees != null && salary_rupees !== '' ? parseFloat(salary_rupees) : null,
+        ]
+      );
+    }
+
     res.json({
       success: true,
       message: 'User updated successfully',
@@ -322,7 +363,7 @@ export const updatePassword = async (req, res) => {
   }
 };
 
-// Delete user
+// Delete user (super_admin: any user; union_admin: only staff in their society)
 export const remove = async (req, res) => {
   try {
     const { id } = req.params;
@@ -333,6 +374,26 @@ export const remove = async (req, res) => {
         success: false,
         message: 'You cannot delete your own account',
       });
+    }
+
+    const existing = await query(
+      'SELECT id, role, society_apartment_id FROM users WHERE id = $1',
+      [id]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+    const target = existing.rows[0];
+    if (req.user.role === 'union_admin') {
+      if (target.role !== 'staff' || target.society_apartment_id !== req.user.society_apartment_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only delete employees in your society.',
+        });
+      }
     }
 
     const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);

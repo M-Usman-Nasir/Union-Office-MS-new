@@ -127,7 +127,7 @@ export const getById = async (req, res) => {
 // Create announcement
 export const create = async (req, res) => {
   try {
-    const { title, description, type, audience, language, visible_to_all, society_apartment_id, block_id } = req.body;
+    const { title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, announcement_date } = req.body;
 
     if (!title || !description || !society_apartment_id) {
       return res.status(400).json({
@@ -137,8 +137,8 @@ export const create = async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO announcements (title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, created_by, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+      `INSERT INTO announcements (title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, created_by, is_active, announcement_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10::DATE)
        RETURNING *`,
       [
         title,
@@ -150,6 +150,7 @@ export const create = async (req, res) => {
         society_apartment_id,
         block_id || null,
         req.user.id,
+        announcement_date || null,
       ]
     );
 
@@ -172,7 +173,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, type, audience, language, visible_to_all, is_active } = req.body;
+    const { title, description, type, audience, language, visible_to_all, is_active, announcement_date } = req.body;
 
     const existing = await query('SELECT id FROM announcements WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
@@ -191,10 +192,11 @@ export const update = async (req, res) => {
            language = COALESCE($5, language),
            visible_to_all = COALESCE($6, visible_to_all),
            is_active = COALESCE($7, is_active),
+           announcement_date = COALESCE($8::DATE, announcement_date),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $8
+       WHERE id = $9
        RETURNING *`,
-      [title, description, type, audience, language, visible_to_all, is_active, id]
+      [title, description, type, audience, language, visible_to_all, is_active, announcement_date || null, id]
     );
 
     res.json({

@@ -30,12 +30,14 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import RemoveIcon from '@mui/icons-material/Remove'
 import { useAuth } from '@/contexts/AuthContext'
-import useSWR, { useSWRConfig } from 'swr'
+import { useNavigate } from 'react-router-dom'
+import useSWR from 'swr'
 import { residentApi } from '@/api/residentApi'
 import { userApi } from '@/api/userApi'
 import { propertyApi } from '@/api/propertyApi'
 import { apartmentApi } from '@/api/apartmentApi'
 import DataTable from '@/components/common/DataTable'
+import { ROUTES } from '@/utils/constants'
 import dayjs from 'dayjs'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -68,6 +70,7 @@ const getValidationSchema = (isEdit, apartmentCreatedAt) => Yup.object({
 
 const Residents = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
@@ -75,8 +78,6 @@ const Residents = () => {
   const [editingResident, setEditingResident] = useState(null)
   const [selectedBlockId, setSelectedBlockId] = useState(null)
   const [selectedFloorId, setSelectedFloorId] = useState('')
-  const [viewDialogOpen, setViewDialogOpen] = useState(false)
-  const [viewingResident, setViewingResident] = useState(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [idToDelete, setIdToDelete] = useState(null)
   const [actionMenuAnchor, setActionMenuAnchor] = useState(null)
@@ -86,14 +87,9 @@ const Residents = () => {
   const [formFloorId, setFormFloorId] = useState('')
   /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
   const [emailCheckStatus, setEmailCheckStatus] = useState(null)
-  /** Add family member form (view dialog) */
-  const [familyMemberName, setFamilyMemberName] = useState('')
-  const [familyMemberRelation, setFamilyMemberRelation] = useState('')
-  const [addFamilyMemberLoading, setAddFamilyMemberLoading] = useState(false)
   /** Toggle password visibility in Add New Resident dialog */
   const [showPassword, setShowPassword] = useState(false)
 
-  const { mutate: mutateSWR } = useSWRConfig()
   const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
   const fetchParams = { page, limit, search, society_id: societyId }
   if (selectedBlockId != null && selectedBlockId !== '') {
@@ -157,13 +153,6 @@ const Residents = () => {
     selectedBlockId ? ['/floors-block', selectedBlockId] : null,
     () => propertyApi.getFloors({ block_id: selectedBlockId }).then(res => res.data)
   )
-
-  // Family members for the resident being viewed
-  const { data: familyMembersData } = useSWR(
-    viewDialogOpen && viewingResident?.id ? ['/family-members', viewingResident.id] : null,
-    () => residentApi.getFamilyMembers(viewingResident.id).then(res => res.data)
-  )
-  const familyMembers = familyMembersData?.data || []
 
   const handleOpenDialog = (resident = null) => {
     setEditingResident(resident)
@@ -255,16 +244,10 @@ const Residents = () => {
     }
   }
 
-  const handleView = async (row) => {
+  const handleView = (row) => {
     setActionMenuAnchor(null)
     setActionMenuRow(null)
-    try {
-      const res = await residentApi.getById(row.id)
-      setViewingResident(res.data?.data ?? row)
-      setViewDialogOpen(true)
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to load resident details')
-    }
+    navigate(ROUTES.ADMIN_RESIDENT_PROFILE(row.id))
   }
 
   const handleDeleteClick = (id) => {
@@ -303,30 +286,6 @@ const Residents = () => {
     setActionMenuRow(null)
   }
 
-  const handleAddFamilyMember = async () => {
-    const name = familyMemberName.trim()
-    if (!name) {
-      toast.error('Name is required')
-      return
-    }
-    if (!viewingResident?.id) return
-    setAddFamilyMemberLoading(true)
-    try {
-      await residentApi.createFamilyMember(viewingResident.id, {
-        name,
-        relation: familyMemberRelation.trim() || undefined,
-      })
-      toast.success('Family member added')
-      setFamilyMemberName('')
-      setFamilyMemberRelation('')
-      await mutateSWR(['/family-members', viewingResident.id])
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to add family member')
-    } finally {
-      setAddFamilyMemberLoading(false)
-    }
-  }
-
   const columns = [
     {
       id: 'name',
@@ -337,21 +296,7 @@ const Residents = () => {
           e.stopPropagation()
           handleView(row)
         }
-        return row.role === 'union_admin' ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography
-              component="span"
-              variant="body2"
-              fontWeight={600}
-              color="primary.main"
-              onClick={handleNameClick}
-              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-            >
-              {nameContent}
-            </Typography>
-            <Chip label="Union Admin" size="small" color="primary" variant="outlined" sx={{ height: 22 }} />
-          </Box>
-        ) : (
+        return (
           <Typography
             component="span"
             variant="body2"
@@ -385,13 +330,13 @@ const Residents = () => {
     { id: 'contact_number', label: 'Phone No.', render: (row) => row.contact_number || '-' },
     { id: 'email', label: 'Email', render: (row) => row.email || '-' },
     {
-      id: 'role',
-      label: 'Role',
+      id: 'defaulter_status',
+      label: 'Defaulter status',
       render: (row) =>
-        row.role === 'union_admin' ? (
-          <Chip label="Union Admin" size="small" color="primary" variant="filled" sx={{ fontWeight: 600 }} />
+        row.is_defaulter ? (
+          <Chip label="Defaulter" size="small" color="error" variant="outlined" />
         ) : (
-          <Typography variant="body2" color="text.secondary">Resident</Typography>
+          <Chip label="Non-defaulter" size="small" color="success" variant="outlined" />
         ),
     },
     {
@@ -614,106 +559,6 @@ const Residents = () => {
         }}
         dense
       />
-
-      <Dialog open={viewDialogOpen} onClose={() => { setViewDialogOpen(false); setViewingResident(null); setFamilyMemberName(''); setFamilyMemberRelation('') }} maxWidth="sm" fullWidth>
-        <DialogTitle>Resident details</DialogTitle>
-        <DialogContent dividers>
-          {viewingResident && (
-            <Grid container spacing={2} sx={{ pt: 1 }}>
-              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Full Name</Typography><Typography variant="body1">{viewingResident.name || '-'}</Typography></Grid>
-              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Unit No.</Typography><Typography variant="body1">{viewingResident.unit_number || '-'}</Typography></Grid>
-              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Phone No.</Typography><Typography variant="body1">{viewingResident.contact_number || '-'}</Typography></Grid>
-              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Email</Typography><Typography variant="body1">{viewingResident.email || '-'}</Typography></Grid>
-              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Role</Typography><Typography variant="body1">{viewingResident.role === 'union_admin' ? 'Union Admin' : 'Resident'}</Typography></Grid>
-              <Grid item xs={12}><Typography variant="body2" color="text.secondary">Status</Typography><Typography variant="body1">{viewingResident.is_active !== false ? 'Active' : 'Inactive'}</Typography></Grid>
-
-              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Utilities</Typography></Grid>
-              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">K-Electric</Typography><Typography variant="body1">{viewingResident.k_electric_account || '-'}</Typography></Grid>
-              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">Gas</Typography><Typography variant="body1">{viewingResident.gas_account || '-'}</Typography></Grid>
-              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">Water</Typography><Typography variant="body1">{viewingResident.water_account || '-'}</Typography></Grid>
-              <Grid item xs={12} sm={6}><Typography variant="body2" color="text.secondary">Phone/TV</Typography><Typography variant="body1">{viewingResident.phone_tv_account || '-'}</Typography></Grid>
-
-              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Vehicles</Typography></Grid>
-              <Grid item xs={12} sm={4}><Typography variant="body2" color="text.secondary">Cars No.</Typography><Typography variant="body1">{viewingResident.number_of_cars ?? '-'}</Typography></Grid>
-              <Grid item xs={12} sm={4}><Typography variant="body2" color="text.secondary">Make &amp; Model</Typography><Typography variant="body1">{viewingResident.car_make_model || '-'}</Typography></Grid>
-              <Grid item xs={12} sm={4}><Typography variant="body2" color="text.secondary">License Plate</Typography><Typography variant="body1">{viewingResident.license_plate || '-'}</Typography></Grid>
-
-              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Defaulter</Typography></Grid>
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">Status</Typography>
-                <Typography variant="body1">
-                  {viewingResident.defaulter_status
-                    ? `${viewingResident.defaulter_status}${viewingResident.defaulter_amount_due != null ? ` (Amount due: ${viewingResident.defaulter_amount_due})` : ''}${viewingResident.defaulter_months_overdue != null ? `, ${viewingResident.defaulter_months_overdue} mo. overdue` : ''}`
-                    : 'Not a defaulter'}
-                </Typography>
-              </Grid>
-
-              {(Array.isArray(viewingResident.telephone_bills) && viewingResident.telephone_bills.length > 0) || (Array.isArray(viewingResident.other_bills) && viewingResident.other_bills.length > 0) ? (
-                <>
-                  <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Bills</Typography></Grid>
-                  {Array.isArray(viewingResident.telephone_bills) && viewingResident.telephone_bills.length > 0 && (
-                    <Grid item xs={12}>
-                      <Typography variant="body2" color="text.secondary">Telephone</Typography>
-                      <Typography variant="body1" component="span">{viewingResident.telephone_bills.map((b) => `${b.provider || 'N/A'} ${b.account_number || ''} (${b.amount ?? 0})`).join(', ') || '-'}</Typography>
-                    </Grid>
-                  )}
-                  {Array.isArray(viewingResident.other_bills) && viewingResident.other_bills.length > 0 && (
-                    <Grid item xs={12}>
-                      <Typography variant="body2" color="text.secondary">Other</Typography>
-                      <Typography variant="body1" component="span">{viewingResident.other_bills.map((b) => `${b.type || 'N/A'} ${b.provider || ''} (${b.amount ?? 0})`).join(', ') || '-'}</Typography>
-                    </Grid>
-                  )}
-                </>
-              ) : null}
-
-              <Grid item xs={12}><Typography variant="subtitle2" sx={{ mt: 1 }}>Family Members</Typography></Grid>
-              <Grid item xs={12}>
-                {familyMembers.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">No family members added.</Typography>
-                ) : (
-                  <Box component="ul" sx={{ m: 0, pl: 2 }}>
-                    {familyMembers.map((fm) => (
-                      <li key={fm.id}><Typography variant="body1">{fm.name}{fm.relation ? ` (${fm.relation})` : ''}</Typography></li>
-                    ))}
-                  </Box>
-                )}
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mt: 1 }}>
-                  <TextField
-                    size="small"
-                    placeholder="Name"
-                    value={familyMemberName}
-                    onChange={(e) => setFamilyMemberName(e.target.value)}
-                    sx={{ minWidth: 140 }}
-                    disabled={addFamilyMemberLoading}
-                  />
-                  <TextField
-                    size="small"
-                    placeholder="Relation (e.g. Spouse, Child)"
-                    value={familyMemberRelation}
-                    onChange={(e) => setFamilyMemberRelation(e.target.value)}
-                    sx={{ minWidth: 160 }}
-                    disabled={addFamilyMemberLoading}
-                  />
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={addFamilyMemberLoading ? <CircularProgress size={16} /> : <AddIcon />}
-                    onClick={handleAddFamilyMember}
-                    disabled={addFamilyMemberLoading}
-                  >
-                    Add family member
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setViewDialogOpen(false); setViewingResident(null); setFamilyMemberName(''); setFamilyMemberRelation('') }}>Close</Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={deleteConfirmOpen} onClose={handleDeleteCancel}>
         <DialogTitle>Delete resident?</DialogTitle>

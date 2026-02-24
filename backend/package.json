@@ -14,7 +14,8 @@
     "hash:password": "node scripts/hashPassword.js",
     "migrate": "node scripts/runMigrations.js",
     "migrate:lastlogin": "node scripts/addLastLoginColumn.js",
-    "seed": "node scripts/seedDatabase.js"
+    "seed": "node scripts/seedDatabase.js",
+    "seed:residents": "node scripts/seedResidentsForSociety.js"
   },
   "keywords": [
     "express",

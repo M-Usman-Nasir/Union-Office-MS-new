@@ -41,4 +41,8 @@ export const maintenanceApi = {
   applyBaseForYear: (data) => {
     return api.post(API_ENDPOINTS.MAINTENANCE_APPLY_BASE_YEAR, data)
   },
+
+  createForAllUnits: (data) => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_CREATE_FOR_ALL_UNITS, data)
+  },
 }

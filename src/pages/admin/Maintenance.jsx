@@ -41,6 +41,7 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR, { useSWRConfig } from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
@@ -52,7 +53,9 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
 const validationSchema = Yup.object({
-  unit_id: Yup.number().required('Unit is required'),
+  unit_id: Yup.mixed()
+    .required('Select a unit or All units')
+    .test('unit-or-all', 'Select a unit or All units', (v) => v === 'all' || (typeof v === 'number' && !Number.isNaN(v))),
   month: Yup.number().min(1).max(12).required('Month is required'),
   year: Yup.number().required('Year is required'),
   amount: Yup.number().min(0).required('Amount is required'),
@@ -101,10 +104,14 @@ const Maintenance = () => {
   const [formFloorId, setFormFloorId] = useState('')
   const [columnVisibility, setColumnVisibility] = useState({})
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null)
+  const [optionsMenuAnchor, setOptionsMenuAnchor] = useState(null)
   const [confirmGenerate, setConfirmGenerate] = useState(null) // { action: 'block' | 'floor', blockName?: string }
+  const [generateScopeMonth, setGenerateScopeMonth] = useState(() => new Date().getMonth() + 1)
+  const [generateScopeYear, setGenerateScopeYear] = useState(() => new Date().getFullYear())
   const [selectedLedgerRow, setSelectedLedgerRow] = useState(null)
   const [monthCellEdit, setMonthCellEdit] = useState(null) // { ledgerRow, month } → opens Add/Edit dialog with prefill
   const [addPrefill, setAddPrefill] = useState(null) // { unit_id, block_id, floor_id, month, year } when adding from month cell
+  const [cellContext, setCellContext] = useState(null) // when set: dialog opened from cell click → lock block/floor/unit/month/year
   const [recordToDelete, setRecordToDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [dueDateInfoAnchor, setDueDateInfoAnchor] = useState(null)
@@ -112,11 +119,12 @@ const Maintenance = () => {
   const [recordingPaymentInDialog, setRecordingPaymentInDialog] = useState(false)
   const [markingFullyPaid, setMarkingFullyPaid] = useState(false)
   const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false)
-  const [dialogMode, setDialogMode] = useState('create') // 'create' | 'record_payment'
+  const [dialogMode, setDialogMode] = useState('create') // 'create' | 'edit' | 'record_payment' (edit only when cellContext set)
   const [recordPaymentLookup, setRecordPaymentLookup] = useState({ unit_id: null, month: null, year: null })
   const [markFullyPaidAnchor, setMarkFullyPaidAnchor] = useState(null) // { anchorEl, row, month, dueAmount }
   const [markFullyPaidLoading, setMarkFullyPaidLoading] = useState(false)
   const [applyingBaseYear, setApplyingBaseYear] = useState(false)
+  const [creatingNextYear, setCreatingNextYear] = useState(false)
 
   const { data: maintenanceConfigData } = useSWR(
     societyId ? ['/settings/maintenance-config', societyId] : null,
@@ -127,14 +135,16 @@ const Maintenance = () => {
   const baseAmount = Number(societyLevelConfig?.base_amount) || 0
 
   const unitIdForFetch = selectedLedgerRow?.unit_id ?? monthCellEdit?.ledgerRow?.unit_id
-  const { data: unitMaintenanceData, mutate: mutateUnitMaintenance } = useSWR(
+  const { data: unitMaintenanceData, error: unitMaintenanceError, mutate: mutateUnitMaintenance } = useSWR(
     societyId && unitIdForFetch && (selectedLedgerRow || monthCellEdit)
       ? ['/maintenance/unit', unitIdForFetch, year]
       : null,
-    (_, key) =>
-      maintenanceApi
+    (key) => {
+      if (!key || key[1] == null) return Promise.resolve({ data: [], success: true })
+      return maintenanceApi
         .getAll({ unit_id: key[1], year, society_id: societyId, limit: 12 })
         .then(res => res.data)
+    }
   )
 
   const { data: ledgerData, isLoading, mutate } = useSWR(
@@ -157,7 +167,9 @@ const Maintenance = () => {
     societyId && recordPaymentLookupKey
       ? recordPaymentLookupKey
       : null,
-    async ([, unitId, month, year]) => {
+    async (key) => {
+      if (!key || key[1] == null || key[2] == null || key[3] == null) return null
+      const [, unitId, month, year] = key
       const res = await maintenanceApi.getAll({
         unit_id: unitId,
         year: Number(year),
@@ -220,6 +232,7 @@ const Maintenance = () => {
     setOpenDialog(false)
     setEditingMaintenance(null)
     setAddPrefill(null)
+    setCellContext(null)
     setPaymentReceivedAmount('')
     setPaymentSectionExpanded(false)
     setFormBlockId('')
@@ -235,18 +248,43 @@ const Maintenance = () => {
     }
   }, [openDialog, unitForEdit])
 
-  // When unit maintenance data arrives after a month-cell click: if a record exists, switch dialog to Edit mode
+  // Clear cell-loading state on fetch error or timeout so user isn't stuck on "Loading maintenance data…"
   useEffect(() => {
-    if (!monthCellEdit || !unitMaintenanceData) return
-    const rowUnitId = monthCellEdit.ledgerRow?.unit_id
+    if (!monthCellEdit) return
+    if (unitMaintenanceError) {
+      toast.error(unitMaintenanceError?.message || 'Failed to load maintenance data')
+      setMonthCellEdit(null)
+      return
+    }
+    const timeout = setTimeout(() => {
+      setMonthCellEdit((prev) => {
+        if (!prev) return null
+        toast.error('Loading took too long. Please try again.')
+        return null
+      })
+    }, 12000)
+    return () => clearTimeout(timeout)
+  }, [monthCellEdit, unitMaintenanceError])
+
+  // When unit maintenance data arrives: if dialog is open with cellContext, update editingMaintenance / dialogMode and clear monthCellEdit
+  useEffect(() => {
+    if (!unitMaintenanceData || !cellContext) return
+    const rowUnitId = cellContext.unit_id
     if (rowUnitId == null || String(unitIdForFetch) !== String(rowUnitId)) return
-    const monthRecord = (unitMaintenanceData?.data || []).find((r) => r.month === monthCellEdit.month)
+    const list = Array.isArray(unitMaintenanceData)
+      ? unitMaintenanceData
+      : (unitMaintenanceData?.data || [])
+    const monthRecord = list.find((r) => Number(r.month) === Number(cellContext.month))
     if (monthRecord) {
       setEditingMaintenance(monthRecord)
       setAddPrefill(null)
+      setDialogMode('edit')
+    } else {
+      setEditingMaintenance(null)
+      // addPrefill already set when we opened from cell
     }
     setMonthCellEdit(null)
-  }, [monthCellEdit, unitMaintenanceData, unitIdForFetch, year])
+  }, [unitMaintenanceData, cellContext, unitIdForFetch])
 
   // When dialog shows an existing record, pre-fill "Amount received" with current due so admin sees remaining to pay
   useEffect(() => {
@@ -259,7 +297,7 @@ const Maintenance = () => {
 
   // In record_payment mode: when auto-loaded record arrives, fetch full record by ID so total_amount/amount_paid are correct
   useEffect(() => {
-    if (dialogMode !== 'record_payment' || !recordPaymentLookupKey) return
+    if (cellContext || dialogMode !== 'record_payment' || !recordPaymentLookupKey) return
     if (recordPaymentLoading) {
       setEditingMaintenance(null)
       return
@@ -281,7 +319,7 @@ const Maintenance = () => {
         if (!cancelled) setEditingMaintenance(recordPaymentRecord)
       })
     return () => { cancelled = true }
-  }, [dialogMode, recordPaymentLookupKey, recordPaymentLoading, recordPaymentRecord])
+  }, [cellContext, dialogMode, recordPaymentLookupKey, recordPaymentLoading, recordPaymentRecord])
 
   const handleClosePaymentDialog = () => {
     setOpenPaymentDialog(false)
@@ -300,24 +338,46 @@ const Maintenance = () => {
       delete payload.block_id
       delete payload.floor_id
       delete payload.amount
-      if (editingMaintenance) {
-        await maintenanceApi.update(editingMaintenance.id, payload)
+
+      const existingId = editingMaintenance?.id
+      if (existingId) {
+        await maintenanceApi.update(existingId, payload)
         toast.success('Maintenance record updated successfully')
         mutate()
         mutateUnitMaintenance()
         handleCloseDialog()
-      } else {
-        const res = await maintenanceApi.create({ ...payload, society_apartment_id: societyId })
-        toast.success('Maintenance record created successfully')
+        return
+      }
+      if (cellContext && dialogMode === 'edit') {
+        toast.error('Record not loaded yet. Please wait or close and try again.')
+        setSubmitting(false)
+        return
+      }
+      if (payload.unit_id === 'all') {
+        const res = await maintenanceApi.createForAllUnits({
+          society_apartment_id: societyId,
+          month: payload.month,
+          year: payload.year,
+          base_amount: amount,
+          total_amount: amount,
+          due_date: payload.due_date || null,
+        })
+        const msg = res.data?.message ?? (res.data?.data ? `${res.data.data.created} created, ${res.data.data.skipped} skipped` : 'Maintenance created for all units')
+        toast.success(msg)
         mutate()
-        mutateUnitMaintenance()
-        const created = res.data?.data ?? res.data
-        if (created?.id) {
-          setEditingMaintenance(created)
-          setAddPrefill(null)
-        } else {
-          handleCloseDialog()
-        }
+        handleCloseDialog()
+        return
+      }
+      const res = await maintenanceApi.create({ ...payload, society_apartment_id: societyId })
+      toast.success('Maintenance record created successfully')
+      mutate()
+      mutateUnitMaintenance()
+      const created = res.data?.data ?? res.data
+      if (created?.id) {
+        setEditingMaintenance(created)
+        setAddPrefill(null)
+      } else {
+        handleCloseDialog()
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Operation failed')
@@ -506,6 +566,22 @@ const Maintenance = () => {
     }
   }
 
+  const handleCreateNextYear = async () => {
+    const nextYear = currentYear + 1
+    setCreatingNextYear(true)
+    try {
+      const res = await maintenanceApi.applyBaseForYear({ year: nextYear })
+      const msg = res.data?.message ?? (res.data?.data ? `${res.data.data.created} record(s) created for ${nextYear}` : `Next year (${nextYear}) created`)
+      toast.success(msg)
+      mutate()
+      setYear(nextYear)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to create next year')
+    } finally {
+      setCreatingNextYear(false)
+    }
+  }
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
@@ -524,11 +600,30 @@ const Maintenance = () => {
   }
 
   const columns = [
-    { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || row.flat_no || '-' },
-    { id: 'resident_name', label: 'Resident Name', render: (row) => row.resident_name || '—' },
+    {
+      id: 'unit_number',
+      label: 'Unit No.',
+      minWidth: 88,
+      render: (row) => (
+        <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+          {row.unit_number || row.flat_no || '-'}
+        </Box>
+      ),
+    },
+    {
+      id: 'resident_name',
+      label: 'Resident Name',
+      minWidth: 140,
+      render: (row) => (
+        <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+          {row.resident_name || '—'}
+        </Box>
+      ),
+    },
     {
       id: 'floor_number',
       label: 'Floor',
+      minWidth: 72,
       render: (row) => formatFloorLabel(row.floor_number),
     },
     ...MONTH_LABELS.map((label, i) => {
@@ -570,30 +665,34 @@ const Maintenance = () => {
             </Box>
           )
         },
-        onClick: (row, e) => {
+        onClick: (row) => {
           const cellAmount = Number(row[key]) || 0
-          if (cellAmount > 0 && e?.currentTarget) {
-            setMarkFullyPaidAnchor({
-              anchorEl: e.currentTarget,
-              row,
-              month: monthNum,
-              dueAmount: cellAmount,
-            })
-          } else {
-            setMonthCellEdit({ ledgerRow: row, month: monthNum })
-            setAddPrefill({
-              unit_id: row.unit_id,
-              block_id: row.block_id ?? '',
-              floor_id: row.floor_id ?? '',
-              month: monthNum,
-              year,
-              amount: cellAmount || baseAmount,
-            })
-            setEditingMaintenance(null)
-            setFormBlockId(row.block_id ?? '')
-            setFormFloorId(row.floor_id ?? '')
-            setOpenDialog(true)
+          const payload = {
+            ledgerRow: row,
+            month: monthNum,
+            cellAmount: cellAmount || baseAmount,
           }
+          setMonthCellEdit(payload)
+          setCellContext({
+            block_id: row?.block_id ?? '',
+            floor_id: row?.floor_id ?? '',
+            unit_id: row?.unit_id,
+            month: monthNum,
+            year,
+          })
+          setAddPrefill({
+            unit_id: row?.unit_id,
+            block_id: row?.block_id ?? '',
+            floor_id: row?.floor_id ?? '',
+            month: monthNum,
+            year,
+            amount: cellAmount || baseAmount,
+          })
+          setEditingMaintenance(null)
+          setDialogMode('create')
+          setFormBlockId(row?.block_id ?? '')
+          setFormFloorId(row?.floor_id ?? '')
+          setOpenDialog(true)
         },
       }
     }),
@@ -654,35 +753,49 @@ const Maintenance = () => {
 
   const currentMonth = new Date().getMonth() + 1
 
-  const initialValues = editingMaintenance
+  const initialValues = cellContext
     ? {
-        block_id: unitForEdit?.block_id ?? '',
-        floor_id: unitForEdit?.floor_id ?? '',
-        unit_id: editingMaintenance.unit_id || '',
-        month: editingMaintenance.month || currentMonth,
-        year: editingMaintenance.year || currentYear,
-        amount: editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0,
-        due_date: editingMaintenance.due_date ? editingMaintenance.due_date.slice(0, 10) : '',
+        block_id: cellContext.block_id ?? '',
+        floor_id: cellContext.floor_id ?? '',
+        unit_id: cellContext.unit_id ?? '',
+        month: cellContext.month ?? currentMonth,
+        year: cellContext.year ?? currentYear,
+        amount: editingMaintenance
+          ? (editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0)
+          : (addPrefill?.amount ?? baseAmount),
+        due_date: editingMaintenance?.due_date
+          ? editingMaintenance.due_date.slice(0, 10)
+          : '',
       }
-    : addPrefill
+    : editingMaintenance
       ? {
-          block_id: addPrefill.block_id ?? '',
-          floor_id: addPrefill.floor_id ?? '',
-          unit_id: addPrefill.unit_id ?? '',
-          month: addPrefill.month ?? currentMonth,
-          year: addPrefill.year ?? currentYear,
-          amount: addPrefill.amount ?? baseAmount,
-          due_date: '',
+          block_id: unitForEdit?.block_id ?? '',
+          floor_id: unitForEdit?.floor_id ?? '',
+          unit_id: editingMaintenance.unit_id || '',
+          month: editingMaintenance.month || currentMonth,
+          year: editingMaintenance.year || currentYear,
+          amount: editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0,
+          due_date: editingMaintenance.due_date ? editingMaintenance.due_date.slice(0, 10) : '',
         }
-      : {
-          block_id: '',
-          floor_id: '',
-          unit_id: '',
-          month: currentMonth,
-          year: currentYear,
-          amount: baseAmount,
-          due_date: '',
-        }
+      : addPrefill
+        ? {
+            block_id: addPrefill.block_id ?? '',
+            floor_id: addPrefill.floor_id ?? '',
+            unit_id: addPrefill.unit_id ?? '',
+            month: addPrefill.month ?? currentMonth,
+            year: addPrefill.year ?? currentYear,
+            amount: addPrefill.amount ?? baseAmount,
+            due_date: '',
+          }
+        : {
+            block_id: '',
+            floor_id: '',
+            unit_id: '',
+            month: currentMonth,
+            year: currentYear,
+            amount: baseAmount,
+            due_date: '',
+          }
 
   const formValidationSchema = dialogMode === 'record_payment' ? recordPaymentOnlySchema : validationSchema
 
@@ -702,12 +815,16 @@ const Maintenance = () => {
 
   const handleGenerateForBlock = () => {
     if (!selectedBlockId) return
+    setGenerateScopeMonth(currentMonth)
+    setGenerateScopeYear(currentYear)
     const blockName = blocks.find((b) => String(b.id) === String(selectedBlockId))?.name || 'this block'
     setConfirmGenerate({ action: 'block', blockName })
   }
 
   const handleGenerateForFloor = () => {
     if (!selectedFloorId) return
+    setGenerateScopeMonth(currentMonth)
+    setGenerateScopeYear(currentYear)
     setConfirmGenerate({ action: 'floor' })
   }
 
@@ -721,8 +838,8 @@ const Maintenance = () => {
         const res = await maintenanceApi.generateForScope({
           scope: 'block',
           block_id: selectedBlockId,
-          month: currentMonth,
-          year: currentYear,
+          month: generateScopeMonth,
+          year: generateScopeYear,
         })
         const data = res.data?.data || res.data
         toast.success(data ? `${data.successful} record(s) created` : 'Dues generated for block')
@@ -731,8 +848,8 @@ const Maintenance = () => {
           scope: 'floor',
           floor_id: selectedFloorId,
           block_id: selectedBlockId || undefined,
-          month: currentMonth,
-          year: currentYear,
+          month: generateScopeMonth,
+          year: generateScopeYear,
         })
         const data = res.data?.data || res.data
         toast.success(data ? `${data.successful} record(s) created` : 'Dues generated for floor')
@@ -796,44 +913,73 @@ const Maintenance = () => {
         <Typography variant="h4" component="h1">
           Maintenance Management
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button
             variant="outlined"
-            startIcon={<CalendarTodayIcon />}
-            onClick={() => setOpenGenerateDialog(true)}
-            color="primary"
-            disabled={generating}
+            endIcon={<ArrowDropDownIcon />}
+            onClick={(e) => setOptionsMenuAnchor(e.currentTarget)}
+            disabled={generating || applyingBaseYear || creatingNextYear}
           >
-            Generate Monthly Dues
+            Options
           </Button>
-          <Button
-            variant="outlined"
-            onClick={handleApplyBaseForYear}
-            disabled={generating || applyingBaseYear || baseAmount <= 0}
-            title={baseAmount <= 0 ? 'Set Base Amount in Settings first' : `Apply base amount (${formatCurrency(baseAmount)}) to all units for ${year}`}
+          <Menu
+            anchorEl={optionsMenuAnchor}
+            open={Boolean(optionsMenuAnchor)}
+            onClose={() => setOptionsMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
           >
-            {applyingBaseYear ? 'Applying…' : `Apply base to all units (${year})`}
-          </Button>
-          {selectedBlockId && (
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleGenerateForBlock}
+            <MenuItem
+              onClick={() => {
+                setOpenGenerateDialog(true)
+                setOptionsMenuAnchor(null)
+              }}
               disabled={generating}
             >
-              {generating ? 'Generating…' : 'Generate for this block'}
-            </Button>
-          )}
-          {selectedBlockId && selectedFloorId && (
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleGenerateForFloor}
-              disabled={generating}
+              <ListItemIcon><CalendarTodayIcon fontSize="small" /></ListItemIcon>
+              <ListItemText primary="Generate Monthly Dues" />
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                handleApplyBaseForYear()
+                setOptionsMenuAnchor(null)
+              }}
+              disabled={generating || applyingBaseYear || baseAmount <= 0}
             >
-              {generating ? 'Generating…' : 'Generate for this floor'}
-            </Button>
-          )}
+              <ListItemText primary={applyingBaseYear ? 'Applying…' : `Apply base to all units (${year})`} />
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                handleCreateNextYear()
+                setOptionsMenuAnchor(null)
+              }}
+              disabled={generating || creatingNextYear || baseAmount <= 0}
+            >
+              <ListItemText primary={creatingNextYear ? 'Creating…' : `Create new year (${currentYear + 1})`} />
+            </MenuItem>
+            {selectedBlockId && (
+              <MenuItem
+                onClick={() => {
+                  handleGenerateForBlock()
+                  setOptionsMenuAnchor(null)
+                }}
+                disabled={generating}
+              >
+                <ListItemText primary={generating ? 'Generating…' : 'Generate for this block'} />
+              </MenuItem>
+            )}
+            {selectedBlockId && selectedFloorId && (
+              <MenuItem
+                onClick={() => {
+                  handleGenerateForFloor()
+                  setOptionsMenuAnchor(null)
+                }}
+                disabled={generating}
+              >
+                <ListItemText primary={generating ? 'Generating…' : 'Generate for this floor'} />
+              </MenuItem>
+            )}
+          </Menu>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -874,7 +1020,7 @@ const Maintenance = () => {
           size="small"
           sx={{ minWidth: 120 }}
         >
-          {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
+          {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2].map((y) => (
             <MenuItem key={y} value={y}>
               {y}
             </MenuItem>
@@ -1010,24 +1156,45 @@ const Maintenance = () => {
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
               <DialogTitle>
-                {dialogMode === 'record_payment'
-                  ? 'Record payment (existing record)'
-                  : editingMaintenance
-                    ? 'Edit Maintenance Record'
-                    : 'Add New Maintenance Record'}
+                {cellContext
+                  ? (dialogMode === 'record_payment'
+                      ? 'Record payment'
+                      : dialogMode === 'edit'
+                        ? 'Edit Maintenance Record'
+                        : 'Create New Maintenance Record')
+                  : dialogMode === 'record_payment'
+                    ? 'Record payment (existing record)'
+                    : editingMaintenance
+                      ? 'Edit Maintenance Record'
+                      : 'Add New Maintenance Record'}
               </DialogTitle>
               <Tabs
-                value={dialogMode}
+                value={cellContext ? (dialogMode === 'edit' ? 'edit' : dialogMode) : dialogMode}
                 onChange={(_, v) => {
                   setDialogMode(v)
-                  setEditingMaintenance(null)
+                  if (!cellContext) {
+                    setEditingMaintenance(null)
+                  }
+                  if (cellContext && v === 'record_payment') {
+                    setPaymentSectionExpanded(true)
+                  }
                   setPaymentReceivedAmount('')
                   setRecordPaymentLookup({ unit_id: null, month: null, year: null })
                 }}
                 sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
               >
                 <Tab label="Create new record" value="create" />
-                <Tab label="Record payment (existing)" value="record_payment" />
+                {cellContext && (
+                  <Tab
+                    label="Edit record"
+                    value="edit"
+                  />
+                )}
+                <Tab
+                  label={cellContext ? 'Record payment' : 'Record payment (existing)'}
+                  value="record_payment"
+                  disabled={!cellContext && !editingMaintenance}
+                />
               </Tabs>
               <DialogContent>
                 <RecordPaymentLookupSync
@@ -1054,6 +1221,7 @@ const Maintenance = () => {
                         setFormFloorId('')
                       }}
                       onBlur={handleBlur}
+                      disabled={!!cellContext}
                       size="small"
                     >
                       <MenuItem value="">Select block</MenuItem>
@@ -1082,7 +1250,7 @@ const Maintenance = () => {
                         setFormFloorId(v)
                       }}
                       onBlur={handleBlur}
-                      disabled={!values.block_id}
+                      disabled={!!cellContext || !values.block_id}
                       size="small"
                     >
                       <MenuItem value="">Select floor</MenuItem>
@@ -1103,15 +1271,17 @@ const Maintenance = () => {
                       label="Unit"
                       name="unit_id"
                       value={
-                        dialogUnits.some((u) => String(u.id) === String(values.unit_id))
-                          ? values.unit_id
-                          : ''
+                        values.unit_id === 'all'
+                          ? 'all'
+                          : dialogUnits.some((u) => String(u.id) === String(values.unit_id))
+                            ? values.unit_id
+                            : ''
                       }
                       onChange={(e) => {
                         handleChange(e)
                         if (dialogMode === 'record_payment') {
                           setRecordPaymentLookup({
-                            unit_id: e.target.value || null,
+                            unit_id: e.target.value === 'all' ? null : e.target.value || null,
                             month: values.month || null,
                             year: values.year || null,
                           })
@@ -1121,9 +1291,14 @@ const Maintenance = () => {
                       onBlur={handleBlur}
                       error={touched.unit_id && !!errors.unit_id}
                       helperText={touched.unit_id && errors.unit_id}
-                      disabled={!values.block_id}
+                      disabled={!!cellContext || (dialogMode === 'record_payment' ? !values.block_id : false)}
                       size="small"
                     >
+                      {dialogMode === 'create' && !cellContext && (
+                        <MenuItem value="all">
+                          <Typography component="span" fontWeight={600}>All units (create for every unit)</Typography>
+                        </MenuItem>
+                      )}
                       <MenuItem value="">Select unit</MenuItem>
                       {dialogUnits.map((unit) => (
                         <MenuItem key={unit.id} value={unit.id}>
@@ -1141,7 +1316,7 @@ const Maintenance = () => {
                       value={values.month}
                       onChange={(e) => {
                         handleChange(e)
-                        if (dialogMode === 'record_payment') {
+                        if (dialogMode === 'record_payment' && !cellContext) {
                           setRecordPaymentLookup({
                             unit_id: values.unit_id || null,
                             month: e.target.value || null,
@@ -1153,6 +1328,7 @@ const Maintenance = () => {
                       onBlur={handleBlur}
                       error={touched.month && !!errors.month}
                       helperText={touched.month && errors.month}
+                      disabled={!!cellContext}
                     >
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
                         <MenuItem key={m} value={m}>
@@ -1173,7 +1349,7 @@ const Maintenance = () => {
                         const raw = e.target.value
                         if (raw === '') {
                           handleChange(e)
-                          if (dialogMode === 'record_payment') {
+                          if (dialogMode === 'record_payment' && !cellContext) {
                             setRecordPaymentLookup({
                               unit_id: values.unit_id || null,
                               month: values.month || null,
@@ -1183,13 +1359,13 @@ const Maintenance = () => {
                           }
                           return
                         }
-                        const year = parseInt(raw, 10)
+                        const yearNum = parseInt(raw, 10)
                         const clamped = Math.min(
                           new Date().getFullYear(),
-                          Math.max(2000, isNaN(year) ? 2000 : year)
+                          Math.max(2000, isNaN(yearNum) ? 2000 : yearNum)
                         )
                         handleChange({ target: { name: e.target.name, value: clamped } })
-                        if (dialogMode === 'record_payment') {
+                        if (dialogMode === 'record_payment' && !cellContext) {
                           setRecordPaymentLookup({
                             unit_id: values.unit_id || null,
                             month: values.month || null,
@@ -1201,9 +1377,10 @@ const Maintenance = () => {
                       onBlur={handleBlur}
                       error={touched.year && !!errors.year}
                       helperText={touched.year && errors.year}
+                      disabled={!!cellContext}
                     />
                   </Grid>
-                  {dialogMode === 'create' && (
+                  {((dialogMode === 'create') || (cellContext && dialogMode === 'edit')) && (
                     <>
                       <Grid item xs={12}>
                         <TextField
@@ -1427,9 +1604,9 @@ const Maintenance = () => {
               </DialogContent>
               <DialogActions>
                 <Button onClick={handleCloseDialog}>Cancel</Button>
-                {dialogMode === 'create' && (
+                {(dialogMode === 'create' || (cellContext && dialogMode === 'edit')) && (
                   <Button type="submit" variant="contained" disabled={isSubmitting}>
-                    {editingMaintenance ? 'Update' : 'Create'}
+                    {(cellContext && dialogMode === 'edit') || (editingMaintenance && dialogMode === 'create') ? 'Update' : 'Create'}
                   </Button>
                 )}
               </DialogActions>
@@ -1646,12 +1823,46 @@ const Maintenance = () => {
       >
         <DialogTitle>Confirm</DialogTitle>
         <DialogContent>
-          <Typography variant="body1">
+          <Typography variant="body1" sx={{ mb: 2 }}>
             {confirmGenerate?.action === 'block' &&
-              `Generate monthly dues for all units in ${confirmGenerate.blockName || 'this block'} (current month)?`}
+              `Generate monthly dues for all units in ${confirmGenerate.blockName || 'this block'}?`}
             {confirmGenerate?.action === 'floor' &&
-              'Generate monthly dues for all units on this floor (current month)?'}
+              'Generate monthly dues for all units on this floor?'}
           </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                label="Month"
+                value={generateScopeMonth}
+                onChange={(e) => setGenerateScopeMonth(Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+                  <MenuItem key={m} value={m}>
+                    {new Date(2000, m - 1).toLocaleString('default', { month: 'long' })}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                label="Year"
+                value={generateScopeYear}
+                onChange={(e) => setGenerateScopeYear(Number(e.target.value))}
+              >
+                {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2].map((y) => (
+                  <MenuItem key={y} value={y}>
+                    {y}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmGenerate(null)} disabled={generating}>

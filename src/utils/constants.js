@@ -56,6 +56,7 @@ export const API_ENDPOINTS = {
   MAINTENANCE_GENERATE_DUES: '/maintenance/generate-monthly-dues',
   MAINTENANCE_GENERATE_FOR_SCOPE: '/maintenance/generate-for-scope',
   MAINTENANCE_APPLY_BASE_YEAR: '/maintenance/apply-base-for-year',
+  MAINTENANCE_CREATE_FOR_ALL_UNITS: '/maintenance/create-for-all-units',
   
   // Finance
   FINANCE: '/finance',
@@ -99,6 +100,12 @@ export const API_ENDPOINTS = {
   USER_CHECK_EMAIL: '/users/check-email',
   USER_BY_ID: (id) => `/users/${id}`,
   USER_PASSWORD: (id) => `/users/${id}/password`,
+
+  EMPLOYEES: '/employees',
+  EMPLOYEE_BY_ID: (id) => `/employees/${id}`,
+
+  UNION_MEMBERS: '/union-members',
+  UNION_MEMBER_BY_ID: (id) => `/union-members/${id}`,
   
   // Staff
   STAFF_COMPLAINTS: '/staff/complaints',
@@ -162,6 +169,7 @@ export const ROUTES = {
   // Admin
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_RESIDENTS: '/admin/residents',
+  ADMIN_RESIDENT_PROFILE: (id) => `/admin/residents/${id}`,
   ADMIN_MAINTENANCE: '/admin/maintenance',
   ADMIN_FINANCE: '/admin/finance',
   ADMIN_DEFAULTERS: '/admin/defaulters',
@@ -169,6 +177,7 @@ export const ROUTES = {
   ADMIN_ANNOUNCEMENTS: '/admin/announcements',
   ADMIN_SETTINGS: '/admin/settings',
   ADMIN_USERS: '/admin/users',
+  ADMIN_EMPLOYEES: '/admin/employees',
   ADMIN_PROFILE: '/admin/profile',
   ADMIN_MESSAGES: '/admin/messages',
   ADMIN_UNION_MEMBERS: '/admin/union-members',

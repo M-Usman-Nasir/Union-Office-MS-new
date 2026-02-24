@@ -33,6 +33,7 @@ const validationSchema = Yup.object({
   description: Yup.string().required('Description is required'),
   type: Yup.string(),
   audience: Yup.string(),
+  announcement_date: Yup.string(),
 })
 
 const audienceOptions = [
@@ -159,12 +160,16 @@ const Announcements = () => {
         description: editingAnnouncement.description || '',
         type: editingAnnouncement.type || '',
         audience: editingAnnouncement.audience || 'all_residents',
+        announcement_date: editingAnnouncement.announcement_date
+          ? dayjs(editingAnnouncement.announcement_date).format('YYYY-MM-DD')
+          : dayjs().format('YYYY-MM-DD'),
       }
     : {
         title: '',
         description: '',
         type: '',
         audience: 'all_residents',
+        announcement_date: dayjs().format('YYYY-MM-DD'),
       }
 
   return (
@@ -237,6 +242,22 @@ const Announcements = () => {
               </DialogTitle>
               <DialogContent>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Date"
+                      name="announcement_date"
+                      type="date"
+                      value={values.announcement_date}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.announcement_date && !!errors.announcement_date}
+                      helperText={touched.announcement_date && errors.announcement_date}
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
+                    />
+                  </Grid>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth

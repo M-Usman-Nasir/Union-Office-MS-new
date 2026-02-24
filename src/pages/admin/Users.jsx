@@ -34,6 +34,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorIcon from '@mui/icons-material/Error'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
+import { ROUTES } from '@/utils/constants'
 import { userApi } from '@/api/userApi'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
@@ -44,15 +45,18 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
 const getValidationSchema = (isEdit, currentUserRole, passwordOptional = false) => {
+  const isUnionAdminEmployee = currentUserRole === 'union_admin'
   const baseSchema = {
-    email: Yup.string().email('Invalid email').required('Email is required'),
+    email: isUnionAdminEmployee
+      ? Yup.string().nullable()
+      : Yup.string().email('Invalid email').required('Email is required'),
     name: Yup.string().required('Name is required'),
     role: Yup.string().required('Role is required'),
   }
 
-  // Password required only on create; optional when super_admin selects a lead that already has union admin details
+  // Password required only on create; optional when super_admin selects a lead that already has union admin details, or union_admin (employees don't log in)
   if (!isEdit) {
-    baseSchema.password = passwordOptional
+    baseSchema.password = (passwordOptional || isUnionAdminEmployee)
       ? Yup.string().nullable()
       : Yup.string()
           .min(6, 'Password must be at least 6 characters')
@@ -78,6 +82,8 @@ const getValidationSchema = (isEdit, currentUserRole, passwordOptional = false) 
   baseSchema.work_employer = Yup.string().nullable()
   baseSchema.work_title = Yup.string().nullable()
   baseSchema.work_phone = Yup.string().nullable()
+  baseSchema.department = Yup.string().nullable()
+  baseSchema.salary_rupees = Yup.number().nullable().transform((v, o) => (o === '' || o == null ? null : v))
 
   return Yup.object(baseSchema)
 }
@@ -86,13 +92,24 @@ const passwordSchema = Yup.object({
   new_password: Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
 })
 
+const EMPLOYEE_DESIGNATIONS = ['Supervisor', 'Guard', 'Sweeper', 'Other']
+
 const Users = () => {
   const { user: currentUser } = useAuth()
   const navigate = useNavigate()
+
+  // Union admins use the dedicated Employees page
+  useEffect(() => {
+    if (currentUser?.role === 'union_admin') {
+      navigate(ROUTES.ADMIN_EMPLOYEES, { replace: true })
+    }
+  }, [currentUser?.role, navigate])
+
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
+  const [designationFilter, setDesignationFilter] = useState('')
   const roleFilterDefaultSet = useRef(false)
 
   // Default Role Filter to "Union Admin" for super admin only (once on load)
@@ -122,8 +139,17 @@ const Users = () => {
   const [givingSubscription, setGivingSubscription] = useState(false)
 
   const { data, isLoading, mutate } = useSWR(
-    ['/users', page, limit, search, roleFilter],
-    () => userApi.getAll({ page, limit, search, role: roleFilter }).then(res => res.data)
+    ['/users', page, limit, search, currentUser?.role === 'union_admin' ? 'staff' : roleFilter, designationFilter],
+    () => {
+      const params = { page, limit, search }
+      if (currentUser?.role === 'union_admin') {
+        params.role = 'staff'
+        if (designationFilter) params.work_title = designationFilter
+      } else {
+        if (roleFilter) params.role = roleFilter
+      }
+      return userApi.getAll(params).then(res => res.data)
+    }
   )
 
   // Union admins with subscription (Super Admin - for Activate subscription in Actions)
@@ -232,6 +258,18 @@ const Users = () => {
       // Prepare data for backend
       const submitData = { ...values }
 
+      // Union admin employee form: do not send email/password (backend will use placeholders); omit work/address fields
+      if (currentUser?.role === 'union_admin') {
+        delete submitData.email
+        delete submitData.password
+        submitData.work_employer = null
+        submitData.work_phone = null
+        submitData.address = null
+        submitData.city = null
+        submitData.postal_code = null
+        submitData.designation = submitData.work_title || null
+      }
+
       // Clean up empty strings - convert to null for optional fields
       const optionalFields = ['society_apartment_id', 'unit_id', 'cnic', 'contact_number', 'emergency_contact', 'address', 'city', 'postal_code', 'work_employer', 'work_title', 'work_phone']
       optionalFields.forEach(field => {
@@ -249,6 +287,11 @@ const Users = () => {
         submitData.society_apartment_id = currentUser.society_apartment_id
       }
 
+      // Union admin page is employees only: always send role = staff
+      if (currentUser?.role === 'union_admin') {
+        submitData.role = 'staff'
+      }
+
       // For Super Admin, society_apartment_id can be null (for super_admin role)
       // For union_admin, resident, and staff, it must be set
       if (submitData.role === 'super_admin') {
@@ -262,11 +305,11 @@ const Users = () => {
 
       if (editingUser) {
         await userApi.update(editingUser.id, submitData)
-        toast.success('User updated successfully')
+        toast.success(currentUser?.role === 'union_admin' ? 'Employee updated successfully' : 'User updated successfully')
       } else {
         const res = await userApi.create(submitData)
         const createdUser = res?.data?.data ?? res?.data
-        toast.success('User created successfully')
+        toast.success(currentUser?.role === 'union_admin' ? 'Employee created successfully' : 'User created successfully')
         // Close Add User dialog first so it always dismisses; then refresh and optionally open Create Job
         handleCloseDialog()
         setSelectedSocietyId(null)
@@ -490,19 +533,36 @@ const Users = () => {
         )
       },
     },
-    { id: 'email', label: 'Email', minWidth: 200 },
-    {
-      id: 'role',
-      label: 'Role',
-      minWidth: 120,
-      render: (row) => (
-        <Chip
-          label={row.role === 'super_admin' ? 'Super Admin' : row.role === 'union_admin' ? 'Union Admin' : row.role === 'staff' ? 'Staff' : 'Resident'}
-          color={getRoleColor(row.role)}
-          size="small"
-        />
-      ),
-    },
+    ...(currentUser?.role !== 'union_admin' ? [{ id: 'email', label: 'Email', minWidth: 200 }] : []),
+    ...(currentUser?.role === 'union_admin'
+      ? [{
+          id: 'work_title',
+          label: 'Designation',
+          minWidth: 120,
+          render: (row) => row.work_title || '—',
+        }, {
+          id: 'department',
+          label: 'Department',
+          minWidth: 120,
+          render: (row) => row.department || '—',
+        }, {
+          id: 'salary_rupees',
+          label: 'Salary (PKR)',
+          minWidth: 110,
+          render: (row) => row.salary_rupees != null && row.salary_rupees !== '' ? Number(row.salary_rupees).toLocaleString() : '—',
+        }]
+      : [{
+          id: 'role',
+          label: 'Role',
+          minWidth: 120,
+          render: (row) => (
+            <Chip
+              label={row.role === 'super_admin' ? 'Super Admin' : row.role === 'union_admin' ? 'Union Admin' : row.role === 'staff' ? 'Staff' : 'Resident'}
+              color={getRoleColor(row.role)}
+              size="small"
+            />
+          ),
+        }]),
     ...(currentUser?.role === 'super_admin' ? [{
       id: 'society_apartment_id',
       label: 'Apartment',
@@ -561,8 +621,8 @@ const Users = () => {
     ? {
         email: editingUser.email || '',
         name: editingUser.name || '',
-        role: editingUser.role || (currentUser?.role === 'super_admin' ? 'union_admin' : 'resident'),
-        society_apartment_id: editingUser.society_apartment_id || null,
+        role: currentUser?.role === 'union_admin' ? 'staff' : (editingUser.role || (currentUser?.role === 'super_admin' ? 'union_admin' : 'resident')),
+        society_apartment_id: editingUser.society_apartment_id || (currentUser?.role === 'union_admin' ? currentUser.society_apartment_id : null),
         unit_id: editingUser.unit_id || null,
         cnic: editingUser.cnic || '',
         contact_number: editingUser.contact_number || '',
@@ -573,13 +633,15 @@ const Users = () => {
         work_employer: editingUser.work_employer || '',
         work_title: editingUser.work_title || '',
         work_phone: editingUser.work_phone || '',
+        department: editingUser.department || '',
+        salary_rupees: editingUser.salary_rupees != null && editingUser.salary_rupees !== '' ? editingUser.salary_rupees : '',
         is_active: editingUser.is_active !== undefined ? editingUser.is_active : true,
       }
     : {
         email: '',
         password: '',
         name: '',
-        role: currentUser?.role === 'super_admin' ? 'union_admin' : 'resident',
+        role: currentUser?.role === 'union_admin' ? 'staff' : (currentUser?.role === 'super_admin' ? 'union_admin' : 'resident'),
         society_apartment_id: currentUser?.role === 'union_admin' ? currentUser.society_apartment_id : null,
         unit_id: null,
         cnic: '',
@@ -591,6 +653,8 @@ const Users = () => {
         work_employer: '',
         work_title: '',
         work_phone: '',
+        department: '',
+        salary_rupees: '',
         is_active: true,
       }
 
@@ -598,21 +662,21 @@ const Users = () => {
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" component="h1">
-          Users Management
+          {currentUser?.role === 'union_admin' ? 'Employees Management' : 'Users Management'}
         </Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
         >
-          Add User
+          {currentUser?.role === 'union_admin' ? 'Add Employee' : 'Add User'}
         </Button>
       </Box>
 
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
         <TextField
           fullWidth
-          placeholder="Search users..."
+          placeholder={currentUser?.role === 'union_admin' ? 'Search employees...' : 'Search users...'}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
@@ -623,19 +687,38 @@ const Users = () => {
             ),
           }}
         />
-        <TextField
-          select
-          label="Role Filter"
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          sx={{ minWidth: 150 }}
-        >
-          <MenuItem value="">All Roles</MenuItem>
-          <MenuItem value="super_admin">Super Admin</MenuItem>
-          <MenuItem value="union_admin">Union Admin</MenuItem>
-          <MenuItem value="resident">Resident</MenuItem>
-          <MenuItem value="staff">Staff</MenuItem>
-        </TextField>
+        {currentUser?.role === 'super_admin' && (
+          <TextField
+            select
+            label="Role Filter"
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            sx={{ minWidth: 150 }}
+          >
+            <MenuItem value="">All Roles</MenuItem>
+            <MenuItem value="super_admin">Super Admin</MenuItem>
+            <MenuItem value="union_admin">Union Admin</MenuItem>
+            <MenuItem value="resident">Resident</MenuItem>
+            <MenuItem value="staff">Staff</MenuItem>
+          </TextField>
+        )}
+        {currentUser?.role === 'union_admin' && (
+          <TextField
+            select
+            label="Designation"
+            value={designationFilter}
+            onChange={(e) => {
+              setDesignationFilter(e.target.value)
+              setPage(1)
+            }}
+            sx={{ minWidth: 150 }}
+          >
+            <MenuItem value="">All</MenuItem>
+            {EMPLOYEE_DESIGNATIONS.map((d) => (
+              <MenuItem key={d} value={d}>{d}</MenuItem>
+            ))}
+          </TextField>
+        )}
       </Box>
 
       <DataTable
@@ -670,6 +753,7 @@ const Users = () => {
               <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Edit</ListItemText>
             </MenuItem>
+            {!(currentUser?.role === 'union_admin' && actionMenuRow.role === 'staff') && (
             <MenuItem
               onClick={() => {
                 setActionMenuAnchor(null)
@@ -680,6 +764,7 @@ const Users = () => {
               <ListItemIcon><LockIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Change Password</ListItemText>
             </MenuItem>
+            )}
             {currentUser?.role === 'super_admin' && actionMenuRow.role === 'union_admin' && actionMenuRow.society_apartment_id && (
               <MenuItem onClick={() => handleOpenCreateJob(actionMenuRow, 'create')}>
                 <ListItemIcon><WorkOutlineIcon fontSize="small" /></ListItemIcon>
@@ -877,7 +962,9 @@ const Users = () => {
           validationSchema={(values) => {
             if (!values) return getValidationSchema(!!editingUser, currentUser?.role, false)
             const lead = values.society_apartment_id ? (unassignedLeads || []).find((l) => l.id === values.society_apartment_id) : null
-            const passwordOptional = currentUser?.role === 'super_admin' && values.society_apartment_id && lead && lead.union_admin_email
+            const passwordOptional =
+              (currentUser?.role === 'super_admin' && values.society_apartment_id && lead && lead.union_admin_email) ||
+              currentUser?.role === 'union_admin'
             return getValidationSchema(!!editingUser, currentUser?.role, passwordOptional)
           }}
           onSubmit={handleSubmit}
@@ -903,17 +990,19 @@ const Users = () => {
             // Determine if society field should be shown and editable
             // Apartment required for union_admin, resident, and staff roles
             const showSocietyField = values.role === 'union_admin' || values.role === 'resident' || values.role === 'staff'
-            const isSocietyEditable = currentUser?.role === 'super_admin' || !editingUser
+            const isSocietyEditable = currentUser?.role === 'super_admin' || (!editingUser && currentUser?.role !== 'union_admin')
             const isSocietyDisabled = currentUser?.role === 'union_admin' && !editingUser
             const simpleApartmentOptions = currentUser?.role === 'super_admin' ? (allSocietiesData?.data ?? []) : (societiesData?.data ?? [])
             const selectedLead = values.society_apartment_id ? (unassignedLeads || []).find((l) => l.id === values.society_apartment_id) : null
             const leadHasUnionAdminDetails = selectedLead && !!selectedLead.union_admin_email
-            const showPasswordField = !editingUser && !(currentUser?.role === 'super_admin' && leadHasUnionAdminDetails)
+            const showPasswordField = !editingUser && currentUser?.role !== 'union_admin' && !(currentUser?.role === 'super_admin' && leadHasUnionAdminDetails)
 
             return (
               <Form autoComplete="off">
                 <DialogTitle>
-                  {editingUser ? 'Edit User' : 'Add New User'}
+                  {currentUser?.role === 'union_admin'
+                    ? (editingUser ? 'Edit Employee' : 'Add New Employee')
+                    : (editingUser ? 'Edit User' : 'Add New User')}
                 </DialogTitle>
                 <DialogContent>
                   <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -961,7 +1050,7 @@ const Users = () => {
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
-                        label="User Name"
+                        label="Full Name"
                         name="name"
                         value={values.name}
                         onChange={handleChange}
@@ -970,6 +1059,7 @@ const Users = () => {
                         helperText={touched.name && errors.name}
                       />
                     </Grid>
+                    {currentUser?.role !== 'union_admin' && (
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
@@ -1020,6 +1110,7 @@ const Users = () => {
                         }}
                       />
                     </Grid>
+                    )}
                     {showPasswordField && (
                       <Grid item xs={12}>
                         <TextField
@@ -1051,8 +1142,8 @@ const Users = () => {
                         />
                       </Grid>
                     )}
-                    {/* Role selection: hidden for super_admin (always union_admin) */}
-                    {currentUser?.role !== 'super_admin' && (
+                    {/* Role selection: only for super_admin (union_admin page is employees only) */}
+                    {currentUser?.role === 'super_admin' && (
                       <Grid item xs={12}>
                         <TextField
                           fullWidth
@@ -1072,11 +1163,64 @@ const Users = () => {
                           error={touched.role && !!errors.role}
                           helperText={touched.role && errors.role}
                         >
-                          <MenuItem value="resident">Resident</MenuItem>
                           <MenuItem value="union_admin">Union Admin</MenuItem>
+                          <MenuItem value="resident">Resident</MenuItem>
                           <MenuItem value="staff">Staff</MenuItem>
                         </TextField>
                       </Grid>
+                    )}
+                    {/* Designation: only for union_admin (employees) */}
+                    {currentUser?.role === 'union_admin' && (
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          select
+                          label="Designation"
+                          name="work_title"
+                          value={values.work_title || ''}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          error={touched.work_title && !!errors.work_title}
+                          helperText={touched.work_title && errors.work_title}
+                        >
+                          <MenuItem value="">— None —</MenuItem>
+                          {EMPLOYEE_DESIGNATIONS.map((d) => (
+                            <MenuItem key={d} value={d}>{d}</MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                    )}
+                    {currentUser?.role === 'union_admin' && (
+                      <>
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            label="Department"
+                            name="department"
+                            value={values.department || ''}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={touched.department && !!errors.department}
+                            helperText={touched.department && errors.department}
+                            placeholder="e.g. Security, Maintenance"
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            label="Salary (PKR)"
+                            name="salary_rupees"
+                            type="number"
+                            inputProps={{ min: 0, step: 1 }}
+                            value={values.salary_rupees ?? ''}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={touched.salary_rupees && !!errors.salary_rupees}
+                            helperText={touched.salary_rupees && errors.salary_rupees}
+                            placeholder="Rupees"
+                          />
+                        </Grid>
+                      </>
                     )}
                     {showSocietyField && currentUser?.role !== 'super_admin' && (
                       <Grid item xs={12}>
@@ -1146,6 +1290,7 @@ const Users = () => {
                         helperText={touched.contact_number && errors.contact_number}
                       />
                     </Grid>
+                    {currentUser?.role !== 'union_admin' && (
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
@@ -1158,6 +1303,8 @@ const Users = () => {
                         helperText={touched.emergency_contact && errors.emergency_contact}
                       />
                     </Grid>
+                    )}
+                    {currentUser?.role !== 'union_admin' && (
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
@@ -1171,6 +1318,9 @@ const Users = () => {
                         placeholder="e.g., 12345-1234567-1"
                       />
                     </Grid>
+                    )}
+                    {currentUser?.role !== 'union_admin' && (
+                    <>
                     <Grid item xs={12}>
                       <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
                         Work Information (optional)
@@ -1254,6 +1404,8 @@ const Users = () => {
                         helperText={touched.postal_code && errors.postal_code}
                       />
                     </Grid>
+                    </>
+                    )}
                     {editingUser && (
                       <Grid item xs={12}>
                         <TextField

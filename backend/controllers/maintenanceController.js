@@ -173,6 +173,60 @@ export const create = async (req, res) => {
   }
 };
 
+// Create maintenance record for all units in a society (one record per unit for given month/year; skips existing)
+export const createForAllUnits = async (req, res) => {
+  try {
+    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : req.body.society_apartment_id;
+    const { month, year, base_amount, total_amount, due_date } = req.body;
+
+    if (!societyId || !month || !year || total_amount == null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Society ID, month, year, and total amount are required',
+      });
+    }
+
+    const amount = parseFloat(total_amount) || 0;
+    const unitsResult = await query(
+      'SELECT id, society_apartment_id FROM units WHERE society_apartment_id = $1',
+      [societyId]
+    );
+    let created = 0;
+    let skipped = 0;
+
+    for (const unit of unitsResult.rows) {
+      const existing = await query(
+        'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3',
+        [unit.id, month, year]
+      );
+      if (existing.rows.length > 0) {
+        skipped++;
+        continue;
+      }
+      const monthDueDate = due_date ? new Date(due_date) : new Date(year, month, 1);
+      await query(
+        `INSERT INTO maintenance (unit_id, society_apartment_id, month, year, base_amount, total_amount, status, due_date)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)`,
+        [unit.id, unit.society_apartment_id, month, year, amount, amount, monthDueDate]
+      );
+      created++;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `Maintenance created for all units. ${created} created, ${skipped} skipped (already exist).`,
+      data: { created, skipped, total: unitsResult.rows.length },
+    });
+  } catch (error) {
+    console.error('Create for all units error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create maintenance for all units',
+      error: error.message,
+    });
+  }
+};
+
 // Update maintenance record
 export const update = async (req, res) => {
   try {

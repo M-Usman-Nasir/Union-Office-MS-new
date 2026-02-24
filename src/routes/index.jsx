@@ -16,8 +16,10 @@ import Admins from '@/pages/super-admin/Admins'
 import SuperAdminSettings from '@/pages/super-admin/Settings'
 import SuperAdminInvoices from '@/pages/super-admin/Invoices'
 import Users from '@/pages/admin/Users'
+import Employees from '@/pages/admin/Employees'
 import AdminDashboard from '@/pages/admin/Dashboard'
 import Residents from '@/pages/admin/Residents'
+import ResidentDetails from '@/pages/admin/ResidentDetails'
 import Maintenance from '@/pages/admin/Maintenance'
 import Finance from '@/pages/admin/Finance'
 import Complaints from '@/pages/admin/Complaints'
@@ -77,6 +79,7 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="residents/:id" element={<ResidentDetails />} />
                 <Route path="residents" element={<Residents />} />
                 <Route path="maintenance" element={<Maintenance />} />
                 <Route path="finance" element={<Finance />} />
@@ -86,6 +89,7 @@ export const AppRoutes = () => {
                 <Route path="messages" element={<Messages />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="users" element={<Users />} />
+                <Route path="employees" element={<Employees />} />
                 <Route path="union-members" element={<UnionMembers />} />
                 <Route path="profile" element={<AdminProfile />} />
               </Routes>

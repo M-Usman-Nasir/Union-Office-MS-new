@@ -23,6 +23,6 @@ router.put('/:id', requireRole('super_admin', 'union_admin'), userController.upd
 router.patch('/:id/password', requireRole('super_admin', 'union_admin'), userController.updatePassword);
 
 // Delete user (super admin only)
-router.delete('/:id', requireRole('super_admin'), userController.remove);
+router.delete('/:id', requireRole('super_admin', 'union_admin'), userController.remove);
 
 export default router;

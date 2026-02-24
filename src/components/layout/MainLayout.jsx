@@ -151,7 +151,7 @@ const MainLayout = ({ children }) => {
         { text: 'Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_DEFAULTERS },
         { text: 'Finance', icon: <AccountBalanceIcon />, path: ROUTES.ADMIN_FINANCE },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.ADMIN_COMPLAINTS },
-        { text: 'Employees', icon: <PeopleIcon />, path: ROUTES.ADMIN_USERS },
+        { text: 'Employees', icon: <PeopleIcon />, path: ROUTES.ADMIN_EMPLOYEES },
         { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
         { text: 'Union Members', icon: <PeopleIcon />, path: ROUTES.ADMIN_UNION_MEMBERS },
