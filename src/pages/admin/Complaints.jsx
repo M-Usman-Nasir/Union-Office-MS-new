@@ -23,10 +23,12 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import UpdateIcon from '@mui/icons-material/Update'
+import AddIcon from '@mui/icons-material/Add'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
 import { userApi } from '@/api/userApi'
+import { residentApi } from '@/api/residentApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -36,6 +38,7 @@ import { Autocomplete } from '@mui/material'
 import ProgressTimeline from '@/components/complaints/ProgressTimeline'
 
 const statusOptions = ['pending', 'in_progress', 'resolved', 'closed']
+const priorityOptions = ['low', 'medium', 'high', 'urgent']
 
 const Complaints = () => {
   const { user } = useAuth()
@@ -46,6 +49,7 @@ const Complaints = () => {
   const [openViewDialog, setOpenViewDialog] = useState(false)
   const [openAssignDialog, setOpenAssignDialog] = useState(false)
   const [openProgressDialog, setOpenProgressDialog] = useState(false)
+  const [openAddDialog, setOpenAddDialog] = useState(false)
   const [selectedComplaint, setSelectedComplaint] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
 
@@ -64,6 +68,13 @@ const Complaints = () => {
     user ? '/users/staff' : null,
     () => userApi.getAll({ role: 'staff', limit: 100 }).then(res => res.data)
   )
+
+  // Fetch residents for "Add complaint" (admin records on behalf of resident or walk-in)
+  const { data: residentsData } = useSWR(
+    societyId && openAddDialog ? ['/residents', societyId] : null,
+    () => residentApi.getAll({ society_id: societyId, limit: 500 }).then(res => res.data)
+  )
+  const residentsList = residentsData?.data ?? residentsData ?? []
 
   // Fetch progress history for selected complaint
   const { data: progressData } = useSWR(
@@ -135,6 +146,41 @@ const Complaints = () => {
       handleCloseProgressDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Update failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleCloseAddDialog = () => {
+    setOpenAddDialog(false)
+  }
+
+  const handleAddComplaint = async (values, { setSubmitting }) => {
+    if (!societyId) {
+      toast.error('Society not set')
+      setSubmitting(false)
+      return
+    }
+    try {
+      const payload = {
+        society_apartment_id: societyId,
+        title: values.title,
+        description: values.description,
+        priority: values.priority || 'medium',
+        type: values.type || undefined,
+        remarks: values.remarks || undefined,
+      }
+      if (values.submitted_by != null && values.submitted_by !== '') {
+        payload.submitted_by = values.submitted_by
+      } else if (values.submitted_by_name_override?.trim()) {
+        payload.submitted_by_name_override = values.submitted_by_name_override.trim()
+      }
+      await complaintApi.create(payload)
+      toast.success('Complaint recorded successfully')
+      mutate()
+      handleCloseAddDialog()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to record complaint')
     } finally {
       setSubmitting(false)
     }
@@ -295,7 +341,15 @@ const Complaints = () => {
         </Grid>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => setOpenAddDialog(true)}
+        >
+          Add complaint
+        </Button>
         <TextField
           fullWidth
           placeholder="Search complaints..."
@@ -495,6 +549,150 @@ const Complaints = () => {
                 <Button onClick={handleCloseProgressDialog}>Cancel</Button>
                 <Button type="submit" variant="contained" disabled={isSubmitting}>
                   Update Progress
+                </Button>
+              </DialogActions>
+            </Form>
+          )}
+        </Formik>
+      </Dialog>
+
+      {/* Add Complaint Dialog — record complaint on behalf of resident or walk-in */}
+      <Dialog open={openAddDialog} onClose={handleCloseAddDialog} maxWidth="sm" fullWidth>
+        <Formik
+          initialValues={{
+            title: '',
+            description: '',
+            priority: 'medium',
+            type: '',
+            remarks: '',
+            submitted_by: null,
+            submitted_by_name_override: '',
+          }}
+          validationSchema={Yup.object({
+            title: Yup.string().trim().required('Title is required'),
+            description: Yup.string().trim().required('Description is required'),
+            priority: Yup.string().oneOf(priorityOptions).required('Priority is required'),
+          })}
+          onSubmit={handleAddComplaint}
+        >
+          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
+            <Form>
+              <DialogTitle>Record complaint</DialogTitle>
+              <DialogContent>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Title"
+                      name="title"
+                      value={values.title}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.title && !!errors.title}
+                      helperText={touched.title && errors.title}
+                      placeholder="Short title for the complaint"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Description"
+                      name="description"
+                      multiline
+                      rows={3}
+                      value={values.description}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.description && !!errors.description}
+                      helperText={touched.description && errors.description}
+                      placeholder="Full description of the complaint"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Priority"
+                      name="priority"
+                      value={values.priority}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.priority && !!errors.priority}
+                      helperText={touched.priority && errors.priority}
+                    >
+                      {priorityOptions.map((p) => (
+                        <MenuItem key={p} value={p}>
+                          {p.charAt(0).toUpperCase() + p.slice(1)}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Type (optional)"
+                      name="type"
+                      value={values.type}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="e.g. maintenance, noise"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                      Resident
+                    </Typography>
+                    <Autocomplete
+                      options={residentsList}
+                      getOptionLabel={(option) => (option?.name ? `${option.name}${option.unit_number ? ` (${option.unit_number})` : ''}` : option?.email ?? '')}
+                      value={residentsList.find((r) => r.id === values.submitted_by) || null}
+                      onChange={(event, newValue) => {
+                        setFieldValue('submitted_by', newValue ? newValue.id : null)
+                        if (newValue) setFieldValue('submitted_by_name_override', '')
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Select resident (optional)"
+                          placeholder="Search by name or unit..."
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Resident name (for walk-in)"
+                      name="submitted_by_name_override"
+                      value={values.submitted_by_name_override}
+                      onChange={(e) => {
+                        handleChange(e)
+                        if (e.target.value.trim()) setFieldValue('submitted_by', null)
+                      }}
+                      onBlur={handleBlur}
+                      placeholder="If not a registered resident, enter name here"
+                      helperText="Use when the person is not in the resident list"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Remarks (optional)"
+                      name="remarks"
+                      multiline
+                      rows={2}
+                      value={values.remarks}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="Any additional remarks"
+                    />
+                  </Grid>
+                </Grid>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={handleCloseAddDialog}>Cancel</Button>
+                <Button type="submit" variant="contained" disabled={isSubmitting}>
+                  Save complaint
                 </Button>
               </DialogActions>
             </Form>

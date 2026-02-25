@@ -11,7 +11,7 @@ export const getAll = async (req, res) => {
       SELECT c.*,
              COALESCE(u.unit_number, (SELECT u2.unit_number FROM users u0 JOIN units u2 ON u2.id = u0.unit_id WHERE u0.id = c.submitted_by LIMIT 1)) AS unit_number,
              s.name as society_name,
-             submitter.name as submitted_by_name, assignee.name as assigned_to_name
+             COALESCE(submitter.name, c.submitted_by_name_override) as submitted_by_name, assignee.name as assigned_to_name
       FROM complaints c
       LEFT JOIN units u ON c.unit_id = u.id
       LEFT JOIN apartments s ON c.society_apartment_id = s.id
@@ -165,7 +165,7 @@ export const getById = async (req, res) => {
       `SELECT c.*,
               COALESCE(u.unit_number, (SELECT u2.unit_number FROM users u0 JOIN units u2 ON u2.id = u0.unit_id WHERE u0.id = c.submitted_by LIMIT 1)) AS unit_number,
               s.name as society_name,
-              submitter.name as submitted_by_name, assignee.name as assigned_to_name
+              COALESCE(submitter.name, c.submitted_by_name_override) as submitted_by_name, assignee.name as assigned_to_name
        FROM complaints c
        LEFT JOIN units u ON c.unit_id = u.id
        LEFT JOIN apartments s ON c.society_apartment_id = s.id
@@ -207,7 +207,7 @@ export const getById = async (req, res) => {
 // Create complaint
 export const create = async (req, res) => {
   try {
-    const { unit_id, society_apartment_id, title, subject, description, priority, is_public } = req.body;
+    const { unit_id, society_apartment_id, title, subject, description, priority, is_public, type, remarks, submitted_by, submitted_by_name_override } = req.body;
     const complaintTitle = title || subject;
 
     if (!society_apartment_id || !complaintTitle || !description) {
@@ -217,25 +217,57 @@ export const create = async (req, res) => {
       });
     }
 
-    // Use resident's unit_id from profile when not provided so Unit column displays correctly
-    const effectiveUnitId = unit_id != null && unit_id !== '' ? unit_id : (req.user.role === 'resident' ? req.user.unit_id : null);
+    let effectiveSubmittedBy = req.user.id;
+    let effectiveUnitId = unit_id != null && unit_id !== '' ? unit_id : (req.user.role === 'resident' ? req.user.unit_id : null);
+    let effectiveSubmittedByNameOverride = null;
+
+    // Union admin (or super_admin) can record a complaint on behalf of a resident or walk-in
+    if (req.user.role === 'union_admin' || req.user.role === 'super_admin') {
+      const overrideName = (submitted_by_name_override || '').trim();
+      if (submitted_by != null && submitted_by !== '') {
+        const residentRow = await query(
+          'SELECT id, unit_id FROM users WHERE id = $1 AND role IN (\'resident\', \'union_admin\') AND society_apartment_id = $2',
+          [submitted_by, society_apartment_id]
+        );
+        if (residentRow.rows.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid resident or resident does not belong to this society',
+          });
+        }
+        effectiveSubmittedBy = parseInt(submitted_by, 10);
+        if (effectiveUnitId == null || effectiveUnitId === '') {
+          effectiveUnitId = residentRow.rows[0].unit_id || null;
+        }
+      } else if (overrideName) {
+        effectiveSubmittedBy = null;
+        effectiveSubmittedByNameOverride = overrideName;
+        effectiveUnitId = effectiveUnitId || null;
+      }
+    }
 
     const result = await query(
-      `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, title, description, priority, is_public, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+      `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, submitted_by_name_override, title, description, priority, is_public, status, type, remarks)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
        RETURNING *`,
       [
         effectiveUnitId || null,
         society_apartment_id,
-        req.user.id,
+        effectiveSubmittedBy,
+        effectiveSubmittedByNameOverride,
         complaintTitle,
         description,
         priority || 'medium',
         is_public || false,
+        type || null,
+        remarks || null,
       ]
     );
 
-    // Notify union admin(s) by email (do not block response)
+    // Notify union admin(s) by email (do not block response) — only when resident submits (not when admin records)
+    const residentNameForEmail = effectiveSubmittedBy === req.user.id
+      ? (req.user.name || req.user.email)
+      : (effectiveSubmittedByNameOverride || (effectiveSubmittedBy ? 'Resident' : 'Walk-in'));
     (async () => {
       try {
         const admins = await query(
@@ -244,10 +276,10 @@ export const create = async (req, res) => {
         );
         const society = await query('SELECT name FROM apartments WHERE id = $1', [society_apartment_id]);
         const toEmails = admins.rows.map((r) => r.email).filter(Boolean);
-        if (toEmails.length > 0) {
+        if (toEmails.length > 0 && effectiveSubmittedBy !== null) {
           await sendNewComplaintNotificationToAdmin({
             toEmails,
-            residentName: req.user.name || req.user.email,
+            residentName: residentNameForEmail,
             complaintTitle,
             complaintId: result.rows[0].id,
             societyName: society.rows[0]?.name,
@@ -276,7 +308,7 @@ export const create = async (req, res) => {
 // Create complaint with file attachments (multipart/form-data)
 export const createWithAttachments = async (req, res) => {
   try {
-    const { unit_id, society_apartment_id, title, subject, description, priority, is_public } = req.body;
+    const { unit_id, society_apartment_id, title, subject, description, priority, is_public, type, remarks, submitted_by, submitted_by_name_override } = req.body;
     const complaintTitle = title || subject;
 
     if (!society_apartment_id || !complaintTitle || !description) {
@@ -286,28 +318,59 @@ export const createWithAttachments = async (req, res) => {
       });
     }
 
-    // Use resident's unit_id from profile when not provided so Unit column displays correctly
-    const effectiveUnitId = unit_id != null && unit_id !== '' ? unit_id : (req.user.role === 'resident' ? req.user.unit_id : null);
+    let effectiveSubmittedBy = req.user.id;
+    let effectiveUnitId = unit_id != null && unit_id !== '' ? unit_id : (req.user.role === 'resident' ? req.user.unit_id : null);
+    let effectiveSubmittedByNameOverride = null;
+
+    if (req.user.role === 'union_admin' || req.user.role === 'super_admin') {
+      const overrideName = (submitted_by_name_override || '').trim();
+      if (submitted_by != null && submitted_by !== '') {
+        const residentRow = await query(
+          'SELECT id, unit_id FROM users WHERE id = $1 AND role IN (\'resident\', \'union_admin\') AND society_apartment_id = $2',
+          [submitted_by, society_apartment_id]
+        );
+        if (residentRow.rows.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid resident or resident does not belong to this society',
+          });
+        }
+        effectiveSubmittedBy = parseInt(submitted_by, 10);
+        if (effectiveUnitId == null || effectiveUnitId === '') {
+          effectiveUnitId = residentRow.rows[0].unit_id || null;
+        }
+      } else if (overrideName) {
+        effectiveSubmittedBy = null;
+        effectiveSubmittedByNameOverride = overrideName;
+        effectiveUnitId = effectiveUnitId || null;
+      }
+    }
 
     const attachmentPaths = (req.files || []).map((f) => `/uploads/complaints/${f.filename}`);
 
     const result = await query(
-      `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, title, description, priority, is_public, status, attachments)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+      `INSERT INTO complaints (unit_id, society_apartment_id, submitted_by, submitted_by_name_override, title, description, priority, is_public, status, attachments, type, remarks)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11)
        RETURNING *`,
       [
         effectiveUnitId || null,
         society_apartment_id,
-        req.user.id,
+        effectiveSubmittedBy,
+        effectiveSubmittedByNameOverride,
         complaintTitle,
         description,
         priority || 'medium',
         is_public === 'true' || is_public === true,
         attachmentPaths.length > 0 ? attachmentPaths : null,
+        type || null,
+        remarks || null,
       ]
     );
 
-    // Notify union admin(s) by email
+    // Notify union admin(s) by email — only when resident submits
+    const residentNameForEmail = effectiveSubmittedBy === req.user.id
+      ? (req.user.name || req.user.email)
+      : (effectiveSubmittedByNameOverride || (effectiveSubmittedBy ? 'Resident' : 'Walk-in'));
     (async () => {
       try {
         const admins = await query(
@@ -316,10 +379,10 @@ export const createWithAttachments = async (req, res) => {
         );
         const society = await query('SELECT name FROM apartments WHERE id = $1', [society_apartment_id]);
         const toEmails = admins.rows.map((r) => r.email).filter(Boolean);
-        if (toEmails.length > 0) {
+        if (toEmails.length > 0 && effectiveSubmittedBy !== null) {
           await sendNewComplaintNotificationToAdmin({
             toEmails,
-            residentName: req.user.name || req.user.email,
+            residentName: residentNameForEmail,
             complaintTitle,
             complaintId: result.rows[0].id,
             societyName: society.rows[0]?.name,
