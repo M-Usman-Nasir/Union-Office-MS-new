@@ -3,6 +3,7 @@ import * as superAdminController from '../controllers/superAdminController.js';
 import * as subscriptionController from '../controllers/subscriptionController.js';
 import * as invoiceController from '../controllers/invoiceController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { uploadInvoicePaymentProof } from '../config/multer.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -14,6 +15,12 @@ router.get('/invoices', requireRole('super_admin'), invoiceController.listInvoic
 router.post('/invoices', requireRole('super_admin'), invoiceController.createInvoice);
 router.post('/invoices/auto-generate', requireRole('super_admin'), invoiceController.autoGenerateInvoices);
 router.patch('/invoices/:id', requireRole('super_admin'), invoiceController.updateInvoiceStatus);
+router.post(
+  '/invoices/:id/upload-payment-proof',
+  requireRole('super_admin'),
+  uploadInvoicePaymentProof,
+  invoiceController.uploadPaymentProof
+);
 
 // Subscription & admins (Super Admin only)
 router.get('/subscription/plans', requireRole('super_admin'), subscriptionController.getPlans);
