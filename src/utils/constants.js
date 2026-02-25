@@ -135,6 +135,7 @@ export const API_ENDPOINTS = {
   SUPER_ADMIN_SUBSCRIPTION_BY_ID: (id) => `/super-admin/subscription/${id}`,
   SUPER_ADMIN_INVOICES: '/super-admin/invoices',
   SUPER_ADMIN_INVOICE_BY_ID: (id) => `/super-admin/invoices/${id}`,
+  SUPER_ADMIN_INVOICE_UPLOAD_PAYMENT_PROOF: (id) => `/super-admin/invoices/${id}/upload-payment-proof`,
   // Societies cascading (City → Area → Apartment)
   SOCIETIES_CITIES: '/societies/cities',
   SOCIETIES_AREAS: '/societies/areas',

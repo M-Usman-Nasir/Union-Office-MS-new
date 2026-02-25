@@ -192,3 +192,50 @@ export const autoGenerateInvoices = async (req, res) => {
     });
   }
 };
+
+// Upload payment proof (screenshot/document) for an invoice. Optionally mark as paid.
+export const uploadPaymentProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const markPaid = req.body?.mark_paid === 'true' || req.body?.mark_paid === true;
+    if (!req.file || !req.file.filename) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded. Please select an image or PDF.',
+      });
+    }
+    const relativePath = `/uploads/invoice-payment-proofs/${req.file.filename}`;
+
+    const result = await query(
+      `UPDATE super_admin_invoices
+       SET payment_proof_path = $1, payment_proof_uploaded_at = CURRENT_TIMESTAMP${markPaid ? ", status = 'paid'" : ''}, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [relativePath, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    const row = result.rows[0];
+    const withJoin = await query(
+      `SELECT i.*, u.name AS user_name, u.email AS user_email, a.name AS apartment_name, a.city, a.area
+       FROM super_admin_invoices i
+       JOIN users u ON i.user_id = u.id
+       JOIN apartments a ON i.society_apartment_id = a.id
+       WHERE i.id = $1`,
+      [row.id]
+    );
+    res.json({
+      success: true,
+      data: withJoin.rows[0] || row,
+      message: markPaid ? 'Payment proof uploaded and invoice marked as paid' : 'Payment proof uploaded',
+    });
+  } catch (error) {
+    console.error('Upload payment proof error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload payment proof',
+      error: error.message,
+    });
+  }
+};

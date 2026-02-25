@@ -160,3 +160,41 @@ export const uploadUnitsImport = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: unitsImportFileFilter,
 }).single('file');
+
+// --- Invoice payment proof (screenshot/document) ---
+const invoicePaymentProofDir = path.join(__dirname, '..', 'uploads', 'invoice-payment-proofs');
+if (!fs.existsSync(invoicePaymentProofDir)) {
+  fs.mkdirSync(invoicePaymentProofDir, { recursive: true });
+}
+
+const invoicePaymentProofStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, invoicePaymentProofDir);
+  },
+  filename: (req, file, cb) => {
+    const invoiceId = req.params?.id || 'unknown';
+    const userId = req.user?.id || 'unknown';
+    const timestamp = Date.now();
+    const ext = (path.extname(file.originalname) || '').toLowerCase() || '.jpg';
+    const filename = `invoice_${invoiceId}_user_${userId}_${timestamp}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const invoicePaymentProofFileFilter = (req, file, cb) => {
+  const allowed = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+  ];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only images (JPEG, PNG, GIF, WebP) and PDF are allowed'), false);
+  }
+};
+
+export const uploadInvoicePaymentProof = multer({
+  storage: invoicePaymentProofStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: invoicePaymentProofFileFilter,
+}).single('file');

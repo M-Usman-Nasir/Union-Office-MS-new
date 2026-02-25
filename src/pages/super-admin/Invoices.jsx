@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   Container,
   Typography,
@@ -26,14 +26,21 @@ import {
   Grid,
   TextField,
   Alert,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import AddIcon from '@mui/icons-material/Add'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import useSWR from 'swr'
 import { superAdminApi } from '@/api/superAdminApi'
 import dayjs from 'dayjs'
 import toast from 'react-hot-toast'
+
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '')
+const getPaymentProofUrl = (path) => (path ? `${API_BASE}${path}` : null)
 
 const statusColor = (status) => {
   switch (status) {
@@ -54,6 +61,12 @@ const SuperAdminInvoices = () => {
   const [statusFilter, setStatusFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [autoGenerating, setAutoGenerating] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadInvoice, setUploadInvoice] = useState(null)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [uploadMarkPaid, setUploadMarkPaid] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
   const [createForm, setCreateForm] = useState({
     user_id: '',
     society_apartment_id: '',
@@ -77,7 +90,6 @@ const SuperAdminInvoices = () => {
   )
 
   const invoices = invoicesRes?.data ?? []
-  const total = invoicesRes?.total ?? invoices.length
   const admins = adminsData?.data ?? []
 
   const handleCreateInvoice = async () => {
@@ -145,6 +157,42 @@ const SuperAdminInvoices = () => {
       society_apartment_id: admin?.society_apartment_id ? String(admin.society_apartment_id) : '',
       amount: admin?.plan_amount != null ? String(admin.plan_amount) : f.amount,
     }))
+  }
+
+  const openUploadDialog = (inv) => {
+    setUploadInvoice(inv)
+    setSelectedFile(null)
+    setUploadMarkPaid(true)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setUploadOpen(true)
+  }
+
+  const closeUploadDialog = () => {
+    setUploadOpen(false)
+    setUploadInvoice(null)
+    setSelectedFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleUploadPaymentProof = async () => {
+    if (!uploadInvoice || !selectedFile) {
+      toast.error('Please select a file (image or PDF)')
+      return
+    }
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      formData.append('mark_paid', uploadMarkPaid ? 'true' : 'false')
+      const res = await superAdminApi.uploadInvoicePaymentProof(uploadInvoice.id, formData)
+      toast.success(res.data?.message || 'Payment proof uploaded')
+      mutate()
+      closeUploadDialog()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -216,6 +264,7 @@ const SuperAdminInvoices = () => {
                     <TableCell>Period</TableCell>
                     <TableCell>Due date</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Proof</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -245,6 +294,29 @@ const SuperAdminInvoices = () => {
                       <TableCell>{inv.due_date && dayjs(inv.due_date).format('DD/MM/YYYY')}</TableCell>
                       <TableCell>
                         <Chip label={inv.status} color={statusColor(inv.status)} size="small" />
+                      </TableCell>
+                      <TableCell>
+                        {inv.payment_proof_path ? (
+                          <Button
+                            size="small"
+                            component="a"
+                            href={getPaymentProofUrl(inv.payment_proof_path)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            startIcon={<PictureAsPdfIcon />}
+                          >
+                            View proof
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<UploadFileIcon />}
+                            onClick={() => openUploadDialog(inv)}
+                          >
+                            Upload proof
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         {inv.status === 'draft' && (
@@ -379,6 +451,64 @@ const SuperAdminInvoices = () => {
             disabled={!createForm.user_id || !createForm.society_apartment_id || !createForm.amount}
           >
             Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={uploadOpen} onClose={closeUploadDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload payment proof</DialogTitle>
+        <DialogContent>
+          {uploadInvoice && (
+            <Box sx={{ pt: 1 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Invoice for {uploadInvoice.user_name} (ID: {uploadInvoice.user_id}) – PKR {uploadInvoice.amount}. Upload a screenshot or document to confirm payment received.
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<UploadFileIcon />}
+                    fullWidth
+                  >
+                    {selectedFile ? selectedFile.name : 'Choose image or PDF'}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      hidden
+                      accept="image/*,.pdf,image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    />
+                  </Button>
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Max 5MB. Images (JPEG, PNG, GIF, WebP) or PDF.
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={uploadMarkPaid}
+                        onChange={(e) => setUploadMarkPaid(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Mark invoice as paid after upload"
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeUploadDialog}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleUploadPaymentProof}
+            disabled={!selectedFile || uploading}
+            startIcon={uploading ? <CircularProgress size={18} /> : <UploadFileIcon />}
+          >
+            {uploading ? 'Uploading...' : 'Upload'}
           </Button>
         </DialogActions>
       </Dialog>
