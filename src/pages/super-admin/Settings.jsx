@@ -24,12 +24,14 @@ import {
 import SettingsIcon from '@mui/icons-material/Settings'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
+import StorageIcon from '@mui/icons-material/Storage'
 import useSWR from 'swr'
 import { superAdminApi } from '@/api/superAdminApi'
 import toast from 'react-hot-toast'
 
 const SuperAdminSettings = () => {
   const [saving, setSaving] = useState(false)
+  const [migrationsRunning, setMigrationsRunning] = useState(false)
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
   const [planForm, setPlanForm] = useState({ name: 'Monthly', amount: '', interval_months: 1 })
@@ -86,6 +88,22 @@ const SuperAdminSettings = () => {
       toast.error(err.response?.data?.message || 'Failed to save plan')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleRunMigrations = async () => {
+    setMigrationsRunning(true)
+    try {
+      const res = await superAdminApi.runMigrations()
+      const data = res.data
+      const msg = data.applied?.length || data.skipped?.length
+        ? `${data.message} Applied: ${(data.applied || []).length}, Skipped: ${(data.skipped || []).length}.`
+        : data.message
+      toast.success(msg)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to run migrations')
+    } finally {
+      setMigrationsRunning(false)
     }
   }
 
@@ -158,6 +176,27 @@ const SuperAdminSettings = () => {
             )}
           </CardContent>
         </Card>
+
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" gap={1} sx={{ mb: 1 }}>
+            <StorageIcon color="primary" />
+            <Typography variant="h6">Database migrations</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Run database migrations for production (e.g. when Render Shell is not available). Safe to run multiple times.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={handleRunMigrations}
+            disabled={migrationsRunning}
+            startIcon={migrationsRunning ? <CircularProgress size={18} /> : <StorageIcon />}
+          >
+            {migrationsRunning ? 'Running…' : 'Run migrations'}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Dialog open={planDialogOpen} onClose={closePlanDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingPlan ? 'Edit plan' : 'Add subscription plan'}</DialogTitle>

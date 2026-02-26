@@ -2,6 +2,7 @@ import express from 'express';
 import * as superAdminController from '../controllers/superAdminController.js';
 import * as subscriptionController from '../controllers/subscriptionController.js';
 import * as invoiceController from '../controllers/invoiceController.js';
+import * as migrationsController from '../controllers/migrationsController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { uploadInvoicePaymentProof } from '../config/multer.js';
 
@@ -9,6 +10,9 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/reports/global', requireRole('super_admin'), superAdminController.getGlobalReports);
+
+// Migrations (Super Admin only – e.g. for production when Shell is not available)
+router.post('/run-migrations', requireRole('super_admin'), migrationsController.runMigrationsHandler);
 
 // Invoices (Super Admin only)
 router.get('/invoices', requireRole('super_admin'), invoiceController.listInvoices);

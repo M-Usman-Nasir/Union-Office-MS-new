@@ -22,4 +22,6 @@ export const superAdminApi = {
   updateInvoiceStatus: (id, status) => api.patch(API_ENDPOINTS.SUPER_ADMIN_INVOICE_BY_ID(id), { status }),
   uploadInvoicePaymentProof: (invoiceId, formData) =>
     api.post(API_ENDPOINTS.SUPER_ADMIN_INVOICE_UPLOAD_PAYMENT_PROOF(invoiceId), formData),
+
+  runMigrations: () => api.post(API_ENDPOINTS.SUPER_ADMIN_RUN_MIGRATIONS),
 }
