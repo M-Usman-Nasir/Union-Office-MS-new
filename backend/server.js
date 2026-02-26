@@ -25,6 +25,7 @@ import staffRoutes from './routes/staff.js';
 import notificationRoutes from './routes/notifications.js';
 import messageRoutes from './routes/messages.js';
 import cronRoutes from './routes/cron.js';
+import bootstrapRoutes from './routes/bootstrap.js';
 
 // Load environment variables
 dotenv.config();
@@ -76,6 +77,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/bootstrap', bootstrapRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/societies', apartmentRoutes);
