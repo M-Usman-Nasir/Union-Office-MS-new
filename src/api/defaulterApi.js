@@ -10,6 +10,11 @@ export const defaulterApi = {
     return api.get(API_ENDPOINTS.DEFAULTERS_STATISTICS, { params })
   },
 
+  /** Sync defaulters table from unpaid maintenance. Optional society_id for super_admin. */
+  syncFromMaintenance: (params) => {
+    return api.post(API_ENDPOINTS.DEFAULTERS_SYNC, {}, { params })
+  },
+
   /** Export defaulters as CSV. Returns blob. */
   exportCsv: (params) => {
     return api.get(API_ENDPOINTS.DEFAULTERS_EXPORT, {

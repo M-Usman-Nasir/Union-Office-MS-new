@@ -15,8 +15,13 @@ import AddIcon from '@mui/icons-material/Add'
 import { useParams, useNavigate } from 'react-router-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import { residentApi } from '@/api/residentApi'
+import { maintenanceApi } from '@/api/maintenanceApi'
+import DataTable from '@/components/common/DataTable'
 import { ROUTES } from '@/utils/constants'
 import toast from 'react-hot-toast'
+import dayjs from 'dayjs'
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const ResidentDetails = () => {
   const { id } = useParams()
@@ -26,7 +31,7 @@ const ResidentDetails = () => {
   const [familyMemberRelation, setFamilyMemberRelation] = useState('')
   const [addFamilyMemberLoading, setAddFamilyMemberLoading] = useState(false)
 
-  const { data: residentData, error, isLoading, mutate } = useSWR(
+  const { data: residentData, error, isLoading } = useSWR(
     id ? ['/residents', id] : null,
     () => residentApi.getById(id).then(res => res.data?.data ?? res.data)
   )
@@ -36,8 +41,21 @@ const ResidentDetails = () => {
     () => residentApi.getFamilyMembers(id).then(res => res.data)
   )
 
+  const { data: maintenanceData, isLoading: maintenanceLoading } = useSWR(
+    id && residentData?.unit_id ? ['/maintenance-resident', id, residentData.unit_id] : null,
+    () =>
+      maintenanceApi
+        .getAll({
+          unit_id: residentData.unit_id,
+          society_id: residentData.society_apartment_id,
+          limit: 200,
+        })
+        .then(res => res.data)
+  )
+
   const resident = residentData
   const familyMembers = familyMembersData?.data || []
+  const maintenanceList = maintenanceData?.data ?? []
 
   const handleBack = () => {
     navigate(ROUTES.ADMIN_RESIDENTS)
@@ -67,6 +85,47 @@ const ResidentDetails = () => {
       setAddFamilyMemberLoading(false)
     }
   }
+
+  const formatCurrency = (amount) =>
+    new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' }).format(amount ?? 0)
+
+  const maintenanceColumns = [
+    {
+      id: 'period',
+      label: 'Month / Year',
+      render: (row) => `${MONTH_LABELS[(row.month || 1) - 1]} ${row.year ?? '-'}`,
+    },
+    {
+      id: 'total_amount',
+      label: 'Total Amount',
+      render: (row) => formatCurrency(row.total_amount),
+    },
+    {
+      id: 'amount_paid',
+      label: 'Amount Paid',
+      render: (row) => formatCurrency(row.amount_paid),
+    },
+    {
+      id: 'due',
+      label: 'Due',
+      render: (row) => formatCurrency(Math.max(0, (Number(row.total_amount) || 0) - (Number(row.amount_paid) || 0))),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      render: (row) => {
+        const s = row.status || 'pending'
+        const label = s === 'paid' ? 'Paid' : s === 'partially_paid' ? 'Partially paid' : 'Pending'
+        const color = s === 'paid' ? 'success' : s === 'partially_paid' ? 'warning' : 'default'
+        return <Chip size="small" label={label} color={color} variant="outlined" />
+      },
+    },
+    {
+      id: 'payment_date',
+      label: 'Payment Date',
+      render: (row) => (row.payment_date ? dayjs(row.payment_date).format('DD MMM YYYY') : '-'),
+    },
+  ]
 
   if (isLoading || !residentData && !error) {
     return (
@@ -186,6 +245,25 @@ const ResidentDetails = () => {
                 ? `${resident.defaulter_status}${resident.defaulter_amount_due != null ? ` (Amount due: ${resident.defaulter_amount_due})` : ''}${resident.defaulter_months_overdue != null ? `, ${resident.defaulter_months_overdue} mo. overdue` : ''}`
                 : 'Not a defaulter'}
             </Typography>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Typography variant="subtitle2" sx={{ mt: 1 }}>Maintenance Records</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            {!resident.unit_id ? (
+              <Typography variant="body2" color="text.secondary">No unit assigned.</Typography>
+            ) : (
+              <Box sx={{ mt: 1 }}>
+                <DataTable
+                  columns={maintenanceColumns}
+                  data={maintenanceList}
+                  loading={maintenanceLoading}
+                  emptyMessage="No maintenance records."
+                  dense
+                />
+              </Box>
+            )}
           </Grid>
 
           {(Array.isArray(resident.telephone_bills) && resident.telephone_bills.length > 0) ||

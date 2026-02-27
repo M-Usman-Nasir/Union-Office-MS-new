@@ -1,4 +1,23 @@
 import { query } from '../config/database.js';
+import { runSyncForSocieties } from './defaulterController.js';
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** Create a finance income record for a maintenance payment (used by recordPayment and approvePaymentRequest). */
+async function createFinanceIncomeFromMaintenance({ societyId, addedBy, amount, month, year, unitNumber, transactionDate, maintenanceId }) {
+  if (societyId == null || societyId === undefined || addedBy == null || addedBy === undefined || amount == null || amount <= 0) {
+    console.warn('createFinanceIncomeFromMaintenance skipped:', { societyId, addedBy, amount });
+    return;
+  }
+  const monthLabel = MONTH_NAMES[Number(month) - 1] || String(month);
+  const unitStr = unitNumber != null ? `Unit ${unitNumber}` : 'Unit';
+  const description = `Maintenance payment – ${unitStr}, ${monthLabel} ${year}`;
+  await query(
+    `INSERT INTO finance (society_apartment_id, added_by, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, maintenance_id)
+     VALUES ($1, $2, $3, 'income', NULL, 'maintenance', $4, $5, NULL, NULL, $6, $7, 'paid', $8)`,
+    [societyId, addedBy, transactionDate, description, amount, month || new Date(transactionDate).getMonth() + 1, year || new Date(transactionDate).getFullYear(), maintenanceId || null]
+  );
+}
 
 // Get all maintenance records
 export const getAll = async (req, res) => {
@@ -247,11 +266,11 @@ export const update = async (req, res) => {
            total_amount = COALESCE($2, total_amount),
            status = COALESCE($3, status),
            amount_paid = COALESCE($4, amount_paid),
-           due_date = COALESCE($5, due_date),
+           due_date = $5,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $6
        RETURNING *`,
-      [base_amount, total_amount, status, amount_paid, due_date, id]
+      [base_amount, total_amount, status, amount_paid, due_date ?? null, id]
     );
 
     res.json({
@@ -264,6 +283,42 @@ export const update = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update maintenance record',
+      error: error.message,
+    });
+  }
+};
+
+// Upload receipt for a maintenance record (multipart: receipt file)
+export const uploadReceipt = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.file || !req.file.filename) {
+      return res.status(400).json({
+        success: false,
+        message: 'No receipt file uploaded. Please select an image or PDF.',
+      });
+    }
+    const receiptPath = `/uploads/maintenance-receipts/${req.file.filename}`;
+    const result = await query(
+      `UPDATE maintenance SET receipt_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [receiptPath, parseInt(id)]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Maintenance record not found',
+      });
+    }
+    res.json({
+      success: true,
+      message: 'Receipt uploaded successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Upload receipt error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload receipt',
       error: error.message,
     });
   }
@@ -320,10 +375,39 @@ export const recordPayment = async (req, res) => {
       [newAmountPaid, newStatus, paymentDate, parseInt(id)]
     );
 
+    const societyId = maintenance.society_apartment_id;
+    if (societyId) {
+      runSyncForSocieties([societyId]).catch((err) =>
+        console.error('Defaulters sync after payment failed:', err)
+      );
+    }
+
+    // Add maintenance payment as income on Finance page
+    let financeCreated = false;
+    try {
+      const unitRes = await query('SELECT unit_number FROM units WHERE id = $1', [maintenance.unit_id]);
+      const unitNumber = unitRes.rows[0]?.unit_number ?? null;
+      const transactionDate = paymentDate || new Date().toISOString().split('T')[0];
+      await createFinanceIncomeFromMaintenance({
+        societyId,
+        addedBy: req.user?.id,
+        amount: paymentAmount,
+        month: maintenance.month,
+        year: maintenance.year,
+        unitNumber,
+        transactionDate,
+        maintenanceId: parseInt(id),
+      });
+      financeCreated = true;
+    } catch (financeErr) {
+      console.error('Create finance income from maintenance payment failed:', financeErr?.message || financeErr);
+    }
+
     res.json({
       success: true,
       message: 'Payment recorded successfully',
       data: result.rows[0],
+      finance_income_created: financeCreated,
     });
   } catch (error) {
     console.error('Record payment error:', error);
@@ -358,6 +442,301 @@ export const remove = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete maintenance record',
+      error: error.message,
+    });
+  }
+};
+
+// --- Maintenance payment requests (resident submit proof → admin approve/reject) ---
+
+// Resident: submit payment proof for a maintenance record (must be resident's unit)
+export const submitPaymentProof = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+    const unitId = req.user?.unit_id;
+
+    if (req.user?.role !== 'resident' || !unitId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only residents can submit payment proof for their unit.',
+      });
+    }
+    if (!req.file || !req.file.filename) {
+      return res.status(400).json({
+        success: false,
+        message: 'No proof file uploaded. Please select an image or PDF.',
+      });
+    }
+
+    const maintenanceResult = await query(
+      'SELECT id, unit_id, society_apartment_id FROM maintenance WHERE id = $1',
+      [parseInt(id)]
+    );
+    if (maintenanceResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Maintenance record not found',
+      });
+    }
+    const maintenance = maintenanceResult.rows[0];
+    if (Number(maintenance.unit_id) !== Number(unitId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only submit proof for maintenance of your own unit.',
+      });
+    }
+
+    const existingPending = await query(
+      `SELECT id FROM maintenance_payment_requests 
+       WHERE maintenance_id = $1 AND status = 'pending' LIMIT 1`,
+      [id]
+    );
+    if (existingPending.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'A payment proof is already pending for this record. Wait for admin to review.',
+      });
+    }
+
+    const proofPath = `/uploads/maintenance-payment-proofs/${req.file.filename}`;
+    const note = (req.body && req.body.note) ? String(req.body.note).trim() : null;
+
+    const insertResult = await query(
+      `INSERT INTO maintenance_payment_requests (maintenance_id, submitted_by, proof_path, note, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING *`,
+      [parseInt(id), userId, proofPath, note]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Payment proof submitted. It will be reviewed by the office.',
+      data: insertResult.rows[0],
+    });
+  } catch (error) {
+    console.error('Submit payment proof error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit payment proof',
+      error: error.message,
+    });
+  }
+};
+
+// Resident: get my payment requests (for showing "Pending verification" on resident maintenance page)
+export const getMyPaymentRequests = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const result = await query(
+      `SELECT id, maintenance_id, status, created_at 
+       FROM maintenance_payment_requests 
+       WHERE submitted_by = $1 
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Get my payment requests error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch your payment requests',
+      error: error.message,
+    });
+  }
+};
+
+// Admin: list payment requests (pending by default; filter by society_id)
+export const getPaymentRequests = async (req, res) => {
+  try {
+    const { status = 'pending', society_id } = req.query;
+
+    let sql = `
+      SELECT r.id, r.maintenance_id, r.proof_path, r.note, r.status, r.created_at, r.reviewed_at, r.rejection_reason,
+             m.unit_id, m.month, m.year, m.total_amount, m.amount_paid, m.society_apartment_id,
+             u.unit_number,
+             s.name AS society_name,
+             submitter.name AS submitted_by_name, submitter.email AS submitted_by_email
+      FROM maintenance_payment_requests r
+      JOIN maintenance m ON m.id = r.maintenance_id
+      LEFT JOIN units u ON u.id = m.unit_id
+      LEFT JOIN apartments s ON s.id = m.society_apartment_id
+      LEFT JOIN users submitter ON submitter.id = r.submitted_by
+      WHERE r.status = $1
+    `;
+    const params = [status];
+    let paramCount = 1;
+
+    if (society_id) {
+      paramCount++;
+      sql += ` AND m.society_apartment_id = $${paramCount}`;
+      params.push(society_id);
+    }
+    if (req.user?.role === 'union_admin' && req.user?.society_apartment_id) {
+      paramCount++;
+      sql += ` AND m.society_apartment_id = $${paramCount}`;
+      params.push(req.user.society_apartment_id);
+    }
+
+    sql += ` ORDER BY r.created_at ASC`;
+
+    const result = await query(sql, params);
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Get payment requests error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payment requests',
+      error: error.message,
+    });
+  }
+};
+
+// Admin: approve payment request → record payment and set receipt_path
+export const approvePaymentRequest = async (req, res) => {
+  try {
+    const requestId = parseInt(req.params.id);
+    const reviewerId = req.user?.id;
+
+    const reqResult = await query(
+      `SELECT r.id, r.maintenance_id, r.proof_path, r.status,
+              m.total_amount, m.amount_paid, m.society_apartment_id, m.month, m.year,
+              u.unit_number
+       FROM maintenance_payment_requests r
+       JOIN maintenance m ON m.id = r.maintenance_id
+       LEFT JOIN units u ON u.id = m.unit_id
+       WHERE r.id = $1`,
+      [requestId]
+    );
+    if (reqResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment request not found',
+      });
+    }
+    const row = reqResult.rows[0];
+    if (row.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'This request has already been processed',
+      });
+    }
+
+    const totalAmount = parseFloat(row.total_amount) || 0;
+    const amountPaid = parseFloat(row.amount_paid) || 0;
+    const dueAmount = totalAmount - amountPaid;
+
+    await query(
+      `UPDATE maintenance_payment_requests 
+       SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = $1 
+       WHERE id = $2`,
+      [reviewerId, requestId]
+    );
+
+    await query(
+      `UPDATE maintenance 
+       SET amount_paid = $1::DECIMAL(10, 2), status = 'paid', 
+           payment_date = CURRENT_DATE, receipt_path = $2, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $3`,
+      [totalAmount, row.proof_path, row.maintenance_id]
+    );
+
+    const societyId = row.society_apartment_id;
+    if (societyId) {
+      runSyncForSocieties([societyId]).catch((err) =>
+        console.error('Defaulters sync after approve payment request failed:', err)
+      );
+    }
+
+    // Add maintenance payment as income on Finance page (dueAmount = amount just approved)
+    let financeCreated = false;
+    if (dueAmount > 0) {
+      try {
+        const transactionDate = new Date().toISOString().split('T')[0];
+        await createFinanceIncomeFromMaintenance({
+          societyId,
+          addedBy: reviewerId,
+          amount: dueAmount,
+          month: row.month,
+          year: row.year,
+          unitNumber: row.unit_number ?? null,
+          transactionDate,
+          maintenanceId: row.maintenance_id,
+        });
+        financeCreated = true;
+      } catch (financeErr) {
+        console.error('Create finance income from approved payment request failed:', financeErr?.message || financeErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Payment approved and recorded successfully',
+      data: { maintenance_id: row.maintenance_id, finance_income_created: financeCreated },
+    });
+  } catch (error) {
+    console.error('Approve payment request error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve payment request',
+      error: error.message,
+    });
+  }
+};
+
+// Admin: reject payment request
+export const rejectPaymentRequest = async (req, res) => {
+  try {
+    const requestId = parseInt(req.params.id);
+    const reviewerId = req.user?.id;
+    const rejectionReason = req.body?.rejection_reason ? String(req.body.rejection_reason).trim() : null;
+
+    const reqResult = await query(
+      'SELECT id, status FROM maintenance_payment_requests WHERE id = $1',
+      [requestId]
+    );
+    if (reqResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment request not found',
+      });
+    }
+    if (reqResult.rows[0].status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'This request has already been processed',
+      });
+    }
+
+    await query(
+      `UPDATE maintenance_payment_requests 
+       SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = $1, rejection_reason = $2 
+       WHERE id = $3`,
+      [reviewerId, rejectionReason, requestId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Payment proof rejected',
+      data: { id: requestId },
+    });
+  } catch (error) {
+    console.error('Reject payment request error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject payment request',
       error: error.message,
     });
   }
@@ -519,6 +898,15 @@ export const generateMonthlyDues = async (req, res) => {
     const { generateMonthlyDues: generateDues } = await import('../jobs/monthlyDuesGenerator.js');
     const result = await generateDues(targetMonth, targetYear, societyId);
 
+    const societyIdsToSync = societyId
+      ? [societyId]
+      : (await query('SELECT id FROM apartments')).rows.map((r) => r.id);
+    if (societyIdsToSync.length > 0) {
+      runSyncForSocieties(societyIdsToSync).catch((err) =>
+        console.error('Defaulters sync after generate monthly dues failed:', err)
+      );
+    }
+
     res.json({
       success: true,
       message: 'Monthly dues generated successfully',
@@ -566,6 +954,10 @@ export const generateForScope = async (req, res) => {
 
     const { generateMonthlyDuesForScope } = await import('../jobs/monthlyDuesGenerator.js');
     const result = await generateMonthlyDuesForScope(targetMonth, targetYear, societyId, { blockId, floorId });
+
+    runSyncForSocieties([societyId]).catch((err) =>
+      console.error('Defaulters sync after generate for scope failed:', err)
+    );
 
     res.json({
       success: true,

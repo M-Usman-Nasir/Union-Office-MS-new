@@ -53,6 +53,12 @@ export const API_ENDPOINTS = {
   MAINTENANCE_YEARLY_LEDGER: '/maintenance/yearly-ledger',
   MAINTENANCE_BY_ID: (id) => `/maintenance/${id}`,
   MAINTENANCE_PAYMENT: (id) => `/maintenance/${id}/payment`,
+  MAINTENANCE_UPLOAD_RECEIPT: (id) => `/maintenance/${id}/upload-receipt`,
+  MAINTENANCE_SUBMIT_PAYMENT_PROOF: (id) => `/maintenance/${id}/submit-payment-proof`,
+  MAINTENANCE_PAYMENT_REQUESTS_MINE: '/maintenance/payment-requests/mine',
+  MAINTENANCE_PAYMENT_REQUESTS: '/maintenance/payment-requests',
+  MAINTENANCE_PAYMENT_REQUEST_APPROVE: (id) => `/maintenance/payment-requests/${id}/approve`,
+  MAINTENANCE_PAYMENT_REQUEST_REJECT: (id) => `/maintenance/payment-requests/${id}/reject`,
   MAINTENANCE_GENERATE_DUES: '/maintenance/generate-monthly-dues',
   MAINTENANCE_GENERATE_FOR_SCOPE: '/maintenance/generate-for-scope',
   MAINTENANCE_APPLY_BASE_YEAR: '/maintenance/apply-base-for-year',
@@ -79,6 +85,7 @@ export const API_ENDPOINTS = {
   DEFAULTERS: '/defaulters',
   DEFAULTERS_STATISTICS: '/defaulters/statistics',
   DEFAULTERS_EXPORT: '/defaulters/export',
+  DEFAULTERS_SYNC: '/defaulters/sync',
   DEFAULTER_STATUS: (id) => `/defaulters/${id}/status`,
   
   // Announcements
@@ -220,6 +227,7 @@ export const PAGINATION = {
 export const INCOME_TYPES = {
   FINES: 'fines',
   ADDITIONAL_CHARGES: 'additional_charges',
+  MAINTENANCE: 'maintenance',
   OTHER_INCOME: 'other_income',
 }
 
@@ -227,6 +235,7 @@ export const INCOME_TYPES = {
 export const INCOME_TYPE_LABELS = {
   [INCOME_TYPES.FINES]: 'Fines',
   [INCOME_TYPES.ADDITIONAL_CHARGES]: 'Additional Charges',
+  [INCOME_TYPES.MAINTENANCE]: 'Maintenance',
   [INCOME_TYPES.OTHER_INCOME]: 'Other Income',
 }
 

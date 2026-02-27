@@ -3,7 +3,7 @@ import { query } from '../config/database.js';
 // Get all defaulters
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, society_id, status, block_id, floor_id } = req.query;
+    const { page = 1, limit = 10, society_id, status, block_id, floor_id, search } = req.query;
     const offset = (page - 1) * limit;
 
     // Check if defaulter list is visible for residents
@@ -39,7 +39,9 @@ export const getAll = async (req, res) => {
                NULLIF(TRIM(u.owner_name), ''),
                ''
              ) AS resident_name,
-             (SELECT MAX(m.payment_date) FROM maintenance m WHERE m.unit_id = d.unit_id AND m.payment_date IS NOT NULL) AS last_payment_date
+             (SELECT MAX(m.payment_date) FROM maintenance m WHERE m.unit_id = d.unit_id AND m.payment_date IS NOT NULL) AS last_payment_date,
+             (SELECT TO_CHAR(TO_DATE(m.year::text || '-' || LPAD(m.month::text, 2, '0') || '-01', 'YYYY-MM-DD'), 'Mon YYYY')
+              FROM maintenance m WHERE m.unit_id = d.unit_id ORDER BY m.year DESC, m.month DESC LIMIT 1) AS last_maintenance_period
       FROM defaulters d
       LEFT JOIN units u ON d.unit_id = u.id
       LEFT JOIN floors f ON u.floor_id = f.id
@@ -71,6 +73,19 @@ export const getAll = async (req, res) => {
       paramCount++;
       sql += ` AND u.floor_id = $${paramCount}`;
       params.push(floor_id);
+    }
+
+    if (search && String(search).trim() !== '') {
+      paramCount++;
+      const searchPattern = '%' + String(search).trim() + '%';
+      sql += ` AND (
+        u.unit_number ILIKE $${paramCount}
+        OR COALESCE((SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1), '') ILIKE $${paramCount}
+        OR NULLIF(TRIM(u.resident_name), '') ILIKE $${paramCount}
+        OR NULLIF(TRIM(u.owner_name), '') ILIKE $${paramCount}
+        OR u.contact_number ILIKE $${paramCount}
+      )`;
+      params.push(searchPattern);
     }
 
     sql += ` ORDER BY d.months_overdue DESC, d.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
@@ -107,6 +122,18 @@ export const getAll = async (req, res) => {
       countSql += ` AND u.floor_id = $${countParamCount}`;
       countParams.push(floor_id);
     }
+    if (search && String(search).trim() !== '') {
+      countParamCount++;
+      const searchPattern = '%' + String(search).trim() + '%';
+      countSql += ` AND (
+        u.unit_number ILIKE $${countParamCount}
+        OR COALESCE((SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1), '') ILIKE $${countParamCount}
+        OR NULLIF(TRIM(u.resident_name), '') ILIKE $${countParamCount}
+        OR NULLIF(TRIM(u.owner_name), '') ILIKE $${countParamCount}
+        OR u.contact_number ILIKE $${countParamCount}
+      )`;
+      countParams.push(searchPattern);
+    }
 
     const countResult = await query(countSql, countParams);
 
@@ -138,7 +165,7 @@ export const getStatistics = async (req, res) => {
     let sql = `
       SELECT 
         COUNT(*) as total_defaulters,
-        SUM(amount_due) as total_amount_due,
+        COALESCE(SUM(amount_due), 0) as total_amount_due,
         AVG(months_overdue) as avg_months_overdue,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active_count,
         COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved_count,
@@ -184,7 +211,9 @@ export const exportDefaulters = async (req, res) => {
                NULLIF(TRIM(u.owner_name), ''),
                ''
              ) AS resident_name,
-             (SELECT MAX(m.payment_date) FROM maintenance m WHERE m.unit_id = d.unit_id AND m.payment_date IS NOT NULL) AS last_payment_date
+             (SELECT MAX(m.payment_date) FROM maintenance m WHERE m.unit_id = d.unit_id AND m.payment_date IS NOT NULL) AS last_payment_date,
+             (SELECT TO_CHAR(TO_DATE(m.year::text || '-' || LPAD(m.month::text, 2, '0') || '-01', 'YYYY-MM-DD'), 'Mon YYYY')
+              FROM maintenance m WHERE m.unit_id = d.unit_id ORDER BY m.year DESC, m.month DESC LIMIT 1) AS last_maintenance_period
       FROM defaulters d
       LEFT JOIN units u ON d.unit_id = u.id
       LEFT JOIN apartments s ON d.society_apartment_id = s.id
@@ -213,7 +242,7 @@ export const exportDefaulters = async (req, res) => {
     const rows = result.rows.map((r) => [
       escapeCsv(r.unit_number),
       escapeCsv(r.resident_name),
-      escapeCsv(formatDate(r.last_payment_date)),
+      escapeCsv(r.last_payment_date ? formatDate(r.last_payment_date) : ''),
       escapeCsv(r.resident_contact),
       escapeCsv(r.email),
       escapeCsv(r.amount_due),
@@ -280,3 +309,108 @@ export const updateStatus = async (req, res) => {
     });
   }
 };
+
+/**
+ * Sync defaulters table from maintenance: units with unpaid maintenance
+ * (total_amount - amount_paid > 0) are added/updated in defaulters; units with
+ * no unpaid maintenance are removed from defaulters for that society.
+ * union_admin: syncs their society only. super_admin: society_id optional, syncs all if omitted.
+ */
+export const syncFromMaintenance = async (req, res) => {
+  try {
+    const societyIdParam = req.body?.society_id ?? req.query?.society_id;
+    const isUnionAdmin = req.user?.role === 'union_admin';
+
+    let societyIds = [];
+    if (isUnionAdmin) {
+      const sid = req.user?.society_apartment_id;
+      if (!sid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Society context required',
+        });
+      }
+      societyIds = [sid];
+    } else {
+      // super_admin
+      if (societyIdParam != null && societyIdParam !== '') {
+        societyIds = [societyIdParam];
+      } else {
+        const societies = await query('SELECT id FROM apartments ORDER BY id');
+        societyIds = societies.rows.map((r) => r.id);
+      }
+    }
+
+    const result = await runSyncForSocieties(societyIds);
+
+    res.json({
+      success: true,
+      message: 'Defaulters synced from maintenance successfully',
+      data: {
+        societies_processed: societyIds.length,
+        defaulters_inserted: result.inserted,
+        previous_records_removed: result.deleted,
+      },
+    });
+  } catch (error) {
+    console.error('Sync defaulters from maintenance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync defaulters from maintenance',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Run defaulters sync for one or more society IDs (used by API and by maintenance controller).
+ * Returns { inserted, deleted }.
+ */
+export async function runSyncForSocieties(societyIds) {
+  let totalInserted = 0;
+  let totalDeleted = 0;
+
+  for (const societyId of societyIds) {
+    const unpaidSql = `
+      WITH unpaid AS (
+        SELECT
+          m.unit_id,
+          m.society_apartment_id,
+          (m.total_amount - COALESCE(m.amount_paid, 0)) AS due,
+          GREATEST(0, (EXTRACT(YEAR FROM CURRENT_DATE)::int - m.year) * 12 + (EXTRACT(MONTH FROM CURRENT_DATE)::int - m.month)) AS months_ago
+        FROM maintenance m
+        WHERE (m.total_amount - COALESCE(m.amount_paid, 0)) > 0
+          AND m.society_apartment_id = $1
+      ),
+      agg AS (
+        SELECT
+          unit_id,
+          society_apartment_id,
+          SUM(due)::DECIMAL(10,2) AS amount_due,
+          MAX(months_ago)::int AS months_overdue
+        FROM unpaid
+        GROUP BY unit_id, society_apartment_id
+      )
+      SELECT unit_id, society_apartment_id, amount_due, months_overdue FROM agg
+    `;
+    const unpaidResult = await query(unpaidSql, [societyId]);
+    const rows = unpaidResult.rows || [];
+
+    const deleteResult = await query(
+      'DELETE FROM defaulters WHERE society_apartment_id = $1 RETURNING id',
+      [societyId]
+    );
+    totalDeleted += deleteResult.rowCount ?? 0;
+
+    for (const row of rows) {
+      await query(
+        `INSERT INTO defaulters (unit_id, society_apartment_id, amount_due, months_overdue, status)
+         VALUES ($1, $2, $3, $4, 'active')`,
+        [row.unit_id, row.society_apartment_id, row.amount_due, row.months_overdue]
+      );
+      totalInserted++;
+    }
+  }
+
+  return { inserted: totalInserted, deleted: totalDeleted };
+}

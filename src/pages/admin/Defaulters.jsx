@@ -23,8 +23,9 @@ import {
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
+import SyncIcon from '@mui/icons-material/Sync'
 import { useAuth } from '@/contexts/AuthContext'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { defaulterApi } from '@/api/defaulterApi'
 import { settingsApi } from '@/api/settingsApi'
 import { propertyApi } from '@/api/propertyApi'
@@ -36,6 +37,7 @@ import { ROLES } from '@/utils/constants'
 
 const Defaulters = () => {
   const { user } = useAuth()
+  const { mutate: globalMutate } = useSWRConfig()
   const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
@@ -44,6 +46,7 @@ const Defaulters = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [selectedDefaulter, setSelectedDefaulter] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
   const [selectedBlockId, setSelectedBlockId] = useState(null)
   const [selectedFloorId, setSelectedFloorId] = useState('')
@@ -128,6 +131,24 @@ const Defaulters = () => {
     }
   }
 
+  const handleSyncFromMaintenance = async () => {
+    setSyncing(true)
+    try {
+      const res = await defaulterApi.syncFromMaintenance({ society_id: societyId })
+      const data = res.data?.data ?? res.data
+      const msg = data
+        ? `Synced: ${data.defaulters_inserted ?? 0} defaulters from unpaid maintenance`
+        : 'Defaulters synced from maintenance'
+      toast.success(msg)
+      mutate()
+      globalMutate((key) => Array.isArray(key) && key[0] === '/defaulters/statistics')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
       style: 'currency',
@@ -148,6 +169,7 @@ const Defaulters = () => {
   const columns = [
     { id: 'resident_name', label: 'Full Name', render: (row) => row.resident_name || '-' },
     { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '-' },
+    { id: 'resident_contact', label: 'Phone Number', render: (row) => row.resident_contact || '-' },
     {
       id: 'floor_number',
       label: 'Floors No.',
@@ -156,7 +178,10 @@ const Defaulters = () => {
     {
       id: 'last_payment_date',
       label: 'Last Payment Date',
-      render: (row) => (row.last_payment_date ? dayjs(row.last_payment_date).format('DD MMM YYYY') : '-'),
+      render: (row) =>
+        row.last_payment_date
+          ? dayjs(row.last_payment_date).format('DD MMM YYYY')
+          : '-',
     },
     { id: 'amount_due', label: 'Amount Due', render: (row) => formatCurrency(row.amount_due) },
     { id: 'months_overdue', label: 'Months Overdue', render: (row) => row.months_overdue ?? '-' },
@@ -340,6 +365,18 @@ const Defaulters = () => {
         >
           {exporting ? 'Exporting...' : 'Export CSV'}
         </Button>
+        <Tooltip title="Update defaulters list from unpaid maintenance records">
+          <span>
+            <Button
+              variant="contained"
+              startIcon={<SyncIcon />}
+              onClick={handleSyncFromMaintenance}
+              disabled={syncing}
+            >
+              {syncing ? 'Syncing...' : 'Sync from maintenance'}
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
 
       <DataTable

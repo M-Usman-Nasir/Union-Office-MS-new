@@ -28,7 +28,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Tooltip,
   Popover,
   Divider,
   Accordion,
@@ -39,9 +38,9 @@ import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR, { useSWRConfig } from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
@@ -51,6 +50,7 @@ import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
+import dayjs from 'dayjs'
 
 const validationSchema = Yup.object({
   unit_id: Yup.mixed()
@@ -59,7 +59,6 @@ const validationSchema = Yup.object({
   month: Yup.number().min(1).max(12).required('Month is required'),
   year: Yup.number().required('Year is required'),
   amount: Yup.number().min(0).required('Amount is required'),
-  due_date: Yup.date().nullable(),
 })
 
 const recordPaymentOnlySchema = Yup.object({
@@ -114,7 +113,6 @@ const Maintenance = () => {
   const [cellContext, setCellContext] = useState(null) // when set: dialog opened from cell click → lock block/floor/unit/month/year
   const [recordToDelete, setRecordToDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
-  const [dueDateInfoAnchor, setDueDateInfoAnchor] = useState(null)
   const [paymentReceivedAmount, setPaymentReceivedAmount] = useState('')
   const [recordingPaymentInDialog, setRecordingPaymentInDialog] = useState(false)
   const [markingFullyPaid, setMarkingFullyPaid] = useState(false)
@@ -125,6 +123,9 @@ const Maintenance = () => {
   const [markFullyPaidLoading, setMarkFullyPaidLoading] = useState(false)
   const [applyingBaseYear, setApplyingBaseYear] = useState(false)
   const [creatingNextYear, setCreatingNextYear] = useState(false)
+  const [recordingChoice, setRecordingChoice] = useState(null) // null | 'add_maintenance' | 'upload_receipt'
+  const [receiptFile, setReceiptFile] = useState(null)
+  const [uploadReceiptLoading, setUploadReceiptLoading] = useState(false)
 
   const { data: maintenanceConfigData } = useSWR(
     societyId ? ['/settings/maintenance-config', societyId] : null,
@@ -221,10 +222,53 @@ const Maintenance = () => {
   const dialogFloors = dialogFloorsData?.data || []
   const dialogUnits = dialogUnitsData?.data || []
 
+  const { data: paymentRequestsData, mutate: mutatePaymentRequests } = useSWR(
+    societyId ? ['/maintenance/payment-requests', societyId] : null,
+    () => maintenanceApi.getPaymentRequests({ status: 'pending', society_id: societyId }).then(res => res.data)
+  )
+  const pendingPaymentRequests = paymentRequestsData?.data || []
+  const [rejectRequestId, setRejectRequestId] = useState(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectLoading, setRejectLoading] = useState(false)
+  const [approveLoadingId, setApproveLoadingId] = useState(null)
+
+  const handleApprovePaymentRequest = async (requestId) => {
+    setApproveLoadingId(requestId)
+    try {
+      const res = await maintenanceApi.approvePaymentRequest(requestId)
+      const financeCreated = res.data?.data?.finance_income_created === true
+      toast.success(financeCreated ? 'Payment approved. Income added to Finance.' : 'Payment approved and recorded.')
+      if (financeCreated) globalMutate((key) => Array.isArray(key) && key[0] === '/finance')
+      mutatePaymentRequests()
+      mutate()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to approve')
+    } finally {
+      setApproveLoadingId(null)
+    }
+  }
+
+  const handleRejectPaymentRequest = async () => {
+    if (!rejectRequestId) return
+    setRejectLoading(true)
+    try {
+      await maintenanceApi.rejectPaymentRequest(rejectRequestId, { rejection_reason: rejectReason || undefined })
+      toast.success('Payment proof rejected.')
+      setRejectRequestId(null)
+      setRejectReason('')
+      mutatePaymentRequests()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reject')
+    } finally {
+      setRejectLoading(false)
+    }
+  }
+
   const handleOpenDialog = (maintenance = null) => {
     setEditingMaintenance(maintenance)
     setFormBlockId('')
     setFormFloorId('')
+    setRecordingChoice('add_maintenance')
     setOpenDialog(true)
   }
 
@@ -239,6 +283,54 @@ const Maintenance = () => {
     setFormFloorId('')
     setDialogMode('create')
     setRecordPaymentLookup({ unit_id: null, month: null, year: null })
+    setRecordingChoice(null)
+    setReceiptFile(null)
+  }
+
+  const handleUploadReceipt = async () => {
+    if (!receiptFile || !cellContext || !societyId) {
+      toast.error('Select a file and ensure unit and period are set (open from a month cell).')
+      return
+    }
+    const { unit_id, month, year } = cellContext
+    setUploadReceiptLoading(true)
+    try {
+      const res = await maintenanceApi.getAll({
+        unit_id,
+        month,
+        year,
+        society_id: societyId,
+        limit: 1,
+      })
+      const list = res.data?.data ?? res.data ?? []
+      let record = Array.isArray(list) ? list.find((r) => Number(r.month) === Number(month) && Number(r.year) === Number(year)) : null
+      if (!record) {
+        const createRes = await maintenanceApi.create({
+          unit_id,
+          society_apartment_id: societyId,
+          month,
+          year,
+          base_amount: baseAmount,
+          total_amount: baseAmount,
+        })
+        record = createRes.data?.data ?? createRes.data
+      }
+      if (!record?.id) {
+        toast.error('Could not find or create maintenance record')
+        return
+      }
+      const formData = new FormData()
+      formData.append('receipt', receiptFile)
+      await maintenanceApi.uploadReceipt(record.id, formData)
+      toast.success('Receipt uploaded successfully')
+      mutate()
+      setReceiptFile(null)
+      handleCloseDialog()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to upload receipt')
+    } finally {
+      setUploadReceiptLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -333,7 +425,7 @@ const Maintenance = () => {
         ...values,
         base_amount: amount,
         total_amount: amount,
-        due_date: values.due_date || null,
+        due_date: null,
       }
       delete payload.block_id
       delete payload.floor_id
@@ -360,7 +452,7 @@ const Maintenance = () => {
           year: payload.year,
           base_amount: amount,
           total_amount: amount,
-          due_date: payload.due_date || null,
+          due_date: null,
         })
         const msg = res.data?.message ?? (res.data?.data ? `${res.data.data.created} created, ${res.data.data.skipped} skipped` : 'Maintenance created for all units')
         toast.success(msg)
@@ -388,8 +480,10 @@ const Maintenance = () => {
 
   const handlePayment = async (values, { setSubmitting }) => {
     try {
-      await maintenanceApi.recordPayment(selectedMaintenance.id, values)
-      toast.success('Payment recorded successfully')
+      const res = await maintenanceApi.recordPayment(selectedMaintenance.id, values)
+      const financeCreated = res.data?.finance_income_created === true
+      toast.success(financeCreated ? 'Payment recorded. Income added to Finance.' : 'Payment recorded successfully')
+      if (financeCreated) globalMutate((key) => Array.isArray(key) && key[0] === '/finance')
       mutate()
       if (selectedLedgerRow) mutateUnitMaintenance()
       handleClosePaymentDialog()
@@ -422,15 +516,17 @@ const Maintenance = () => {
     }
     setRecordingPaymentInDialog(true)
     try {
-      await maintenanceApi.recordPayment(editingMaintenance.id, { amount_paid: amount })
-      toast.success('Payment recorded successfully')
+      const res = await maintenanceApi.recordPayment(editingMaintenance.id, { amount_paid: amount })
+      const financeCreated = res.data?.finance_income_created === true
+      toast.success(financeCreated ? 'Payment recorded. Income added to Finance.' : 'Payment recorded successfully')
+      if (financeCreated) globalMutate((key) => Array.isArray(key) && key[0] === '/finance')
       await mutate()
       if (editingMaintenance.unit_id) {
         await globalMutate(['/maintenance/unit', editingMaintenance.unit_id, year])
       }
       mutateUnitMaintenance()
-      const res = await maintenanceApi.getById(editingMaintenance.id)
-      const updated = res.data?.data ?? res.data
+      const getRes = await maintenanceApi.getById(editingMaintenance.id)
+      const updated = getRes.data?.data ?? getRes.data
       if (updated) {
         setEditingMaintenance(updated)
         const newDue = Math.max(0, (Number(updated.total_amount) || 0) - (Number(updated.amount_paid) || 0))
@@ -458,7 +554,7 @@ const Maintenance = () => {
         total_amount: total,
         status: 'paid',
         amount_paid: total,
-        due_date: editingMaintenance.due_date || null,
+        due_date: null,
       })
       toast.success('Marked as fully paid')
       mutate()
@@ -522,8 +618,10 @@ const Maintenance = () => {
         toast.error('Maintenance record not found for this unit and month')
         return
       }
-      await maintenanceApi.recordPayment(record.id, { amount_paid: dueAmount })
-      toast.success('Marked as fully paid')
+      const payRes = await maintenanceApi.recordPayment(record.id, { amount_paid: dueAmount })
+      const financeCreated = payRes.data?.finance_income_created === true
+      toast.success(financeCreated ? 'Marked as fully paid. Income added to Finance.' : 'Marked as fully paid')
+      if (financeCreated) globalMutate((key) => Array.isArray(key) && key[0] === '/finance')
       mutate()
       mutateUnitMaintenance()
       setMarkFullyPaidAnchor(null)
@@ -635,11 +733,8 @@ const Maintenance = () => {
         align: 'right',
         render: (row) => {
           const amount = Number(row[key]) || 0
-          const now = new Date()
-          const currentYearNow = now.getFullYear()
-          const currentMonthNow = now.getMonth() + 1
-          const monthGone = year < currentYearNow || (year === currentYearNow && monthNum < currentMonthNow)
-          const isOverdueUnpaid = monthGone && amount > 0
+          const isPaid = amount === 0
+          const isUnpaid = amount > 0
           return (
             <Box
               component="span"
@@ -648,17 +743,27 @@ const Maintenance = () => {
                 borderRadius: 1,
                 px: 0.75,
                 py: 0.25,
-                ...(isOverdueUnpaid
+                ...(isPaid
                   ? {
                       backgroundColor: (theme) =>
                         theme.palette.mode === 'dark'
-                          ? 'rgba(244, 67, 54, 0.28)'
-                          : 'rgba(211, 47, 47, 0.2)',
+                          ? 'rgba(76, 175, 80, 0.28)'
+                          : 'rgba(46, 125, 50, 0.18)',
                       fontWeight: 600,
                       color: (theme) =>
-                        theme.palette.mode === 'dark' ? 'rgb(255, 138, 128)' : theme.palette.error.dark,
+                        theme.palette.mode === 'dark' ? 'rgb(129, 199, 132)' : theme.palette.success.dark,
                     }
-                  : {}),
+                  : isUnpaid
+                    ? {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(244, 67, 54, 0.28)'
+                            : 'rgba(211, 47, 47, 0.2)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(255, 138, 128)' : theme.palette.error.dark,
+                      }
+                    : {}),
               }}
             >
               {formatCurrency(amount)}
@@ -677,6 +782,7 @@ const Maintenance = () => {
             block_id: row?.block_id ?? '',
             floor_id: row?.floor_id ?? '',
             unit_id: row?.unit_id,
+            unit_number: row?.unit_number,
             month: monthNum,
             year,
           })
@@ -692,6 +798,7 @@ const Maintenance = () => {
           setDialogMode('create')
           setFormBlockId(row?.block_id ?? '')
           setFormFloorId(row?.floor_id ?? '')
+          setRecordingChoice(null)
           setOpenDialog(true)
         },
       }
@@ -763,9 +870,6 @@ const Maintenance = () => {
         amount: editingMaintenance
           ? (editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0)
           : (addPrefill?.amount ?? baseAmount),
-        due_date: editingMaintenance?.due_date
-          ? editingMaintenance.due_date.slice(0, 10)
-          : '',
       }
     : editingMaintenance
       ? {
@@ -775,7 +879,6 @@ const Maintenance = () => {
           month: editingMaintenance.month || currentMonth,
           year: editingMaintenance.year || currentYear,
           amount: editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0,
-          due_date: editingMaintenance.due_date ? editingMaintenance.due_date.slice(0, 10) : '',
         }
       : addPrefill
         ? {
@@ -785,7 +888,6 @@ const Maintenance = () => {
             month: addPrefill.month ?? currentMonth,
             year: addPrefill.year ?? currentYear,
             amount: addPrefill.amount ?? baseAmount,
-            due_date: '',
           }
         : {
             block_id: '',
@@ -794,7 +896,6 @@ const Maintenance = () => {
             month: currentMonth,
             year: currentYear,
             amount: baseAmount,
-            due_date: '',
           }
 
   const formValidationSchema = dialogMode === 'record_payment' ? recordPaymentOnlySchema : validationSchema
@@ -990,6 +1091,103 @@ const Maintenance = () => {
         </Box>
       </Box>
 
+      {pendingPaymentRequests.length > 0 && (
+        <Accordion defaultExpanded sx={{ mb: 3 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Pending payment verifications ({pendingPaymentRequests.length})
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+              Residents have submitted payment proofs. Approve to mark as paid or reject.
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'action.hover' }}>
+                    <TableCell><strong>Unit</strong></TableCell>
+                    <TableCell><strong>Month / Year</strong></TableCell>
+                    <TableCell><strong>Amount</strong></TableCell>
+                    <TableCell><strong>Submitted by</strong></TableCell>
+                    <TableCell><strong>Date</strong></TableCell>
+                    <TableCell><strong>Proof</strong></TableCell>
+                    <TableCell align="right"><strong>Actions</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pendingPaymentRequests.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.unit_number || `Unit ${row.unit_id}`}</TableCell>
+                      <TableCell>{MONTH_LABELS[(row.month || 1) - 1]} {row.year}</TableCell>
+                      <TableCell>{formatCurrency(row.total_amount)}</TableCell>
+                      <TableCell>{row.submitted_by_name || row.submitted_by_email || '—'}</TableCell>
+                      <TableCell>{row.created_at ? dayjs(row.created_at).format('DD/MM/YYYY HH:mm') : '—'}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          href={`${(import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '') || window.location.origin}${row.proof_path}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          View proof
+                        </Button>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          color="primary"
+                          variant="contained"
+                          disabled={approveLoadingId === row.id}
+                          onClick={() => handleApprovePaymentRequest(row.id)}
+                          startIcon={approveLoadingId === row.id ? <CircularProgress size={16} /> : null}
+                          sx={{ mr: 1 }}
+                        >
+                          {approveLoadingId === row.id ? 'Approving…' : 'Approve'}
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          disabled={rejectLoading}
+                          onClick={() => { setRejectRequestId(row.id); setRejectReason('') }}
+                        >
+                          Reject
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </AccordionDetails>
+        </Accordion>
+      )}
+
+      <Dialog open={Boolean(rejectRequestId)} onClose={() => !rejectLoading && setRejectRequestId(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Reject payment proof</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Optionally add a reason to inform the resident.
+          </Typography>
+          <TextField
+            label="Rejection reason (optional)"
+            multiline
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            fullWidth
+            size="small"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRejectRequestId(null)} disabled={rejectLoading}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleRejectPaymentRequest} disabled={rejectLoading}>
+            {rejectLoading ? 'Rejecting…' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {blocks.length > 0 && (
         <Tabs
           value={selectedBlockId ?? ''}
@@ -1155,6 +1353,86 @@ const Maintenance = () => {
         >
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
+              {recordingChoice === null ? (
+                <>
+                  <DialogTitle>Record maintenance</DialogTitle>
+                  <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      How would you like to record?
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2, flexDirection: 'column', py: 1 }}>
+                      <Button
+                        variant="contained"
+                        size="large"
+                        onClick={() => setRecordingChoice('add_maintenance')}
+                        fullWidth
+                      >
+                        Add maintenance
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        onClick={() => setRecordingChoice('upload_receipt')}
+                        fullWidth
+                      >
+                        Upload receipt
+                      </Button>
+                    </Box>
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={handleCloseDialog}>Cancel</Button>
+                  </DialogActions>
+                </>
+              ) : recordingChoice === 'upload_receipt' ? (
+                <>
+                  <DialogTitle>Upload receipt</DialogTitle>
+                  <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Upload a receipt to record payment for this unit and period.
+                    </Typography>
+                    {cellContext ? (
+                      <>
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          Unit {cellContext.unit_number ?? cellContext.unit_id} · {MONTH_LABELS[(cellContext.month || 1) - 1]} {cellContext.year}
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                          <Button variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={uploadReceiptLoading}>
+                            Choose file (image or PDF)
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              hidden
+                              onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                            />
+                          </Button>
+                          {receiptFile && (
+                            <Typography variant="body2" color="text.secondary">
+                              Selected: {receiptFile.name}
+                            </Typography>
+                          )}
+                          <Button
+                            variant="contained"
+                            onClick={handleUploadReceipt}
+                            disabled={!receiptFile || uploadReceiptLoading}
+                            startIcon={uploadReceiptLoading ? <CircularProgress size={18} /> : <UploadFileIcon />}
+                          >
+                            {uploadReceiptLoading ? 'Uploading...' : 'Upload receipt'}
+                          </Button>
+                        </Box>
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Open this dialog by clicking a month cell in the ledger to upload a receipt for that unit and period.
+                      </Typography>
+                    )}
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={() => setRecordingChoice(null)} disabled={uploadReceiptLoading}>Back</Button>
+                    <Button onClick={handleCloseDialog}>Cancel</Button>
+                  </DialogActions>
+                </>
+              ) : (
+                <>
               <DialogTitle>
                 {cellContext
                   ? (dialogMode === 'record_payment'
@@ -1168,6 +1446,11 @@ const Maintenance = () => {
                       ? 'Edit Maintenance Record'
                       : 'Add New Maintenance Record'}
               </DialogTitle>
+              <Box sx={{ px: 2, pb: 0 }}>
+                <Button size="small" onClick={() => setRecordingChoice(null)} sx={{ mb: 0 }}>
+                  Back
+                </Button>
+              </Box>
               <Tabs
                 value={cellContext ? (dialogMode === 'edit' ? 'edit' : dialogMode) : dialogMode}
                 onChange={(_, v) => {
@@ -1404,59 +1687,6 @@ const Maintenance = () => {
                           helperText={touched.amount && errors.amount}
                         />
                       </Grid>
-                      <Grid item xs={12}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                          <Typography component="span" variant="body2" color="text.secondary">
-                            Due Date
-                          </Typography>
-                          <Tooltip
-                            title="Due Date is the payment deadline for this maintenance record. The 'Remind X days before due date' option in Settings uses this date to send payment reminders."
-                            placement="top"
-                            arrow
-                          >
-                            <IconButton
-                              size="small"
-                              color="info"
-                              onClick={(e) => setDueDateInfoAnchor(e.currentTarget)}
-                              sx={{ p: 0.25 }}
-                              aria-label="Due date info"
-                            >
-                              <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                        <Popover
-                          open={!!dueDateInfoAnchor}
-                          anchorEl={dueDateInfoAnchor}
-                          onClose={() => setDueDateInfoAnchor(null)}
-                          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                          disableRestoreFocus
-                        >
-                          <Box sx={{ p: 2, maxWidth: 320 }}>
-                            <Typography variant="subtitle2" color="primary" gutterBottom>
-                              Due Date
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Due Date is the <strong>payment deadline</strong> for this maintenance record. Residents see
-                              this date on their dashboard. The &quot;Remind X days before due date&quot; option in
-                              Settings uses this date to send payment reminders.
-                            </Typography>
-                          </Box>
-                        </Popover>
-                        <TextField
-                          fullWidth
-                          name="due_date"
-                          type="date"
-                          value={values.due_date}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={touched.due_date && !!errors.due_date}
-                          helperText={touched.due_date && errors.due_date}
-                          InputLabelProps={{ shrink: true }}
-                          inputProps={{ max: '9999-12-31' }}
-                        />
-                      </Grid>
                     </>
                   )}
                 </Grid>
@@ -1610,6 +1840,8 @@ const Maintenance = () => {
                   </Button>
                 )}
               </DialogActions>
+                </>
+              )}
             </Form>
           )}
         </Formik>

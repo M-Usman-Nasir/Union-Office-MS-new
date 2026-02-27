@@ -26,6 +26,28 @@ export const maintenanceApi = {
     return api.post(API_ENDPOINTS.MAINTENANCE_PAYMENT(id), data)
   },
 
+  uploadReceipt: (maintenanceId, formData) => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_UPLOAD_RECEIPT(maintenanceId), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  submitPaymentProof: (maintenanceId, formData) => {
+    return api.post(API_ENDPOINTS.MAINTENANCE_SUBMIT_PAYMENT_PROOF(maintenanceId), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  getMyPaymentRequests: () => api.get(API_ENDPOINTS.MAINTENANCE_PAYMENT_REQUESTS_MINE),
+
+  getPaymentRequests: (params) => api.get(API_ENDPOINTS.MAINTENANCE_PAYMENT_REQUESTS, { params }),
+
+  approvePaymentRequest: (requestId) =>
+    api.post(API_ENDPOINTS.MAINTENANCE_PAYMENT_REQUEST_APPROVE(requestId)),
+
+  rejectPaymentRequest: (requestId, data) =>
+    api.post(API_ENDPOINTS.MAINTENANCE_PAYMENT_REQUEST_REJECT(requestId), data),
+
   remove: (id) => {
     return api.delete(API_ENDPOINTS.MAINTENANCE_BY_ID(id))
   },

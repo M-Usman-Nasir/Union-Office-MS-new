@@ -198,3 +198,79 @@ export const uploadInvoicePaymentProof = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: invoicePaymentProofFileFilter,
 }).single('file');
+
+// --- Maintenance payment receipt (image/PDF) ---
+const maintenanceReceiptsDir = path.join(__dirname, '..', 'uploads', 'maintenance-receipts');
+if (!fs.existsSync(maintenanceReceiptsDir)) {
+  fs.mkdirSync(maintenanceReceiptsDir, { recursive: true });
+}
+
+const maintenanceReceiptStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, maintenanceReceiptsDir);
+  },
+  filename: (req, file, cb) => {
+    const maintenanceId = req.params?.id || 'unknown';
+    const userId = req.user?.id || 'unknown';
+    const timestamp = Date.now();
+    const ext = (path.extname(file.originalname) || '').toLowerCase() || '.jpg';
+    const filename = `receipt_${maintenanceId}_${userId}_${timestamp}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const maintenanceReceiptFileFilter = (req, file, cb) => {
+  const allowed = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+  ];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only images (JPEG, PNG, GIF, WebP) and PDF are allowed'), false);
+  }
+};
+
+export const uploadMaintenanceReceipt = multer({
+  storage: maintenanceReceiptStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: maintenanceReceiptFileFilter,
+}).single('receipt');
+
+// --- Resident maintenance payment proof (for submit payment proof → admin approval) ---
+const maintenancePaymentProofDir = path.join(__dirname, '..', 'uploads', 'maintenance-payment-proofs');
+if (!fs.existsSync(maintenancePaymentProofDir)) {
+  fs.mkdirSync(maintenancePaymentProofDir, { recursive: true });
+}
+
+const maintenancePaymentProofStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, maintenancePaymentProofDir);
+  },
+  filename: (req, file, cb) => {
+    const maintenanceId = req.params?.id || 'unknown';
+    const userId = req.user?.id || 'unknown';
+    const timestamp = Date.now();
+    const ext = (path.extname(file.originalname) || '').toLowerCase() || '.jpg';
+    const filename = `proof_${maintenanceId}_${userId}_${timestamp}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const maintenancePaymentProofFileFilter = (req, file, cb) => {
+  const allowed = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+  ];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only images (JPEG, PNG, GIF, WebP) and PDF are allowed'), false);
+  }
+};
+
+export const uploadResidentPaymentProof = multer({
+  storage: maintenancePaymentProofStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: maintenancePaymentProofFileFilter,
+}).single('proof');

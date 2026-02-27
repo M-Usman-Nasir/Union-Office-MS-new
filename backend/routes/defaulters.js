@@ -16,6 +16,9 @@ router.get('/export', requireRole('super_admin', 'union_admin'), defaulterContro
 // Get all defaulters
 router.get('/', defaulterController.getAll);
 
+// Sync defaulters from maintenance (admin only) - must be before /:id
+router.post('/sync', requireRole('super_admin', 'union_admin'), defaulterController.syncFromMaintenance);
+
 // Update defaulter status (admin only)
 router.patch('/:id/status', requireRole('super_admin', 'union_admin'), defaulterController.updateStatus);
 

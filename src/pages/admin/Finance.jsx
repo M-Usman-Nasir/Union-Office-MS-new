@@ -221,6 +221,7 @@ const Finance = () => {
   const incomeTypeOptions = [
     { value: INCOME_TYPES.FINES, label: INCOME_TYPE_LABELS[INCOME_TYPES.FINES] },
     { value: INCOME_TYPES.ADDITIONAL_CHARGES, label: INCOME_TYPE_LABELS[INCOME_TYPES.ADDITIONAL_CHARGES] },
+    { value: INCOME_TYPES.MAINTENANCE, label: INCOME_TYPE_LABELS[INCOME_TYPES.MAINTENANCE] },
     { value: INCOME_TYPES.OTHER_INCOME, label: INCOME_TYPE_LABELS[INCOME_TYPES.OTHER_INCOME] },
   ]
   const expenseTypes = ['Utility Payment', 'Salary', 'Repairs', 'Security', 'Cleaning', 'Maintenance']
