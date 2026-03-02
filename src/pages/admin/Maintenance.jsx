@@ -43,10 +43,12 @@ import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR, { useSWRConfig } from 'swr'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { maintenanceApi } from '@/api/maintenanceApi'
 import { propertyApi } from '@/api/propertyApi'
 import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
+import { ROUTES } from '@/utils/constants'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
@@ -60,6 +62,19 @@ const validationSchema = Yup.object({
   year: Yup.number().required('Year is required'),
   amount: Yup.number().min(0).required('Amount is required'),
 })
+
+function buildMaintenanceValidationSchema(maxAmount) {
+  const cap = typeof maxAmount === 'number' && maxAmount > 0 ? maxAmount : Infinity
+  return Yup.object({
+    unit_id: validationSchema.fields.unit_id,
+    month: validationSchema.fields.month,
+    year: validationSchema.fields.year,
+    amount: Yup.number()
+      .min(0)
+      .max(cap, `Amount cannot exceed base amount (${cap})`)
+      .required('Amount is required'),
+  })
+}
 
 const recordPaymentOnlySchema = Yup.object({
   unit_id: Yup.number().required('Unit is required'),
@@ -86,6 +101,8 @@ function RecordPaymentLookupSync({ dialogMode, unitId, month, year, onSync }) {
 
 const Maintenance = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const { mutate: globalMutate } = useSWRConfig()
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
@@ -123,6 +140,10 @@ const Maintenance = () => {
   const [markFullyPaidLoading, setMarkFullyPaidLoading] = useState(false)
   const [applyingBaseYear, setApplyingBaseYear] = useState(false)
   const [creatingNextYear, setCreatingNextYear] = useState(false)
+  const [confirmCreateYear, setConfirmCreateYear] = useState(null) // year number to create, opens confirm dialog
+  const [createdYears, setCreatedYears] = useState([]) // years created in session, shown in dropdown
+  const [confirmRemoveYear, setConfirmRemoveYear] = useState(null) // year number to remove
+  const [removingYear, setRemovingYear] = useState(false)
   const [recordingChoice, setRecordingChoice] = useState(null) // null | 'add_maintenance' | 'upload_receipt'
   const [receiptFile, setReceiptFile] = useState(null)
   const [uploadReceiptLoading, setUploadReceiptLoading] = useState(false)
@@ -152,6 +173,17 @@ const Maintenance = () => {
     societyId ? ['/maintenance/yearly-ledger', societyId, year] : null,
     () => maintenanceApi.getYearlyLedger({ society_id: societyId, year }).then(res => res.data)
   )
+
+  useEffect(() => {
+    const state = location.state
+    if (!state?.openUnitId || state?.openYear == null) return
+    const rows = ledgerData?.data || []
+    if (!rows.length) return
+    if (Number(year) !== Number(state.openYear)) return
+    const row = rows.find((r) => String(r.unit_id) === String(state.openUnitId))
+    if (row) setSelectedLedgerRow(row)
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state, location.pathname, ledgerData?.data, year, navigate])
 
   const recordPaymentLookupKey = useMemo(
     () =>
@@ -326,6 +358,27 @@ const Maintenance = () => {
       mutate()
       setReceiptFile(null)
       handleCloseDialog()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to upload receipt')
+    } finally {
+      setUploadReceiptLoading(false)
+    }
+  }
+
+  const handleUploadReceiptForRecord = async () => {
+    if (!receiptFile || !editingMaintenance?.id) {
+      toast.error('Select a file first.')
+      return
+    }
+    setUploadReceiptLoading(true)
+    try {
+      const formData = new FormData()
+      formData.append('receipt', receiptFile)
+      await maintenanceApi.uploadReceipt(editingMaintenance.id, formData)
+      toast.success('Receipt uploaded successfully')
+      setReceiptFile(null)
+      mutate()
+      mutateUnitMaintenance()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to upload receipt')
     } finally {
@@ -664,21 +717,44 @@ const Maintenance = () => {
     }
   }
 
-  const handleCreateNextYear = async () => {
-    const nextYear = currentYear + 1
+  const handleCreateNextYear = async (yearToCreate) => {
+    const nextYear = yearToCreate != null ? yearToCreate : currentYear + 1
     setCreatingNextYear(true)
+    setConfirmCreateYear(null)
+    const loadingId = toast.loading(`Creating maintenance for ${nextYear}...`)
     try {
       const res = await maintenanceApi.applyBaseForYear({ year: nextYear })
       const msg = res.data?.message ?? (res.data?.data ? `${res.data.data.created} record(s) created for ${nextYear}` : `Next year (${nextYear}) created`)
-      toast.success(msg)
+      toast.success(msg, { id: loadingId })
+      setCreatedYears((prev) => (prev.includes(nextYear) ? prev : [...prev, nextYear].sort((a, b) => a - b)))
       mutate()
       setYear(nextYear)
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create next year')
+      toast.error(error.response?.data?.message || 'Failed to create next year', { id: loadingId })
     } finally {
       setCreatingNextYear(false)
     }
   }
+
+  const handleRemoveYear = async () => {
+    if (confirmRemoveYear == null) return
+    const yearToRemove = confirmRemoveYear
+    setRemovingYear(true)
+    try {
+      await maintenanceApi.deleteByYear({ year: yearToRemove })
+      toast.success(`Year ${yearToRemove} removed.`)
+      setCreatedYears((prev) => prev.filter((y) => y !== yearToRemove))
+      setYear(currentYear)
+      setConfirmRemoveYear(null)
+      mutate()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to remove year')
+    } finally {
+      setRemovingYear(false)
+    }
+  }
+
+  const nextYearToCreate = createdYears.length > 0 ? Math.max(currentYear, ...createdYears) + 1 : currentYear + 1
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
@@ -707,6 +783,15 @@ const Maintenance = () => {
           {row.unit_number || row.flat_no || '-'}
         </Box>
       ),
+      onClick: (row) => {
+        if (row.resident_id) {
+          navigate(ROUTES.ADMIN_RESIDENT_PROFILE(row.resident_id), {
+            state: { openMaintenanceDialog: true, maintenanceYear: year },
+          })
+        } else {
+          setSelectedLedgerRow(row)
+        }
+      },
     },
     {
       id: 'resident_name',
@@ -732,9 +817,139 @@ const Maintenance = () => {
         label,
         align: 'right',
         render: (row) => {
+          const currentYearNum = new Date().getFullYear()
+          const currentMonthNum = new Date().getMonth() + 1
           const amount = Number(row[key]) || 0
+          const paidAmount = Number(row[`${key}_paid`]) || 0
+          const isFutureYear = year > currentYearNum
+
+          if (isFutureYear) {
+            const paid = paidAmount > 0
+            return (
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-block',
+                  borderRadius: 1,
+                  px: 0.75,
+                  py: 0.25,
+                  ...(paid
+                    ? {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(76, 175, 80, 0.28)'
+                            : 'rgba(46, 125, 50, 0.18)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(129, 199, 132)' : theme.palette.success.main,
+                      }
+                    : {
+                        color: 'text.secondary',
+                        fontWeight: 500,
+                      }),
+                }}
+              >
+                {formatCurrency(paid ? paidAmount : 0)}
+              </Box>
+            )
+          }
+
+          const isCurrentYear = year === currentYearNum
+          const isCurrentYearPastOrCurrentMonth = isCurrentYear && monthNum <= currentMonthNum
+          if (isCurrentYearPastOrCurrentMonth) {
+            const paid = paidAmount > 0
+            return (
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-block',
+                  borderRadius: 1,
+                  px: 0.75,
+                  py: 0.25,
+                  ...(paid
+                    ? {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(76, 175, 80, 0.28)'
+                            : 'rgba(46, 125, 50, 0.18)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(129, 199, 132)' : theme.palette.success.main,
+                      }
+                    : {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(244, 67, 54, 0.28)'
+                            : 'rgba(211, 47, 47, 0.2)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(255, 138, 128)' : theme.palette.error.main,
+                      }),
+                }}
+              >
+                {formatCurrency(paid ? paidAmount : 0)}
+              </Box>
+            )
+          }
+
+          const isUpcoming = monthNum > currentMonthNum
+          const isCurrentMonth = monthNum === currentMonthNum
           const isPaid = amount === 0
           const isUnpaid = amount > 0
+
+          if (isUpcoming) {
+            return (
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-block',
+                  borderRadius: 1,
+                  px: 0.75,
+                  py: 0.25,
+                  color: 'text.secondary',
+                  fontWeight: 500,
+                }}
+              >
+                {formatCurrency(0)}
+              </Box>
+            )
+          }
+
+          if (isCurrentMonth) {
+            return (
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-block',
+                  borderRadius: 1,
+                  px: 0.75,
+                  py: 0.25,
+                  ...(isPaid
+                    ? {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(76, 175, 80, 0.28)'
+                            : 'rgba(46, 125, 50, 0.18)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(129, 199, 132)' : theme.palette.success.main,
+                      }
+                    : {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(244, 67, 54, 0.28)'
+                            : 'rgba(211, 47, 47, 0.2)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(255, 138, 128)' : theme.palette.error.main,
+                      }),
+                }}
+              >
+                {formatCurrency(amount)}
+              </Box>
+            )
+          }
+
           return (
             <Box
               component="span"
@@ -795,10 +1010,10 @@ const Maintenance = () => {
             amount: cellAmount || baseAmount,
           })
           setEditingMaintenance(null)
-          setDialogMode('create')
+          setDialogMode('edit')
           setFormBlockId(row?.block_id ?? '')
           setFormFloorId(row?.floor_id ?? '')
-          setRecordingChoice(null)
+          setRecordingChoice('add_maintenance')
           setOpenDialog(true)
         },
       }
@@ -820,13 +1035,6 @@ const Maintenance = () => {
       label: 'Due',
       align: 'right',
       render: (row) => formatCurrency(Number(row.due) || 0),
-    },
-    {
-      id: 'view',
-      label: 'View',
-      align: 'center',
-      render: () => 'View details',
-      onClick: (row) => setSelectedLedgerRow(row),
     },
   ]
 
@@ -860,6 +1068,11 @@ const Maintenance = () => {
 
   const currentMonth = new Date().getMonth() + 1
 
+  const capAmountToBase = (val) => {
+    const n = Number(val) || 0
+    return baseAmount > 0 ? Math.min(n, baseAmount) : n
+  }
+
   const initialValues = cellContext
     ? {
         block_id: cellContext.block_id ?? '',
@@ -868,8 +1081,8 @@ const Maintenance = () => {
         month: cellContext.month ?? currentMonth,
         year: cellContext.year ?? currentYear,
         amount: editingMaintenance
-          ? (editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0)
-          : (addPrefill?.amount ?? baseAmount),
+          ? capAmountToBase(editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0)
+          : capAmountToBase(addPrefill?.amount ?? baseAmount),
       }
     : editingMaintenance
       ? {
@@ -878,7 +1091,7 @@ const Maintenance = () => {
           unit_id: editingMaintenance.unit_id || '',
           month: editingMaintenance.month || currentMonth,
           year: editingMaintenance.year || currentYear,
-          amount: editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0,
+          amount: capAmountToBase(editingMaintenance.total_amount ?? editingMaintenance.base_amount ?? 0),
         }
       : addPrefill
         ? {
@@ -887,7 +1100,7 @@ const Maintenance = () => {
             unit_id: addPrefill.unit_id ?? '',
             month: addPrefill.month ?? currentMonth,
             year: addPrefill.year ?? currentYear,
-            amount: addPrefill.amount ?? baseAmount,
+            amount: capAmountToBase(addPrefill.amount ?? baseAmount),
           }
         : {
             block_id: '',
@@ -898,7 +1111,7 @@ const Maintenance = () => {
             amount: baseAmount,
           }
 
-  const formValidationSchema = dialogMode === 'record_payment' ? recordPaymentOnlySchema : validationSchema
+  const formValidationSchema = dialogMode === 'record_payment' ? recordPaymentOnlySchema : buildMaintenanceValidationSchema(baseAmount)
 
   const handleGenerateMonthlyDues = async () => {
     setGenerating(true)
@@ -1032,31 +1245,14 @@ const Maintenance = () => {
           >
             <MenuItem
               onClick={() => {
-                setOpenGenerateDialog(true)
-                setOptionsMenuAnchor(null)
-              }}
-              disabled={generating}
-            >
-              <ListItemIcon><CalendarTodayIcon fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Generate Monthly Dues" />
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                handleApplyBaseForYear()
-                setOptionsMenuAnchor(null)
-              }}
-              disabled={generating || applyingBaseYear || baseAmount <= 0}
-            >
-              <ListItemText primary={applyingBaseYear ? 'Applying…' : `Apply base to all units (${year})`} />
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                handleCreateNextYear()
+                setConfirmCreateYear(nextYearToCreate)
                 setOptionsMenuAnchor(null)
               }}
               disabled={generating || creatingNextYear || baseAmount <= 0}
             >
-              <ListItemText primary={creatingNextYear ? 'Creating…' : `Create new year (${currentYear + 1})`} />
+              <ListItemText
+                primary={creatingNextYear ? 'Creating…' : `Create new year (${nextYearToCreate})`}
+              />
             </MenuItem>
             {selectedBlockId && (
               <MenuItem
@@ -1218,12 +1414,23 @@ const Maintenance = () => {
           size="small"
           sx={{ minWidth: 120 }}
         >
-          {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2].map((y) => (
+          {[currentYear, ...createdYears].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map((y) => (
             <MenuItem key={y} value={y}>
               {y}
             </MenuItem>
           ))}
         </TextField>
+        {year !== currentYear && (
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            onClick={() => setConfirmRemoveYear(year)}
+            disabled={removingYear}
+          >
+            Remove year {year}
+          </Button>
+        )}
         {selectedBlockId && floorsForBlock.length > 0 && (
           <TextField
             select
@@ -1446,14 +1653,17 @@ const Maintenance = () => {
                       ? 'Edit Maintenance Record'
                       : 'Add New Maintenance Record'}
               </DialogTitle>
-              <Box sx={{ px: 2, pb: 0 }}>
-                <Button size="small" onClick={() => setRecordingChoice(null)} sx={{ mb: 0 }}>
-                  Back
-                </Button>
-              </Box>
+              {!cellContext && (
+                <Box sx={{ px: 2, pb: 0 }}>
+                  <Button size="small" onClick={() => setRecordingChoice(null)} sx={{ mb: 0 }}>
+                    Back
+                  </Button>
+                </Box>
+              )}
               <Tabs
-                value={cellContext ? (dialogMode === 'edit' ? 'edit' : dialogMode) : dialogMode}
+                value={cellContext ? (dialogMode === 'create' ? 'edit' : dialogMode) : dialogMode}
                 onChange={(_, v) => {
+                  if (cellContext && v === 'create') return
                   setDialogMode(v)
                   if (!cellContext) {
                     setEditingMaintenance(null)
@@ -1466,7 +1676,7 @@ const Maintenance = () => {
                 }}
                 sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
               >
-                <Tab label="Create new record" value="create" />
+                {!cellContext && <Tab label="Create new record" value="create" />}
                 {cellContext && (
                   <Tab
                     label="Edit record"
@@ -1671,7 +1881,7 @@ const Maintenance = () => {
                           label="Amount"
                           name="amount"
                           type="number"
-                          inputProps={{ min: 0 }}
+                          inputProps={{ min: 0, max: baseAmount > 0 ? baseAmount : undefined }}
                           value={values.amount}
                           onChange={(e) => {
                             const raw = e.target.value
@@ -1679,14 +1889,45 @@ const Maintenance = () => {
                               handleChange(e)
                               return
                             }
-                            const num = Math.max(0, parseFloat(raw) || 0)
-                            handleChange({ target: { name: e.target.name, value: num } })
+                            const num = parseFloat(raw) || 0
+                            const capped = baseAmount > 0 ? Math.min(baseAmount, Math.max(0, num)) : Math.max(0, num)
+                            handleChange({ target: { name: e.target.name, value: capped } })
                           }}
                           onBlur={handleBlur}
                           error={touched.amount && !!errors.amount}
                           helperText={touched.amount && errors.amount}
                         />
                       </Grid>
+                      {cellContext && dialogMode === 'edit' && editingMaintenance?.id && (
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" sx={{ mb: 1 }}>Upload receipt</Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+                            <Button variant="outlined" component="label" size="small" startIcon={<UploadFileIcon />} disabled={uploadReceiptLoading}>
+                              Choose file (image or PDF)
+                              <input
+                                type="file"
+                                accept="image/*,.pdf"
+                                hidden
+                                onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                              />
+                            </Button>
+                            {receiptFile && (
+                              <Typography variant="body2" color="text.secondary">
+                                {receiptFile.name}
+                              </Typography>
+                            )}
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={handleUploadReceiptForRecord}
+                              disabled={!receiptFile || uploadReceiptLoading}
+                              startIcon={uploadReceiptLoading ? <CircularProgress size={18} /> : <UploadFileIcon />}
+                            >
+                              {uploadReceiptLoading ? 'Uploading…' : 'Upload receipt'}
+                            </Button>
+                          </Box>
+                        </Grid>
+                      )}
                     </>
                   )}
                 </Grid>
@@ -1919,6 +2160,61 @@ const Maintenance = () => {
             startIcon={generating ? <CircularProgress size={20} /> : null}
           >
             {generating ? 'Generating...' : 'Generate Dues'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Create New Year */}
+      <Dialog
+        open={confirmCreateYear != null}
+        onClose={() => setConfirmCreateYear(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Create maintenance for {confirmCreateYear}?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            This will create 12 months of maintenance for all units using the configured base amount. You can edit amounts later. Continue?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmCreateYear(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => handleCreateNextYear(confirmCreateYear)}
+            disabled={creatingNextYear}
+            startIcon={creatingNextYear ? <CircularProgress size={20} /> : null}
+          >
+            {creatingNextYear ? 'Creating…' : 'Confirm'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Remove Year */}
+      <Dialog
+        open={confirmRemoveYear != null}
+        onClose={() => !removingYear && setConfirmRemoveYear(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Remove year {confirmRemoveYear}?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="error.main">
+            This will permanently delete all maintenance records for {confirmRemoveYear}. This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmRemoveYear(null)} disabled={removingYear}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleRemoveYear}
+            disabled={removingYear}
+            startIcon={removingYear ? <CircularProgress size={20} /> : null}
+          >
+            {removingYear ? 'Removing…' : 'Remove year'}
           </Button>
         </DialogActions>
       </Dialog>

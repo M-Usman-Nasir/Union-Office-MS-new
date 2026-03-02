@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Container,
   Typography,
@@ -9,10 +9,21 @@ import {
   CircularProgress,
   Paper,
   Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AddIcon from '@mui/icons-material/Add'
-import { useParams, useNavigate } from 'react-router-dom'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import { residentApi } from '@/api/residentApi'
 import { maintenanceApi } from '@/api/maintenanceApi'
@@ -26,10 +37,13 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 const ResidentDetails = () => {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { mutate: mutateSWR } = useSWRConfig()
   const [familyMemberName, setFamilyMemberName] = useState('')
   const [familyMemberRelation, setFamilyMemberRelation] = useState('')
   const [addFamilyMemberLoading, setAddFamilyMemberLoading] = useState(false)
+  const [openMaintenanceDialog, setOpenMaintenanceDialog] = useState(false)
+  const [maintenanceDialogYear, setMaintenanceDialogYear] = useState(() => new Date().getFullYear())
 
   const { data: residentData, error, isLoading } = useSWR(
     id ? ['/residents', id] : null,
@@ -52,6 +66,27 @@ const ResidentDetails = () => {
         })
         .then(res => res.data)
   )
+
+  const { data: maintenanceYearData, isLoading: maintenanceYearLoading } = useSWR(
+    residentData?.unit_id && openMaintenanceDialog ? ['/maintenance-year', residentData.unit_id, maintenanceDialogYear] : null,
+    () =>
+      maintenanceApi
+        .getAll({
+          unit_id: residentData.unit_id,
+          year: maintenanceDialogYear,
+          society_id: residentData.society_apartment_id,
+          limit: 12,
+        })
+        .then(res => res.data)
+  )
+
+  useEffect(() => {
+    const state = location.state
+    if (!state?.openMaintenanceDialog || !residentData?.unit_id) return
+    setMaintenanceDialogYear(state.maintenanceYear ?? new Date().getFullYear())
+    setOpenMaintenanceDialog(true)
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state?.openMaintenanceDialog, location.pathname, navigate, residentData?.unit_id])
 
   const resident = residentData
   const familyMembers = familyMembersData?.data || []
@@ -338,6 +373,81 @@ const ResidentDetails = () => {
           </Grid>
         </Grid>
       </Paper>
+
+      <Dialog
+        open={openMaintenanceDialog}
+        onClose={() => setOpenMaintenanceDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Unit {resident?.unit_number ?? '—'} – {resident?.name || 'No resident'} · Maintenance for {maintenanceDialogYear}
+        </DialogTitle>
+        <DialogContent>
+          {!resident?.unit_id ? (
+            <Typography variant="body2" color="text.secondary">
+              No unit assigned.
+            </Typography>
+          ) : maintenanceYearLoading ? (
+            <Box display="flex" justifyContent="center" py={2}>
+              <CircularProgress />
+            </Box>
+          ) : !(maintenanceYearData?.data ?? maintenanceYearData)?.length ? (
+            <Typography variant="body2" color="text.secondary">
+              No maintenance records for this unit in {maintenanceDialogYear}.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'action.hover' }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Month</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Total</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Paid</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Due</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {((maintenanceYearData?.data ?? maintenanceYearData) || [])
+                    .slice()
+                    .sort((a, b) => (a.month ?? 0) - (b.month ?? 0))
+                    .map((record) => {
+                      const due = (Number(record.total_amount) || 0) - (Number(record.amount_paid) || 0)
+                      const monthName = record.month
+                        ? new Date(2000, record.month - 1).toLocaleString('default', { month: 'short' })
+                        : '—'
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell>{monthName}</TableCell>
+                          <TableCell align="right">{formatCurrency(Number(record.total_amount) || 0)}</TableCell>
+                          <TableCell align="right">{formatCurrency(Number(record.amount_paid) || 0)}</TableCell>
+                          <TableCell align="right">{formatCurrency(due)}</TableCell>
+                          <TableCell>{record.status || 'pending'}</TableCell>
+                        </TableRow>
+                      )
+                    })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            startIcon={<OpenInNewIcon />}
+            onClick={() => {
+              setOpenMaintenanceDialog(false)
+              navigate(ROUTES.ADMIN_MAINTENANCE, {
+                state: { openUnitId: resident?.unit_id, openYear: maintenanceDialogYear },
+              })
+            }}
+            disabled={!resident?.unit_id}
+          >
+            Open in Maintenance page
+          </Button>
+          <Button onClick={() => setOpenMaintenanceDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   )
 }

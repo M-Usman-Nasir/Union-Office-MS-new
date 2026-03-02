@@ -50,6 +50,9 @@ router.post('/generate-for-scope', requireRole(['union_admin']), maintenanceCont
 // Apply base amount to all units for all months of a year (union_admin only)
 router.post('/apply-base-for-year', requireRole(['super_admin', 'union_admin']), maintenanceController.applyBaseForYear);
 
+// Delete all maintenance for a year (admin only; must be before /:id)
+router.delete('/by-year', requireRole('super_admin', 'union_admin'), maintenanceController.deleteByYear);
+
 // Delete maintenance record (admin only)
 router.delete('/:id', requireRole('super_admin', 'union_admin'), maintenanceController.remove);
 

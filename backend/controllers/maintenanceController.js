@@ -170,6 +170,21 @@ export const create = async (req, res) => {
       });
     }
 
+    const configResult = await query(
+      `SELECT base_amount FROM maintenance_config 
+       WHERE society_apartment_id = $1 AND block_id IS NULL AND unit_id IS NULL LIMIT 1`,
+      [society_apartment_id]
+    );
+    if (configResult.rows.length > 0) {
+      const maxAllowed = parseFloat(configResult.rows[0].base_amount);
+      if (!Number.isNaN(maxAllowed) && maxAllowed >= 0 && parseFloat(total_amount) > maxAllowed) {
+        return res.status(400).json({
+          success: false,
+          message: `Amount cannot exceed the base amount (${maxAllowed}) set in Settings.`,
+        });
+      }
+    }
+
     const result = await query(
       `INSERT INTO maintenance (unit_id, society_apartment_id, month, year, base_amount, total_amount, due_date, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
@@ -252,12 +267,32 @@ export const update = async (req, res) => {
     const { id } = req.params;
     const { base_amount, total_amount, status, amount_paid, due_date } = req.body;
 
-    const existing = await query('SELECT id FROM maintenance WHERE id = $1', [id]);
+    const existing = await query('SELECT id, society_apartment_id FROM maintenance WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Maintenance record not found',
       });
+    }
+
+    if (total_amount != null) {
+      const societyId = existing.rows[0].society_apartment_id;
+      if (societyId) {
+        const configResult = await query(
+          `SELECT base_amount FROM maintenance_config 
+           WHERE society_apartment_id = $1 AND block_id IS NULL AND unit_id IS NULL LIMIT 1`,
+          [societyId]
+        );
+        if (configResult.rows.length > 0) {
+          const maxAllowed = parseFloat(configResult.rows[0].base_amount);
+          if (!Number.isNaN(maxAllowed) && maxAllowed >= 0 && parseFloat(total_amount) > maxAllowed) {
+            return res.status(400).json({
+              success: false,
+              message: `Amount cannot exceed the base amount (${maxAllowed}) set in Settings.`,
+            });
+          }
+        }
+      }
     }
 
     const result = await query(
@@ -442,6 +477,46 @@ export const remove = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete maintenance record',
+      error: error.message,
+    });
+  }
+};
+
+// Delete all maintenance records for a given year (for current user's society)
+export const deleteByYear = async (req, res) => {
+  try {
+    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : req.body.society_id;
+    const year = req.body.year != null ? parseInt(req.body.year, 10) : null;
+
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'society_id is required (or use as union_admin)',
+      });
+    }
+    if (year == null || Number.isNaN(year)) {
+      return res.status(400).json({
+        success: false,
+        message: 'year is required',
+      });
+    }
+
+    const result = await query(
+      'DELETE FROM maintenance WHERE society_apartment_id = $1 AND year = $2 RETURNING id',
+      [societyId, year]
+    );
+    const deleted = result.rows.length;
+
+    res.json({
+      success: true,
+      message: `Deleted ${deleted} maintenance record(s) for year ${year}.`,
+      data: { deleted, year },
+    });
+  } catch (error) {
+    console.error('Delete by year error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete maintenance for year',
       error: error.message,
     });
   }
@@ -766,6 +841,7 @@ export const getYearlyLedger = async (req, res) => {
           NULLIF(TRIM(u.owner_name), ''),
           ''
         ) AS resident_name,
+        (SELECT usr.id FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1) AS resident_id,
         f.floor_number,
         u.floor_id,
         u.block_id,
@@ -782,6 +858,18 @@ export const getYearlyLedger = async (req, res) => {
         SUM(CASE WHEN m.month = 10 THEN GREATEST(0, m.total_amount - COALESCE(m.amount_paid, 0)) ELSE 0 END) AS oct,
         SUM(CASE WHEN m.month = 11 THEN GREATEST(0, m.total_amount - COALESCE(m.amount_paid, 0)) ELSE 0 END) AS nov,
         SUM(CASE WHEN m.month = 12 THEN GREATEST(0, m.total_amount - COALESCE(m.amount_paid, 0)) ELSE 0 END) AS dec,
+        SUM(CASE WHEN m.month = 1 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS jan_paid,
+        SUM(CASE WHEN m.month = 2 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS feb_paid,
+        SUM(CASE WHEN m.month = 3 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS mar_paid,
+        SUM(CASE WHEN m.month = 4 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS apr_paid,
+        SUM(CASE WHEN m.month = 5 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS may_paid,
+        SUM(CASE WHEN m.month = 6 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS jun_paid,
+        SUM(CASE WHEN m.month = 7 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS jul_paid,
+        SUM(CASE WHEN m.month = 8 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS aug_paid,
+        SUM(CASE WHEN m.month = 9 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS sep_paid,
+        SUM(CASE WHEN m.month = 10 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS oct_paid,
+        SUM(CASE WHEN m.month = 11 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS nov_paid,
+        SUM(CASE WHEN m.month = 12 THEN COALESCE(m.amount_paid, 0) ELSE 0 END) AS dec_paid,
         COALESCE(SUM(m.total_amount), 0) AS total_payment,
         COALESCE(SUM(m.amount_paid), 0) AS paid_payment,
         COALESCE(SUM(m.total_amount), 0) - COALESCE(SUM(m.amount_paid), 0) AS due
@@ -849,10 +937,13 @@ export const applyBaseForYear = async (req, res) => {
       [societyId]
     );
     let created = 0;
-    const dueDate = new Date(year, 0, 1); // 1st of Jan for the year (or could use 1st of each month)
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const lastMonthToCreate = year === currentYear ? currentMonth : 12;
 
     for (const unit of unitsResult.rows) {
-      for (let month = 1; month <= 12; month++) {
+      for (let month = 1; month <= lastMonthToCreate; month++) {
         const existing = await query(
           'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3',
           [unit.id, month, year]
@@ -871,7 +962,7 @@ export const applyBaseForYear = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Applied base amount (${baseAmount}) to all units for ${year}. ${created} record(s) created.`,
+      message: `Applied base amount (${baseAmount}) to all units for ${year}${year === currentYear ? ` (months 1–${lastMonthToCreate} only)` : ''}. ${created} record(s) created.`,
       data: { created, year, base_amount: baseAmount },
     });
   } catch (error) {

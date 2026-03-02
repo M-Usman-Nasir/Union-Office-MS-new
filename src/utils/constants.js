@@ -63,6 +63,7 @@ export const API_ENDPOINTS = {
   MAINTENANCE_GENERATE_FOR_SCOPE: '/maintenance/generate-for-scope',
   MAINTENANCE_APPLY_BASE_YEAR: '/maintenance/apply-base-for-year',
   MAINTENANCE_CREATE_FOR_ALL_UNITS: '/maintenance/create-for-all-units',
+  MAINTENANCE_DELETE_BY_YEAR: '/maintenance/by-year',
   
   // Finance
   FINANCE: '/finance',

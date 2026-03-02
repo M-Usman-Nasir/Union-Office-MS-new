@@ -64,6 +64,10 @@ export const maintenanceApi = {
     return api.post(API_ENDPOINTS.MAINTENANCE_APPLY_BASE_YEAR, data)
   },
 
+  deleteByYear: (data) => {
+    return api.delete(API_ENDPOINTS.MAINTENANCE_DELETE_BY_YEAR, { data })
+  },
+
   createForAllUnits: (data) => {
     return api.post(API_ENDPOINTS.MAINTENANCE_CREATE_FOR_ALL_UNITS, data)
   },
