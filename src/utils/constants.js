@@ -43,6 +43,9 @@ export const API_ENDPOINTS = {
   // Apartments (societies)
   SOCIETIES: '/societies',
   SOCIETY_BY_ID: (id) => `/societies/${id}`,
+  SOCIETY_APPROVE: (id) => `/societies/${id}/approve`,
+  SOCIETY_REJECT: (id) => `/societies/${id}/reject`,
+  SOCIETY_FEATURES: (id) => `/societies/${id}/features`,
   
   // Residents
   RESIDENTS: '/residents',
@@ -81,6 +84,7 @@ export const API_ENDPOINTS = {
   COMPLAINT_STATUS: (id) => `/complaints/${id}/status`,
   COMPLAINT_ASSIGN: (id) => `/complaints/${id}/assign`,
   COMPLAINT_PROGRESS: (id) => `/complaints/${id}/progress`,
+  COMPLAINT_ESCALATE: (id) => `/complaints/${id}/escalate`,
   
   // Defaulters
   DEFAULTERS: '/defaulters',
@@ -122,6 +126,7 @@ export const API_ENDPOINTS = {
   
   // Settings
   SETTINGS: (societyId) => `/settings/${societyId}`,
+  SETTINGS_GLOBAL: '/settings/global',
   MAINTENANCE_CONFIG: (societyId) => `/settings/${societyId}/maintenance-config`,
   
   // Messages (admin-resident chat)
@@ -145,6 +150,9 @@ export const API_ENDPOINTS = {
   SUPER_ADMIN_INVOICE_BY_ID: (id) => `/super-admin/invoices/${id}`,
   SUPER_ADMIN_INVOICE_UPLOAD_PAYMENT_PROOF: (id) => `/super-admin/invoices/${id}/upload-payment-proof`,
   SUPER_ADMIN_RUN_MIGRATIONS: '/super-admin/run-migrations',
+  SUPER_ADMIN_AUDIT_LOGS: '/super-admin/audit-logs',
+  SUPER_ADMIN_ESCALATIONS: '/super-admin/escalations',
+  SUPER_ADMIN_ESCALATION_RESOLVE: (id) => `/super-admin/escalations/${id}/resolve`,
   // Societies cascading (City → Area → Apartment)
   SOCIETIES_CITIES: '/societies/cities',
   SOCIETIES_AREAS: '/societies/areas',
@@ -175,6 +183,8 @@ export const ROUTES = {
   SUPER_ADMIN_INVOICES: '/super-admin/invoices',
   SUPER_ADMIN_SETTINGS: '/super-admin/settings',
   SUPER_ADMIN_PROFILE: '/super-admin/profile',
+  SUPER_ADMIN_AUDIT_LOGS: '/super-admin/audit-logs',
+  SUPER_ADMIN_ESCALATIONS: '/super-admin/escalations',
 
   // Admin
   ADMIN_DASHBOARD: '/admin/dashboard',

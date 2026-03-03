@@ -197,7 +197,7 @@ const Residents = () => {
       submitData.is_active = submitData.is_active === true || submitData.is_active === 'true'
 
       // Clean up empty strings - convert to null for optional fields
-      const optionalFields = ['contact_number', 'cnic', 'emergency_contact', 'move_in_date', 'unit_id', 'owner_name', 'license_plate']
+      const optionalFields = ['contact_number', 'cnic', 'emergency_contact', 'move_in_date', 'unit_id', 'owner_name', 'license_plate', 'number_of_cars', 'number_of_bikes', 'car_make_model', 'bike_make_model', 'bike_license_plate']
       optionalFields.forEach(field => {
         if (submitData[field] === '') {
           submitData[field] = null
@@ -388,7 +388,12 @@ const Residents = () => {
         floor_id: unitForEdit?.floor_id ?? '',
         unit_id: editingResident.unit_id || '',
         owner_name: editingResident.owner_name || '',
-        license_plate: editingResident.license_plate || '',
+        license_plate: editingResident.license_plate ?? unitForEdit?.license_plate ?? '',
+        number_of_cars: editingResident.number_of_cars ?? unitForEdit?.number_of_cars ?? 0,
+        number_of_bikes: editingResident.number_of_bikes ?? unitForEdit?.number_of_bikes ?? 0,
+        car_make_model: editingResident.car_make_model ?? unitForEdit?.car_make_model ?? '',
+        bike_make_model: editingResident.bike_make_model ?? unitForEdit?.bike_make_model ?? '',
+        bike_license_plate: editingResident.bike_license_plate ?? unitForEdit?.bike_license_plate ?? '',
         telephone_bills: Array.isArray(editingResident.telephone_bills) ? editingResident.telephone_bills : [],
         other_bills: Array.isArray(editingResident.other_bills) ? editingResident.other_bills : [],
         is_active: editingResident.is_active !== false,
@@ -407,6 +412,11 @@ const Residents = () => {
         unit_id: '',
         owner_name: '',
         license_plate: '',
+        number_of_cars: 0,
+        number_of_bikes: 0,
+        car_make_model: '',
+        bike_make_model: '',
+        bike_license_plate: '',
         telephone_bills: [],
         other_bills: [],
         is_active: false,
@@ -847,12 +857,74 @@ const Residents = () => {
                       ))}
                     </TextField>
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={4}>
                     <TextField
                       fullWidth
-                      label="License Plate"
+                      select
+                      label="Number of cars"
+                      name="number_of_cars"
+                      value={values.number_of_cars}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      {[0, 1, 2, 3, 4, 5].map((n) => (
+                        <MenuItem key={n} value={n}>{n}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Number of bikes"
+                      name="number_of_bikes"
+                      value={values.number_of_bikes}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      {[0, 1, 2, 3, 4, 5].map((n) => (
+                        <MenuItem key={n} value={n}>{n}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="License Plate (car)"
                       name="license_plate"
                       value={values.license_plate}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Car make &amp; model"
+                      name="car_make_model"
+                      value={values.car_make_model}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="e.g. Toyota Corolla"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Bike make &amp; model"
+                      name="bike_make_model"
+                      value={values.bike_make_model}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="e.g. Honda 70"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Bike license plate"
+                      name="bike_license_plate"
+                      value={values.bike_license_plate}
                       onChange={handleChange}
                       onBlur={handleBlur}
                     />

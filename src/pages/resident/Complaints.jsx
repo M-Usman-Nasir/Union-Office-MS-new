@@ -60,6 +60,8 @@ const ResidentComplaints = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [attachmentFiles, setAttachmentFiles] = useState([])
   const [filterType, setFilterType] = useState('my') // 'all', 'my', 'public' — default to My Complaints
+  const [escalateDialog, setEscalateDialog] = useState({ open: false, complaint: null, reason: '' })
+  const [escalating, setEscalating] = useState(false)
   const societyId = user?.society_apartment_id
 
   // Check visibility settings
@@ -83,6 +85,23 @@ const ResidentComplaints = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false)
     setAttachmentFiles([])
+  }
+
+  const handleOpenEscalate = (complaint) => setEscalateDialog({ open: true, complaint, reason: '' })
+  const closeEscalateDialog = () => setEscalateDialog({ open: false, complaint: null, reason: '' })
+  const handleEscalate = async () => {
+    if (!escalateDialog.complaint?.id) return
+    setEscalating(true)
+    try {
+      await complaintApi.escalate(escalateDialog.complaint.id, { reason: escalateDialog.reason || undefined })
+      toast.success('Complaint escalated. Platform admin will review.')
+      mutate()
+      closeEscalateDialog()
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Escalation failed')
+    } finally {
+      setEscalating(false)
+    }
   }
 
   const handleSubmit = async (values, { setSubmitting }) => {
@@ -195,6 +214,24 @@ const ResidentComplaints = () => {
       },
     },
     { id: 'created_at', label: 'Submitted', render: (row) => formatDate(row.created_at) },
+    {
+      id: 'escalate',
+      label: ' ',
+      align: 'right',
+      render: (row) =>
+        row.submitted_by === user?.id && !row.escalated_at ? (
+          <Button
+            size="small"
+            variant="outlined"
+            color="warning"
+            onClick={() => handleOpenEscalate(row)}
+          >
+            Escalate to platform
+          </Button>
+        ) : row.escalated_at ? (
+          <Chip size="small" label="Escalated" color="info" />
+        ) : null,
+    },
   ]
 
   // Filter complaints based on selected filter (use submitted_by for "my" so it works even when complaint.unit_id is null)
@@ -396,6 +433,32 @@ const ResidentComplaints = () => {
             )
           }}
         </Formik>
+      </Dialog>
+
+      <Dialog open={escalateDialog.open} onClose={closeEscalateDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Escalate to platform</DialogTitle>
+        <DialogContent>
+          {escalateDialog.complaint && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Complaint: {escalateDialog.complaint.title || escalateDialog.complaint.id}
+            </Typography>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Reason (optional)"
+            value={escalateDialog.reason}
+            onChange={(e) => setEscalateDialog((d) => ({ ...d, reason: e.target.value }))}
+            placeholder="Why are you escalating? Platform admin will review."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEscalateDialog}>Cancel</Button>
+          <Button variant="contained" color="warning" onClick={handleEscalate} disabled={escalating}>
+            {escalating ? 'Escalating…' : 'Escalate'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Container>
   )

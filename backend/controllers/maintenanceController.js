@@ -485,8 +485,13 @@ export const remove = async (req, res) => {
 // Delete all maintenance records for a given year (for current user's society)
 export const deleteByYear = async (req, res) => {
   try {
-    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : req.body.society_id;
-    const year = req.body.year != null ? parseInt(req.body.year, 10) : null;
+    // Prefer query params (DELETE body often stripped by proxies); fallback to body
+    const yearParam = req.query.year != null ? req.query.year : req.body?.year;
+    const year = yearParam != null ? parseInt(yearParam, 10) : null;
+    const societyId =
+      req.user?.role === 'union_admin'
+        ? req.user.society_apartment_id
+        : req.query.society_id ?? req.body?.society_id;
 
     if (!societyId) {
       return res.status(400).json({

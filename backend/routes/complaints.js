@@ -35,6 +35,9 @@ router.patch('/:id/assign', requireRole(['super_admin', 'union_admin']), complai
 // Add progress update (admin/staff)
 router.post('/:id/progress', requireRole(['super_admin', 'union_admin', 'staff']), complaintController.addProgress);
 
+// Escalate to super admin (union_admin or resident)
+router.post('/:id/escalate', requireRole(['super_admin', 'union_admin', 'resident']), complaintController.escalate);
+
 // Get progress history
 router.get('/:id/progress', complaintController.getProgress);
 

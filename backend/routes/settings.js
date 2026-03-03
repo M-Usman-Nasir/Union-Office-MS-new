@@ -1,11 +1,16 @@
 import express from 'express';
 import * as settingsController from '../controllers/settingsController.js';
+import * as globalSettingsController from '../controllers/globalSettingsController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // All settings routes require authentication
 router.use(authenticate);
+
+// Global settings (super admin only) – must be before /:societyId
+router.get('/global', requireRole('super_admin'), globalSettingsController.getGlobal);
+router.put('/global', requireRole('super_admin'), globalSettingsController.updateGlobal);
 
 // Get settings
 // - READ access is allowed for all authenticated roles (resident, staff, union_admin, super_admin)

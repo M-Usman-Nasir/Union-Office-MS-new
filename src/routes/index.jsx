@@ -15,6 +15,8 @@ import SuperAdminProfile from '@/pages/super-admin/Profile'
 import Admins from '@/pages/super-admin/Admins'
 import SuperAdminSettings from '@/pages/super-admin/Settings'
 import SuperAdminInvoices from '@/pages/super-admin/Invoices'
+import AuditLogs from '@/pages/super-admin/AuditLogs'
+import Escalations from '@/pages/super-admin/Escalations'
 import Users from '@/pages/admin/Users'
 import Employees from '@/pages/admin/Employees'
 import AdminDashboard from '@/pages/admin/Dashboard'
@@ -64,6 +66,8 @@ export const AppRoutes = () => {
                 <Route path="invoices" element={<SuperAdminInvoices />} />
                 <Route path="settings" element={<SuperAdminSettings />} />
                 <Route path="profile" element={<SuperAdminProfile />} />
+                <Route path="audit-logs" element={<AuditLogs />} />
+                <Route path="escalations" element={<Escalations />} />
                 <Route path="reports" element={<GlobalReports />} />
               </Routes>
             </MainLayout>

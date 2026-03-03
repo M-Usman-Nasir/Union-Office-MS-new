@@ -663,6 +663,56 @@ export const addProgress = async (req, res) => {
   }
 };
 
+// Escalate complaint to super admin (union_admin or resident)
+export const escalate = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const complaint = await query(
+      'SELECT id, society_apartment_id, submitted_by, escalated_at FROM complaints WHERE id = $1',
+      [id]
+    );
+    if (complaint.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Complaint not found' });
+    }
+    const row = complaint.rows[0];
+    if (row.escalated_at) {
+      return res.status(400).json({ success: false, message: 'Complaint is already escalated' });
+    }
+
+    if (req.user.role === 'resident') {
+      if (row.submitted_by !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'You can only escalate your own complaint' });
+      }
+    } else if (req.user.role === 'union_admin') {
+      if (row.society_apartment_id !== req.user.society_apartment_id) {
+        return res.status(403).json({ success: false, message: 'You can only escalate complaints from your union' });
+      }
+    } else if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Only resident, union admin, or super admin can escalate' });
+    }
+
+    await query(
+      `UPDATE complaints SET escalated_at = CURRENT_TIMESTAMP, escalated_by = $1, escalation_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+      [req.user.id, reason || null, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Complaint escalated to platform. Super admin will review.',
+      data: { id: parseInt(id, 10), escalated_at: new Date().toISOString() },
+    });
+  } catch (error) {
+    console.error('Escalate complaint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to escalate complaint',
+      error: error.message,
+    });
+  }
+};
+
 // Get progress history
 export const getProgress = async (req, res) => {
   try {

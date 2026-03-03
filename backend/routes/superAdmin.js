@@ -3,6 +3,8 @@ import * as superAdminController from '../controllers/superAdminController.js';
 import * as subscriptionController from '../controllers/subscriptionController.js';
 import * as invoiceController from '../controllers/invoiceController.js';
 import * as migrationsController from '../controllers/migrationsController.js';
+import * as auditLogController from '../controllers/auditLogController.js';
+import * as escalationsController from '../controllers/escalationsController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { uploadInvoicePaymentProof } from '../config/multer.js';
 
@@ -10,6 +12,13 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/reports/global', requireRole('super_admin'), superAdminController.getGlobalReports);
+
+// Audit logs (super admin only)
+router.get('/audit-logs', requireRole('super_admin'), auditLogController.list);
+
+// Escalations – disputes resolved by super admin
+router.get('/escalations', requireRole('super_admin'), escalationsController.list);
+router.patch('/escalations/:id/resolve', requireRole('super_admin'), escalationsController.resolve);
 
 // Migrations (Super Admin only – e.g. for production when Shell is not available)
 router.post('/run-migrations', requireRole('super_admin'), migrationsController.runMigrationsHandler);

@@ -540,9 +540,11 @@ export const addUnitsToFloor = async (req, res) => {
           society_apartment_id, block_id, floor_id, unit_number,
           owner_name, resident_name, contact_number, email,
           k_electric_account, gas_account, water_account, phone_tv_account,
-          car_make_model, license_plate, number_of_cars, is_occupied,
+          car_make_model, license_plate, number_of_cars,
+          bike_make_model, bike_license_plate, number_of_bikes,
+          is_occupied,
           telephone_bills, other_bills
-        ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb)`,
+        ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb)`,
         [society_apartment_id, block_id, floor_id, unit_number]
       );
     }
@@ -679,6 +681,9 @@ export const createUnit = async (req, res) => {
       car_make_model,
       license_plate,
       number_of_cars,
+      bike_make_model,
+      bike_license_plate,
+      number_of_bikes,
       is_occupied,
       telephone_bills,
       other_bills,
@@ -693,13 +698,15 @@ export const createUnit = async (req, res) => {
 
     const result = await query(
       `INSERT INTO units (
-        society_apartment_id, block_id, floor_id, unit_number, 
+        society_apartment_id, block_id, floor_id, unit_number,
         owner_name, resident_name, contact_number, email,
         k_electric_account, gas_account, water_account, phone_tv_account,
-        car_make_model, license_plate, number_of_cars, is_occupied,
+        car_make_model, license_plate, number_of_cars,
+        bike_make_model, bike_license_plate, number_of_bikes,
+        is_occupied,
         telephone_bills, other_bills
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
        RETURNING *`,
       [
         society_apartment_id,
@@ -717,6 +724,9 @@ export const createUnit = async (req, res) => {
         car_make_model || null,
         license_plate || null,
         number_of_cars || 0,
+        bike_make_model || null,
+        bike_license_plate || null,
+        number_of_bikes || 0,
         is_occupied !== undefined ? is_occupied : false,
         // PostgreSQL pg library handles arrays/objects directly for JSONB
         Array.isArray(telephone_bills) ? telephone_bills : (telephone_bills || []),
@@ -758,6 +768,9 @@ export const updateUnit = async (req, res) => {
       car_make_model,
       license_plate,
       number_of_cars,
+      bike_make_model,
+      bike_license_plate,
+      number_of_bikes,
       is_occupied,
       telephone_bills,
       other_bills,
@@ -843,6 +856,21 @@ export const updateUnit = async (req, res) => {
       paramCount++
       updates.push(`number_of_cars = $${paramCount}::integer`)
       values.push(number_of_cars || 0)
+    }
+    if (number_of_bikes !== undefined) {
+      paramCount++
+      updates.push(`number_of_bikes = $${paramCount}::integer`)
+      values.push(number_of_bikes || 0)
+    }
+    if (bike_make_model !== undefined) {
+      paramCount++
+      updates.push(`bike_make_model = $${paramCount}::varchar`)
+      values.push(bike_make_model || null)
+    }
+    if (bike_license_plate !== undefined) {
+      paramCount++
+      updates.push(`bike_license_plate = $${paramCount}::varchar`)
+      values.push(bike_license_plate || null)
     }
     if (is_occupied !== undefined) {
       paramCount++
@@ -1062,6 +1090,9 @@ export const importUnits = async (req, res) => {
       const car_make_model = r.car_make_model || null;
       const license_plate = r.license_plate || null;
       const number_of_cars = parseInt(r.number_of_cars, 10) || 0;
+      const bike_make_model = r.bike_make_model || null;
+      const bike_license_plate = r.bike_license_plate || null;
+      const number_of_bikes = parseInt(r.number_of_bikes, 10) || 0;
       const is_occupied = r.is_occupied === true || r.is_occupied === 'true' || r.is_occupied === 1;
       const telephone_bills = Array.isArray(r.telephone_bills) ? r.telephone_bills : [];
       const other_bills = Array.isArray(r.other_bills) ? r.other_bills : [];
@@ -1072,13 +1103,15 @@ export const importUnits = async (req, res) => {
             society_apartment_id = $1, block_id = $2, owner_name = $3, resident_name = $4,
             contact_number = $5, email = $6, k_electric_account = $7, gas_account = $8,
             water_account = $9, phone_tv_account = $10, car_make_model = $11, license_plate = $12,
-            number_of_cars = $13, is_occupied = $14, telephone_bills = $15::jsonb, other_bills = $16::jsonb,
+            number_of_cars = $13, bike_make_model = $14, bike_license_plate = $15, number_of_bikes = $16,
+            is_occupied = $17, telephone_bills = $18::jsonb, other_bills = $19::jsonb,
             updated_at = CURRENT_TIMESTAMP
-           WHERE id = $17`,
+           WHERE id = $20`,
           [
             society_apartment_id, resolvedBlockId, owner_name, resident_name, contact_number, email,
             k_electric_account, gas_account, water_account, phone_tv_account, car_make_model, license_plate,
-            number_of_cars, is_occupied, JSON.stringify(telephone_bills), JSON.stringify(other_bills),
+            number_of_cars, bike_make_model, bike_license_plate, number_of_bikes, is_occupied,
+            JSON.stringify(telephone_bills), JSON.stringify(other_bills),
             existing.rows[0].id,
           ]
         );
@@ -1089,14 +1122,16 @@ export const importUnits = async (req, res) => {
             society_apartment_id, block_id, floor_id, unit_number,
             owner_name, resident_name, contact_number, email,
             k_electric_account, gas_account, water_account, phone_tv_account,
-            car_make_model, license_plate, number_of_cars, is_occupied,
+            car_make_model, license_plate, number_of_cars,
+            bike_make_model, bike_license_plate, number_of_bikes,
+            is_occupied,
             telephone_bills, other_bills
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, '[]'::jsonb, '[]'::jsonb)`,
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, '[]'::jsonb, '[]'::jsonb)`,
           [
             society_apartment_id, resolvedBlockId, floor_id, unit_number,
             owner_name, resident_name, contact_number, email,
             k_electric_account, gas_account, water_account, phone_tv_account,
-            car_make_model, license_plate, number_of_cars, is_occupied,
+            car_make_model, license_plate, number_of_cars, bike_make_model, bike_license_plate, number_of_bikes, is_occupied,
           ]
         );
         created++;

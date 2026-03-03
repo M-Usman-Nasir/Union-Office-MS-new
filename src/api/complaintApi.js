@@ -48,4 +48,6 @@ export const complaintApi = {
   getProgress: (id) => {
     return api.get(API_ENDPOINTS.COMPLAINT_PROGRESS(id))
   },
+
+  escalate: (id, data = {}) => api.post(API_ENDPOINTS.COMPLAINT_ESCALATE(id), data),
 }

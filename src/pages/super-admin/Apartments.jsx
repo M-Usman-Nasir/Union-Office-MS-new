@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Container,
@@ -29,6 +29,7 @@ import {
   Checkbox,
   CircularProgress,
   Alert,
+  Chip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -41,6 +42,9 @@ import DomainIcon from '@mui/icons-material/Domain'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import WorkOutlineIcon from '@mui/icons-material/WorkOutline'
 import VisibilityIcon from '@mui/icons-material/Visibility'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CancelIcon from '@mui/icons-material/Cancel'
+import TuneIcon from '@mui/icons-material/Tune'
 import useSWR, { useSWRConfig } from 'swr'
 import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
@@ -85,6 +89,12 @@ const validationSchema = Yup.object({
         then: (schema) => schema.required('Password is required when adding Union Admin client').min(6, 'At least 6 characters'),
         otherwise: (schema) => schema.nullable(),
       }),
+    lead_source: Yup.string().nullable(),
+    current_status: Yup.string().nullable(),
+    next_followup_date: Yup.string().nullable(),
+    last_interaction_date: Yup.string().nullable(),
+    priority: Yup.string().nullable(),
+    notes: Yup.string().nullable(),
   })
 
 const Apartments = () => {
@@ -103,6 +113,7 @@ const Apartments = () => {
   const [sortOrder, setSortOrder] = useState('asc')
   const [addressFilter, setAddressFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [approvalFilter, setApprovalFilter] = useState('')
 
   const handleSort = (key) => {
     if (sortBy === key) {
@@ -121,7 +132,7 @@ const Apartments = () => {
   const closeActionMenu = () => setActionMenu({ anchorEl: null, row: null })
 
   const { mutate: globalMutate } = useSWRConfig()
-  const societiesKey = ['/societies', page, limit, search, addressFilter, statusFilter, sortBy, sortOrder]
+  const societiesKey = ['/societies', page, limit, search, addressFilter, statusFilter, approvalFilter, sortBy, sortOrder]
   const { data, isLoading, mutate } = useSWR(
     societiesKey,
     () =>
@@ -132,6 +143,7 @@ const Apartments = () => {
           search: search || undefined,
           address: addressFilter || undefined,
           status: statusFilter || undefined,
+          approval_status: approvalFilter || undefined,
           sortBy: sortBy || undefined,
           order: sortBy ? sortOrder : undefined,
         })
@@ -167,6 +179,15 @@ const Apartments = () => {
   const [selectedPlanIdForJob, setSelectedPlanIdForJob] = useState('')
   const [givingSubscription, setGivingSubscription] = useState(false)
 
+  const [approveRejectRow, setApproveRejectRow] = useState(null)
+  const [approveRejectAction, setApproveRejectAction] = useState(null)
+  const [approveRejectNotes, setApproveRejectNotes] = useState('')
+  const [approveRejectLoading, setApproveRejectLoading] = useState(false)
+
+  const [featuresRow, setFeaturesRow] = useState(null)
+  const [featuresForm, setFeaturesForm] = useState({})
+  const [featuresLoading, setFeaturesLoading] = useState(false)
+
   const { data: createJobApartmentData } = useSWR(
     createJobRow?.society_apartment_id ? ['/apartment-detail-create-job', createJobRow.society_apartment_id] : null,
     () => apartmentApi.getById(createJobRow.society_apartment_id).then(res => res.data)
@@ -178,6 +199,18 @@ const Apartments = () => {
     () => superAdminApi.getSubscriptionPlans().then(res => res.data)
   )
   const subscriptionPlans = subscriptionPlansData?.data ?? []
+
+  const { data: featuresData } = useSWR(
+    featuresRow?.id ? ['/societies/features', featuresRow.id] : null,
+    () => apartmentApi.getFeatures(featuresRow.id).then(res => res.data)
+  )
+  const featuresOptions = featuresData?.data ? { ...featuresData.data } : null
+
+  useEffect(() => {
+    if (featuresRow && featuresOptions && Object.keys(featuresOptions).length) {
+      setFeaturesForm({ ...featuresOptions })
+    }
+  }, [featuresRow?.id, featuresData])
 
   const subscriptionByUserId = useMemo(() => {
     const list = adminsData?.data ?? []
@@ -343,6 +376,59 @@ const Apartments = () => {
     }
   }
 
+  const openApproveReject = (row, action) => {
+    closeActionMenu()
+    setApproveRejectRow(row)
+    setApproveRejectAction(action)
+    setApproveRejectNotes('')
+  }
+  const closeApproveReject = () => {
+    setApproveRejectRow(null)
+    setApproveRejectAction(null)
+    setApproveRejectNotes('')
+  }
+  const handleApproveRejectSubmit = async () => {
+    if (!approveRejectRow?.id || !approveRejectAction) return
+    setApproveRejectLoading(true)
+    try {
+      if (approveRejectAction === 'approve') {
+        await apartmentApi.approve(approveRejectRow.id, { notes: approveRejectNotes || undefined })
+        toast.success('Union approved.')
+      } else {
+        await apartmentApi.reject(approveRejectRow.id, { notes: approveRejectNotes || undefined })
+        toast.success('Union rejected.')
+      }
+      mutate()
+      closeApproveReject()
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Action failed')
+    } finally {
+      setApproveRejectLoading(false)
+    }
+  }
+
+  const openFeatures = (row) => {
+    closeActionMenu()
+    setFeaturesRow(row)
+    setFeaturesForm({})
+  }
+  const closeFeatures = () => { setFeaturesRow(null); setFeaturesForm({}) }
+  const handleSaveFeatures = async () => {
+    if (!featuresRow?.id) return
+    setFeaturesLoading(true)
+    try {
+      const payload = { ...(featuresOptions || {}), ...featuresForm }
+      await apartmentApi.updateFeatures(featuresRow.id, payload)
+      toast.success('Features updated.')
+      mutate()
+      closeFeatures()
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Update failed')
+    } finally {
+      setFeaturesLoading(false)
+    }
+  }
+
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
       if (editingSociety) {
@@ -359,6 +445,12 @@ const Apartments = () => {
           union_admin_name: values.union_admin_name || null,
           union_admin_email: values.union_admin_email || null,
           union_admin_phone: values.union_admin_phone || null,
+          lead_source: values.lead_source || null,
+          current_status: values.current_status || null,
+          next_followup_date: values.next_followup_date || null,
+          last_interaction_date: values.last_interaction_date || null,
+          priority: values.priority || null,
+          notes: values.notes || null,
         })
         toast.success('Apartment updated successfully')
         // Defer close and revalidate so dialog closes and list updates reliably
@@ -387,6 +479,12 @@ const Apartments = () => {
           union_admin_email: values.union_admin_email || null,
           union_admin_phone: values.union_admin_phone || null,
           union_admin_password: values.union_admin_password || undefined,
+          lead_source: values.lead_source || null,
+          current_status: values.current_status || null,
+          next_followup_date: values.next_followup_date || null,
+          last_interaction_date: values.last_interaction_date || null,
+          priority: values.priority || null,
+          notes: values.notes || null,
         }
         const res = await apartmentApi.create(payload)
         const newId = res?.data?.data?.id
@@ -483,56 +581,10 @@ const Apartments = () => {
 
   const columns = [
     {
-      id: 'union_admin',
-      label: 'Union Admin',
-      minWidth: 160,
-      header: (
-        <TableSortLabel
-          active={sortBy === 'union_admin'}
-          direction={sortBy === 'union_admin' ? sortOrder : 'asc'}
-          onClick={() => handleSort('union_admin')}
-        >
-          Union Admin
-        </TableSortLabel>
-      ),
-      render: (row) => {
-        const admin = admins.find((a) => a.society_apartment_id === row.id)
-        const label = admin ? admin.name : (row.union_admin_name || '—')
-        return (
-          <Typography
-            variant="subtitle2"
-            sx={{
-              fontWeight: 600,
-              cursor: label !== '—' ? 'pointer' : 'default',
-              color: label !== '—' ? 'primary.main' : 'text.primary',
-              '&:hover': label !== '—' ? { textDecoration: 'underline' } : {},
-            }}
-            onClick={() => label !== '—' && (setViewingRow(row), setViewDialogOpen(true))}
-          >
-            {label}
-          </Typography>
-        )
-      },
-    },
-    {
-      id: 'union_admin_phone',
-      label: 'Phone No.',
-      minWidth: 120,
-      render: (row) => {
-        const admin = admins.find((a) => a.society_apartment_id === row.id)
-        const phone = admin?.contact_number || row.union_admin_phone || '—'
-        return <Typography variant="body2">{phone}</Typography>
-      },
-    },
-    {
-      id: 'union_admin_email',
-      label: 'Email',
-      minWidth: 180,
-      render: (row) => {
-        const admin = admins.find((a) => a.society_apartment_id === row.id)
-        const email = admin?.email || row.union_admin_email || '—'
-        return <Typography variant="body2">{email}</Typography>
-      },
+      id: 'id',
+      label: 'Lead ID',
+      minWidth: 80,
+      render: (row) => <Typography variant="body2">{row.id ?? '—'}</Typography>,
     },
     {
       id: 'name',
@@ -566,6 +618,128 @@ const Apartments = () => {
       },
     },
     {
+      id: 'union_admin_phone',
+      label: 'Phone No.',
+      minWidth: 120,
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const phone = admin?.contact_number || row.union_admin_phone || '—'
+        return <Typography variant="body2">{phone}</Typography>
+      },
+    },
+    {
+      id: 'union_admin_email',
+      label: 'Email',
+      minWidth: 180,
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const email = admin?.email || row.union_admin_email || '—'
+        return <Typography variant="body2">{email}</Typography>
+      },
+    },
+    { id: 'address', label: 'Address', minWidth: 160, render: (row) => <Typography variant="body2">{row.address || '—'}</Typography> },
+    {
+      id: 'lead_source',
+      label: 'Lead Source',
+      minWidth: 120,
+      render: (row) => <Typography variant="body2">{row.lead_source || '—'}</Typography>,
+    },
+    {
+      id: 'current_status',
+      label: 'Current Status',
+      minWidth: 120,
+      render: (row) => {
+        const s = (row.current_status || '').trim()
+        if (!s) return <Typography variant="body2">—</Typography>
+        return <Chip size="small" label={s} variant="outlined" />
+      },
+    },
+    {
+      id: 'next_followup_date',
+      label: 'Next Follow-up Date',
+      minWidth: 130,
+      render: (row) => (
+        <Typography variant="body2">
+          {row.next_followup_date ? new Date(row.next_followup_date).toLocaleDateString() : '—'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'last_interaction_date',
+      label: 'Last Interaction Date',
+      minWidth: 140,
+      render: (row) => (
+        <Typography variant="body2">
+          {row.last_interaction_date ? new Date(row.last_interaction_date).toLocaleDateString() : '—'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'union_admin',
+      label: 'Union Admin',
+      minWidth: 160,
+      header: (
+        <TableSortLabel
+          active={sortBy === 'union_admin'}
+          direction={sortBy === 'union_admin' ? sortOrder : 'asc'}
+          onClick={() => handleSort('union_admin')}
+        >
+          Union Admin
+        </TableSortLabel>
+      ),
+      render: (row) => {
+        const admin = admins.find((a) => a.society_apartment_id === row.id)
+        const label = admin ? admin.name : (row.union_admin_name || '—')
+        return (
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 600,
+              cursor: label !== '—' ? 'pointer' : 'default',
+              color: label !== '—' ? 'primary.main' : 'text.primary',
+              '&:hover': label !== '—' ? { textDecoration: 'underline' } : {},
+            }}
+            onClick={() => label !== '—' && (setViewingRow(row), setViewDialogOpen(true))}
+          >
+            {label}
+          </Typography>
+        )
+      },
+    },
+    {
+      id: 'priority',
+      label: 'Priority',
+      minWidth: 100,
+      render: (row) => {
+        const p = (row.priority || '').trim()
+        if (!p) return <Typography variant="body2">—</Typography>
+        const color = p.toLowerCase() === 'high' ? 'error' : p.toLowerCase() === 'medium' ? 'warning' : 'default'
+        return <Chip size="small" label={p} color={color} />
+      },
+    },
+    {
+      id: 'notes',
+      label: 'Notes',
+      minWidth: 140,
+      render: (row) => {
+        const n = (row.notes || '').trim()
+        if (!n) return <Typography variant="body2">—</Typography>
+        const truncated = n.length > 50 ? n.slice(0, 50) + '…' : n
+        return <Typography variant="body2" title={n}>{truncated}</Typography>
+      },
+    },
+    {
+      id: 'approval_status',
+      label: 'Approval',
+      minWidth: 110,
+      render: (row) => {
+        const status = (row.approval_status || 'pending').toLowerCase()
+        const color = status === 'approved' ? 'success' : status === 'rejected' ? 'error' : 'warning'
+        const label = status === 'approved' ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Pending'
+        return <Chip size="small" label={label} color={color} />
+      },
+    },
+    {
       id: 'next_billing_date',
       label: 'Billing',
       minWidth: 120,
@@ -579,7 +753,6 @@ const Apartments = () => {
         )
       },
     },
-    { id: 'address', label: 'Address' },
     {
       id: 'actions',
       label: 'Actions',
@@ -671,6 +844,22 @@ const Apartments = () => {
                   <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
                   <ListItemText>Edit apartment</ListItemText>
                 </MenuItem>
+                {(actionMenu.row?.approval_status || '').toLowerCase() === 'pending' && (
+                  <>
+                    <MenuItem onClick={() => openApproveReject(actionMenu.row, 'approve')}>
+                      <ListItemIcon><CheckCircleIcon fontSize="small" color="primary" /></ListItemIcon>
+                      <ListItemText>Approve union</ListItemText>
+                    </MenuItem>
+                    <MenuItem onClick={() => openApproveReject(actionMenu.row, 'reject')}>
+                      <ListItemIcon><CancelIcon fontSize="small" color="error" /></ListItemIcon>
+                      <ListItemText>Reject union</ListItemText>
+                    </MenuItem>
+                  </>
+                )}
+                <MenuItem onClick={() => openFeatures(actionMenu.row)}>
+                  <ListItemIcon><TuneIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Features</ListItemText>
+                </MenuItem>
                 <MenuItem
                   onClick={() => confirmDelete(actionMenu.row.id)}
                   sx={{ color: 'error.main' }}
@@ -709,6 +898,12 @@ const Apartments = () => {
         union_admin_email: editSource.union_admin_email ?? assignedAdminForEdit?.email ?? '',
         union_admin_phone: editSource.union_admin_phone ?? assignedAdminForEdit?.contact_number ?? '',
         union_admin_password: '',
+        lead_source: editSource.lead_source ?? '',
+        current_status: editSource.current_status ?? '',
+        next_followup_date: editSource.next_followup_date ? String(editSource.next_followup_date).slice(0, 10) : '',
+        last_interaction_date: editSource.last_interaction_date ? String(editSource.last_interaction_date).slice(0, 10) : '',
+        priority: editSource.priority ?? '',
+        notes: editSource.notes ?? '',
       }
     : {
         name: '',
@@ -726,6 +921,12 @@ const Apartments = () => {
         union_admin_email: '',
         union_admin_phone: '',
         union_admin_password: '',
+        lead_source: '',
+        current_status: '',
+        next_followup_date: '',
+        last_interaction_date: '',
+        priority: '',
+        notes: '',
       }
 
   const totalLeads = data?.pagination?.total ?? (data?.data?.length ?? 0)
@@ -787,6 +988,21 @@ const Apartments = () => {
           <MenuItem value="">All</MenuItem>
           <MenuItem value="active">Active (subscribed)</MenuItem>
           <MenuItem value="inactive">Inactive (waiting for subscription)</MenuItem>
+        </TextField>
+        <TextField
+          select
+          size="small"
+          label="Approval"
+          value={approvalFilter}
+          onChange={(e) => { setApprovalFilter(e.target.value); setPage(1) }}
+          sx={{ minWidth: 140 }}
+          InputLabelProps={{ shrink: true }}
+          SelectProps={{ displayEmpty: true, renderValue: (v) => (v === '' ? 'All' : v === 'pending' ? 'Pending' : v === 'approved' ? 'Approved' : 'Rejected') }}
+        >
+          <MenuItem value="">All</MenuItem>
+          <MenuItem value="pending">Pending</MenuItem>
+          <MenuItem value="approved">Approved</MenuItem>
+          <MenuItem value="rejected">Rejected</MenuItem>
         </TextField>
       </Box>
 
@@ -1132,6 +1348,100 @@ const Apartments = () => {
                       />
                     </Grid>
                   )}
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 0.5 }} color="text.secondary">
+                      Lead details (optional)
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Lead Source"
+                      name="lead_source"
+                      value={values.lead_source || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      <MenuItem value="">Select</MenuItem>
+                      <MenuItem value="Website">Website</MenuItem>
+                      <MenuItem value="Referral">Referral</MenuItem>
+                      <MenuItem value="Cold Call">Cold Call</MenuItem>
+                      <MenuItem value="Social Media">Social Media</MenuItem>
+                      <MenuItem value="Other">Other</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Current Status"
+                      name="current_status"
+                      value={values.current_status || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      <MenuItem value="">Select</MenuItem>
+                      <MenuItem value="New">New</MenuItem>
+                      <MenuItem value="Contacted">Contacted</MenuItem>
+                      <MenuItem value="Qualified">Qualified</MenuItem>
+                      <MenuItem value="Converted">Converted</MenuItem>
+                      <MenuItem value="Lost">Lost</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Next Follow-up Date"
+                      name="next_followup_date"
+                      type="date"
+                      value={values.next_followup_date || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Last Interaction Date"
+                      name="last_interaction_date"
+                      type="date"
+                      value={values.last_interaction_date || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Priority"
+                      name="priority"
+                      value={values.priority || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    >
+                      <MenuItem value="">Select</MenuItem>
+                      <MenuItem value="Low">Low</MenuItem>
+                      <MenuItem value="Medium">Medium</MenuItem>
+                      <MenuItem value="High">High</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Notes"
+                      name="notes"
+                      multiline
+                      rows={3}
+                      value={values.notes || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="Optional notes"
+                    />
+                  </Grid>
                 </Grid>
               </DialogContent>
               <DialogActions>
@@ -1220,6 +1530,36 @@ const Apartments = () => {
                   {showCount(viewApartment.total_units)}
                 </Typography>
               </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Lead details</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Lead Source</Typography>
+                <Typography variant="body1">{viewApartment.lead_source || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Current Status</Typography>
+                <Typography variant="body1">{viewApartment.current_status || '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Next Follow-up Date</Typography>
+                <Typography variant="body1">{viewApartment.next_followup_date ? new Date(viewApartment.next_followup_date).toLocaleDateString() : '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Last Interaction Date</Typography>
+                <Typography variant="body1">{viewApartment.last_interaction_date ? new Date(viewApartment.last_interaction_date).toLocaleDateString() : '—'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Priority</Typography>
+                <Typography variant="body1">{viewApartment.priority || '—'}</Typography>
+              </Grid>
+              {viewApartment.notes && (
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">Notes</Typography>
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{viewApartment.notes}</Typography>
+                </Grid>
+              )}
 
               <Grid item xs={12}>
                 <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Union Admin</Typography>
@@ -1334,6 +1674,70 @@ const Apartments = () => {
             disabled={!assignSelectedAdmin?.id}
           >
             Assign
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(approveRejectRow)} onClose={closeApproveReject} maxWidth="xs" fullWidth>
+        <DialogTitle>{approveRejectAction === 'approve' ? 'Approve union' : 'Reject union'}</DialogTitle>
+        <DialogContent>
+          {approveRejectRow && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Apartment: <strong>{approveRejectRow.name}</strong>
+            </Typography>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Notes (optional)"
+            value={approveRejectNotes}
+            onChange={(e) => setApproveRejectNotes(e.target.value)}
+            placeholder={approveRejectAction === 'approve' ? 'e.g. Verified documents' : 'e.g. Incomplete registration'}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeApproveReject}>Cancel</Button>
+          <Button
+            variant="contained"
+            color={approveRejectAction === 'reject' ? 'error' : 'primary'}
+            onClick={handleApproveRejectSubmit}
+            disabled={approveRejectLoading}
+          >
+            {approveRejectLoading ? <CircularProgress size={20} /> : approveRejectAction === 'approve' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(featuresRow)} onClose={closeFeatures} maxWidth="sm" fullWidth>
+        <DialogTitle>Features — {featuresRow?.name}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enable or disable features for this union (subscription tiers / rollout).
+          </Typography>
+          {featuresOptions && (
+            <Grid container spacing={2}>
+              {['complaints', 'maintenance', 'announcements', 'finance_reports', 'defaulters_visible', 'messaging'].map((key) => (
+                <Grid item xs={12} sm={6} key={key}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={featuresForm[key] !== false}
+                        onChange={(e) => setFeaturesForm((prev) => ({ ...prev, [key]: e.target.checked }))}
+                      />
+                    }
+                    label={key.replace(/_/g, ' ')}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          )}
+          {featuresRow && !featuresOptions && <CircularProgress size={24} />}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeFeatures}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveFeatures} disabled={featuresLoading || !featuresOptions}>
+            {featuresLoading ? <CircularProgress size={20} /> : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

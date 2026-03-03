@@ -23,4 +23,9 @@ export const apartmentApi = {
   remove: (id) => {
     return api.delete(API_ENDPOINTS.SOCIETY_BY_ID(id))
   },
+
+  approve: (id, data = {}) => api.patch(API_ENDPOINTS.SOCIETY_APPROVE(id), data),
+  reject: (id, data = {}) => api.patch(API_ENDPOINTS.SOCIETY_REJECT(id), data),
+  getFeatures: (id) => api.get(API_ENDPOINTS.SOCIETY_FEATURES(id)),
+  updateFeatures: (id, features) => api.put(API_ENDPOINTS.SOCIETY_FEATURES(id), { features }),
 }

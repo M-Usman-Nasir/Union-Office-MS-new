@@ -24,6 +24,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import UpdateIcon from '@mui/icons-material/Update'
 import AddIcon from '@mui/icons-material/Add'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
@@ -51,6 +52,8 @@ const Complaints = () => {
   const [openProgressDialog, setOpenProgressDialog] = useState(false)
   const [openAddDialog, setOpenAddDialog] = useState(false)
   const [selectedComplaint, setSelectedComplaint] = useState(null)
+  const [escalateDialog, setEscalateDialog] = useState({ open: false, complaint: null, reason: '' })
+  const [escalating, setEscalating] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
 
   const { data, isLoading, mutate } = useSWR(
@@ -133,6 +136,25 @@ const Complaints = () => {
   const handleCloseProgressDialog = () => {
     setOpenProgressDialog(false)
     setSelectedComplaint(null)
+  }
+
+  const openEscalateDialog = (complaint) => {
+    setEscalateDialog({ open: true, complaint, reason: '' })
+  }
+  const closeEscalateDialog = () => setEscalateDialog({ open: false, complaint: null, reason: '' })
+  const handleEscalate = async () => {
+    if (!escalateDialog.complaint?.id) return
+    setEscalating(true)
+    try {
+      await complaintApi.escalate(escalateDialog.complaint.id, { reason: escalateDialog.reason || undefined })
+      toast.success('Complaint escalated to platform. Super admin will review.')
+      mutate()
+      closeEscalateDialog()
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Escalation failed')
+    } finally {
+      setEscalating(false)
+    }
   }
 
   const handleProgressUpdate = async (values, { setSubmitting }) => {
@@ -281,6 +303,13 @@ const Complaints = () => {
               <UpdateIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          {!row.escalated_at && (
+            <Tooltip title="Escalate to platform">
+              <IconButton size="small" onClick={() => openEscalateDialog(row)} sx={{ color: 'warning.main' }}>
+                <ReportProblemOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Tooltip title="Delete">
             <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
               <DeleteIcon fontSize="small" />
@@ -698,6 +727,32 @@ const Complaints = () => {
             </Form>
           )}
         </Formik>
+      </Dialog>
+
+      <Dialog open={escalateDialog.open} onClose={closeEscalateDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Escalate to platform</DialogTitle>
+        <DialogContent>
+          {escalateDialog.complaint && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Complaint: {escalateDialog.complaint.title || escalateDialog.complaint.id}
+            </Typography>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Reason (optional)"
+            value={escalateDialog.reason}
+            onChange={(e) => setEscalateDialog((d) => ({ ...d, reason: e.target.value }))}
+            placeholder="Why is this being escalated?"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEscalateDialog}>Cancel</Button>
+          <Button variant="contained" color="warning" onClick={handleEscalate} disabled={escalating}>
+            {escalating ? 'Escalating…' : 'Escalate'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Container>
   )

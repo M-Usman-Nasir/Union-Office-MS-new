@@ -139,6 +139,8 @@ const MainLayout = ({ children }) => {
         { text: 'Leads', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
         { text: 'Clients', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
         { text: 'Invoices', icon: <ReceiptLongIcon />, path: ROUTES.SUPER_ADMIN_INVOICES },
+        { text: 'Escalations', icon: <FeedbackIcon />, path: ROUTES.SUPER_ADMIN_ESCALATIONS },
+        { text: 'Audit logs', icon: <AssessmentIcon />, path: ROUTES.SUPER_ADMIN_AUDIT_LOGS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.SUPER_ADMIN_SETTINGS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
         { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },

@@ -741,7 +741,10 @@ const Maintenance = () => {
     const yearToRemove = confirmRemoveYear
     setRemovingYear(true)
     try {
-      await maintenanceApi.deleteByYear({ year: yearToRemove })
+      await maintenanceApi.deleteByYear({
+        year: yearToRemove,
+        ...(societyId != null && { society_id: societyId }),
+      })
       toast.success(`Year ${yearToRemove} removed.`)
       setCreatedYears((prev) => prev.filter((y) => y !== yearToRemove))
       setYear(currentYear)

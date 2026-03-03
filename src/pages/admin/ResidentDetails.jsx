@@ -19,6 +19,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Divider,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AddIcon from '@mui/icons-material/Add'
@@ -184,98 +185,124 @@ const ResidentDetails = () => {
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        onClick={handleBack}
-        sx={{ mb: 2 }}
-      >
-        Back to Residents
-      </Button>
-
-      <Typography variant="h4" component="h1" gutterBottom>
-        Resident details
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+    <Container maxWidth="md" sx={{ py: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={handleBack}
+          size="small"
+          sx={{ minWidth: 'auto', p: 0.5 }}
+        >
+          Back
+        </Button>
+        <Typography variant="h6" component="h1" sx={{ fontWeight: 600 }}>
+          Resident details
+        </Typography>
+      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {resident.name || '—'} · Unit {resident.unit_number || '—'}
       </Typography>
 
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Grid container spacing={2}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Grid container spacing={1.5}>
           <Grid item xs={12}>
-            <Typography variant="body2" color="text.secondary">Full Name</Typography>
-            <Typography variant="body1">{resident.name || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Full Name</Typography>
+            <Typography variant="body2">{resident.name || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Unit No.</Typography>
-            <Typography variant="body1">{resident.unit_number || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Unit No.</Typography>
+            <Typography variant="body2">{resident.unit_number || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Phone No.</Typography>
-            <Typography variant="body1">{resident.contact_number || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Phone No.</Typography>
+            <Typography variant="body2">{resident.contact_number || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Email</Typography>
-            <Typography variant="body1">{resident.email || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Email</Typography>
+            <Typography variant="body2">{resident.email || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Role</Typography>
-            <Typography variant="body1">{resident.role === 'union_admin' ? 'Union Admin' : 'Resident'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Role</Typography>
+            <Typography variant="body2">{resident.role === 'union_admin' ? 'Union Admin' : 'Resident'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Status</Typography>
-            <Box>
-              <Chip
-                size="small"
-                label={resident.is_active !== false ? 'Active' : 'Inactive'}
-                color={resident.is_active !== false ? 'success' : 'default'}
-                variant="outlined"
-              />
-            </Box>
+            <Typography variant="caption" color="primary.main" display="block">Status</Typography>
+            <Chip
+              size="small"
+              label={resident.is_active !== false ? 'Active' : 'Inactive'}
+              color={resident.is_active !== false ? 'success' : 'default'}
+              variant="outlined"
+            />
           </Grid>
 
           <Grid item xs={12}>
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Utilities</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+              Utilities
+            </Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">K-Electric</Typography>
-            <Typography variant="body1">{resident.k_electric_account || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">K-Electric</Typography>
+            <Typography variant="body2">{resident.k_electric_account || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Gas</Typography>
-            <Typography variant="body1">{resident.gas_account || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Gas</Typography>
+            <Typography variant="body2">{resident.gas_account || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Water</Typography>
-            <Typography variant="body1">{resident.water_account || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Water</Typography>
+            <Typography variant="body2">{resident.water_account || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">Phone/TV</Typography>
-            <Typography variant="body1">{resident.phone_tv_account || '-'}</Typography>
+            <Typography variant="caption" color="primary.main" display="block">Phone/TV</Typography>
+            <Typography variant="body2">{resident.phone_tv_account || '-'}</Typography>
           </Grid>
 
           <Grid item xs={12}>
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Vehicles</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+              Vehicles
+            </Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontWeight: 600 }}>Car</Typography>
           </Grid>
           <Grid item xs={12} sm={4}>
-            <Typography variant="body2" color="text.secondary">Cars No.</Typography>
-            <Typography variant="body1">{resident.number_of_cars ?? '-'}</Typography>
+            <Typography variant="caption" color="text.secondary" display="block">Cars No.</Typography>
+            <Typography variant="body2">{resident.number_of_cars ?? '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={4}>
-            <Typography variant="body2" color="text.secondary">Make &amp; Model</Typography>
-            <Typography variant="body1">{resident.car_make_model || '-'}</Typography>
+            <Typography variant="caption" color="text.secondary" display="block">Make &amp; Model</Typography>
+            <Typography variant="body2">{resident.car_make_model || '-'}</Typography>
           </Grid>
           <Grid item xs={12} sm={4}>
-            <Typography variant="body2" color="text.secondary">License Plate</Typography>
-            <Typography variant="body1">{resident.license_plate || '-'}</Typography>
+            <Typography variant="caption" color="text.secondary" display="block">License Plate</Typography>
+            <Typography variant="body2">{resident.license_plate || '-'}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontWeight: 600 }}>Bike</Typography>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="caption" color="text.secondary" display="block">Bikes No.</Typography>
+            <Typography variant="body2">{resident.number_of_bikes ?? '-'}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="caption" color="text.secondary" display="block">Make &amp; Model</Typography>
+            <Typography variant="body2">{resident.bike_make_model || '-'}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="caption" color="text.secondary" display="block">License Plate</Typography>
+            <Typography variant="body2">{resident.bike_license_plate || '-'}</Typography>
           </Grid>
 
           <Grid item xs={12}>
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Defaulter</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+              Defaulter
+            </Typography>
           </Grid>
           <Grid item xs={12}>
-            <Typography variant="body2" color="text.secondary">Status</Typography>
-            <Typography variant="body1">
+            <Typography variant="body2">
               {resident.defaulter_status
                 ? `${resident.defaulter_status}${resident.defaulter_amount_due != null ? ` (Amount due: ${resident.defaulter_amount_due})` : ''}${resident.defaulter_months_overdue != null ? `, ${resident.defaulter_months_overdue} mo. overdue` : ''}`
                 : 'Not a defaulter'}
@@ -283,13 +310,16 @@ const ResidentDetails = () => {
           </Grid>
 
           <Grid item xs={12}>
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Maintenance Records</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+              Maintenance Records
+            </Typography>
           </Grid>
           <Grid item xs={12}>
             {!resident.unit_id ? (
               <Typography variant="body2" color="text.secondary">No unit assigned.</Typography>
             ) : (
-              <Box sx={{ mt: 1 }}>
+              <Box sx={{ mt: 0.5 }}>
                 <DataTable
                   columns={maintenanceColumns}
                   data={maintenanceList}
@@ -305,20 +335,23 @@ const ResidentDetails = () => {
            (Array.isArray(resident.other_bills) && resident.other_bills.length > 0) ? (
             <>
               <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mt: 1 }}>Bills</Typography>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+                  Bills
+                </Typography>
               </Grid>
               {Array.isArray(resident.telephone_bills) && resident.telephone_bills.length > 0 && (
                 <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">Telephone</Typography>
-                  <Typography variant="body1" component="span">
+                  <Typography variant="caption" color="text.secondary" display="block">Telephone</Typography>
+                  <Typography variant="body2" component="span">
                     {resident.telephone_bills.map((b) => `${b.provider || 'N/A'} ${b.account_number || ''} (${b.amount ?? 0})`).join(', ') || '-'}
                   </Typography>
                 </Grid>
               )}
               {Array.isArray(resident.other_bills) && resident.other_bills.length > 0 && (
                 <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">Other</Typography>
-                  <Typography variant="body1" component="span">
+                  <Typography variant="caption" color="text.secondary" display="block">Other</Typography>
+                  <Typography variant="body2" component="span">
                     {resident.other_bills.map((b) => `${b.type || 'N/A'} ${b.provider || ''} (${b.amount ?? 0})`).join(', ') || '-'}
                   </Typography>
                 </Grid>
@@ -327,23 +360,27 @@ const ResidentDetails = () => {
           ) : null}
 
           <Grid item xs={12}>
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Family Members</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+              Family Members
+            </Typography>
           </Grid>
           <Grid item xs={12}>
             {familyMembers.length === 0 ? (
               <Typography variant="body2" color="text.secondary">No family members added.</Typography>
             ) : (
-              <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              <Box component="ul" sx={{ m: 0, pl: 2, py: 0.25 }}>
                 {familyMembers.map((fm) => (
                   <li key={fm.id}>
-                    <Typography variant="body1">{fm.name}{fm.relation ? ` (${fm.relation})` : ''}</Typography>
+                    <Typography variant="body2">{fm.name}{fm.relation ? ` (${fm.relation})` : ''}</Typography>
                   </li>
                 ))}
               </Box>
             )}
           </Grid>
           <Grid item xs={12}>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mt: 1 }}>
+            <Divider sx={{ my: 1.5 }} />
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
               <TextField
                 size="small"
                 placeholder="Name"

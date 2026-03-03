@@ -24,4 +24,11 @@ export const superAdminApi = {
     api.post(API_ENDPOINTS.SUPER_ADMIN_INVOICE_UPLOAD_PAYMENT_PROOF(invoiceId), formData),
 
   runMigrations: () => api.post(API_ENDPOINTS.SUPER_ADMIN_RUN_MIGRATIONS),
+
+  getGlobalSettings: () => api.get(API_ENDPOINTS.SETTINGS_GLOBAL),
+  updateGlobalSettings: (data) => api.put(API_ENDPOINTS.SETTINGS_GLOBAL, data),
+
+  getAuditLogs: (params) => api.get(API_ENDPOINTS.SUPER_ADMIN_AUDIT_LOGS, { params }),
+  getEscalations: (params) => api.get(API_ENDPOINTS.SUPER_ADMIN_ESCALATIONS, { params }),
+  resolveEscalation: (id, data) => api.patch(API_ENDPOINTS.SUPER_ADMIN_ESCALATION_RESOLVE(id), data),
 }

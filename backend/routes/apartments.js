@@ -26,4 +26,11 @@ router.put('/:id', requireRole('super_admin'), apartmentController.update);
 // Delete apartment (super admin only)
 router.delete('/:id', requireRole('super_admin'), apartmentController.remove);
 
+// Formal approve workflow (super admin only)
+router.patch('/:id/approve', requireRole('super_admin'), apartmentController.approve);
+router.patch('/:id/reject', requireRole('super_admin'), apartmentController.reject);
+// Per-union feature flags (super admin only)
+router.get('/:id/features', requireRole('super_admin'), apartmentController.getFeatures);
+router.put('/:id/features', requireRole('super_admin'), apartmentController.updateFeatures);
+
 export default router;

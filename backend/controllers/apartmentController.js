@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database.js';
 import { createOrUpdateSubscription } from './subscriptionController.js';
+import * as auditLog from '../services/auditLogService.js';
 
 // Get distinct cities (for City → Area → Apartment cascading)
 export const getCities = async (req, res) => {
@@ -45,7 +46,7 @@ export const getAreas = async (req, res) => {
 // Get all apartments (with optional city, area filter for cascading; sortBy=name|union_admin, order=asc|desc)
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, city, area, address, status, sortBy, order } = req.query;
+    const { page = 1, limit = 10, search, city, area, address, status, approval_status, sortBy, order } = req.query;
     const offset = (page - 1) * limit;
     const sortOrder = (order || '').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
     const sortByUnionAdmin = (sortBy || '').toLowerCase() === 'union_admin';
@@ -92,6 +93,12 @@ export const getAll = async (req, res) => {
         INNER JOIN subscriptions s ON s.user_id = u.id
         WHERE u.role = 'union_admin' AND LOWER(TRIM(s.status)) = 'active'
       )`;
+    }
+    const approvalLower = (approval_status || '').toLowerCase();
+    if (approvalLower === 'pending' || approvalLower === 'approved' || approvalLower === 'rejected') {
+      sql += ` AND LOWER(TRIM(a.approval_status)) = $${paramCount + 1}`;
+      params.push(approvalLower);
+      paramCount++;
     }
 
     if (sortByUnionAdmin) {
@@ -142,6 +149,11 @@ export const getAll = async (req, res) => {
         INNER JOIN subscriptions s ON s.user_id = u.id
         WHERE u.role = 'union_admin' AND LOWER(TRIM(s.status)) = 'active'
       )`;
+    }
+    if (approvalLower === 'pending' || approvalLower === 'approved' || approvalLower === 'rejected') {
+      countParamCount++;
+      countSql += ` AND LOWER(TRIM(approval_status)) = $${countParamCount}`;
+      countParams.push(approvalLower);
     }
     const countResult = await query(countSql, countParams);
 
@@ -196,7 +208,7 @@ export const getById = async (req, res) => {
 // Create apartment (optionally create Union Admin user with pending subscription when details provided)
 export const create = async (req, res) => {
   try {
-    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, union_admin_password } = req.body;
+    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, union_admin_password, lead_source, current_status, next_followup_date, last_interaction_date, priority, notes } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -234,14 +246,22 @@ export const create = async (req, res) => {
     const totalUnits = Math.max(0, parseInt(total_units, 10) || 0);
 
     const result = await query(
-      `INSERT INTO apartments (name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO apartments (name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, approval_status, lead_source, current_status, next_followup_date, last_interaction_date, priority, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13, $14, $15, $16)
        RETURNING *`,
-      [name, address || null, city || null, area || null, totalBlocks, totalFloors, totalUnits, union_admin_name || null, union_admin_email || null, union_admin_phone || null]
+      [name, address || null, city || null, area || null, totalBlocks, totalFloors, totalUnits, union_admin_name || null, union_admin_email || null, union_admin_phone || null, lead_source || null, current_status || null, next_followup_date || null, last_interaction_date || null, priority || null, notes || null]
     );
 
     const apartment = result.rows[0];
     const apartmentId = apartment.id;
+
+    await auditLog.log(req, {
+      action: 'apartment.create',
+      resourceType: 'apartment',
+      resourceId: String(apartmentId),
+      societyId: apartmentId,
+      details: { name: apartment.name },
+    });
 
     // Auto-create Union Admin user (client) with pending subscription so they appear in Users until super admin runs Create Job
     if (wantsUnionAdmin) {
@@ -290,7 +310,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, is_active } = req.body;
+    const { name, address, city, area, total_blocks, total_floors, total_units, union_admin_name, union_admin_email, union_admin_phone, is_active, lead_source, current_status, next_followup_date, last_interaction_date, priority, notes } = req.body;
 
     // Check if apartment exists
     const existing = await query('SELECT id FROM apartments WHERE id = $1', [id]);
@@ -317,10 +337,16 @@ export const update = async (req, res) => {
                union_admin_email = $9,
                union_admin_phone = $10,
                is_active = $11,
+               lead_source = $12,
+               current_status = $13,
+               next_followup_date = $14,
+               last_interaction_date = $15,
+               priority = $16,
+               notes = $17,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $12
+           WHERE id = $18
            RETURNING *`,
-          [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, isActiveValue, id]
+          [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, isActiveValue, lead_source || null, current_status || null, next_followup_date || null, last_interaction_date || null, priority || null, notes || null, id]
         )
       : await query(
           `UPDATE apartments 
@@ -334,11 +360,25 @@ export const update = async (req, res) => {
                union_admin_name = $8,
                union_admin_email = $9,
                union_admin_phone = $10,
+               lead_source = $11,
+               current_status = $12,
+               next_followup_date = $13,
+               last_interaction_date = $14,
+               priority = $15,
+               notes = $16,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $11
+           WHERE id = $17
            RETURNING *`,
-          [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, id]
+          [name, address, city, area, total_blocks, total_floors, total_units, union_admin_name || null, union_admin_email || null, union_admin_phone || null, lead_source || null, current_status || null, next_followup_date || null, last_interaction_date || null, priority || null, notes || null, id]
         );
+
+    await auditLog.log(req, {
+      action: 'apartment.update',
+      resourceType: 'apartment',
+      resourceId: id,
+      societyId: parseInt(id, 10),
+      details: { name },
+    });
 
     res.json({
       success: true,
@@ -369,6 +409,8 @@ export const remove = async (req, res) => {
       });
     }
 
+    await auditLog.log(req, { action: 'apartment.delete', resourceType: 'apartment', resourceId: id, details: {} });
+
     res.json({
       success: true,
       message: 'Apartment deleted successfully',
@@ -378,6 +420,173 @@ export const remove = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete apartment',
+      error: error.message,
+    });
+  }
+};
+
+// Approve union (super admin only) – formal approve workflow
+export const approve = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body || {};
+
+    const existing = await query('SELECT id, approval_status, name FROM apartments WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Apartment not found' });
+    }
+    const row = existing.rows[0];
+    if ((row.approval_status || '').toLowerCase() === 'approved') {
+      return res.status(400).json({ success: false, message: 'Union is already approved' });
+    }
+
+    await query(
+      `UPDATE apartments SET approval_status = 'approved', approval_notes = $1, approved_at = CURRENT_TIMESTAMP, approved_by = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+      [notes || null, req.user?.id || null, id]
+    );
+
+    await auditLog.log(req, {
+      action: 'apartment.approve',
+      resourceType: 'apartment',
+      resourceId: id,
+      societyId: parseInt(id, 10),
+      details: { notes: notes || null, name: row.name },
+    });
+
+    res.json({
+      success: true,
+      message: 'Union approved successfully',
+      data: { id: parseInt(id, 10), approval_status: 'approved' },
+    });
+  } catch (error) {
+    console.error('Approve apartment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve union',
+      error: error.message,
+    });
+  }
+};
+
+// Reject union (super admin only)
+export const reject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body || {};
+
+    const existing = await query('SELECT id, approval_status, name FROM apartments WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Apartment not found' });
+    }
+    const row = existing.rows[0];
+
+    await query(
+      `UPDATE apartments SET approval_status = 'rejected', approval_notes = $1, approved_at = NULL, approved_by = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+      [notes || null, req.user?.id || null, id]
+    );
+
+    await auditLog.log(req, {
+      action: 'apartment.reject',
+      resourceType: 'apartment',
+      resourceId: id,
+      societyId: parseInt(id, 10),
+      details: { notes: notes || null, name: row.name },
+    });
+
+    res.json({
+      success: true,
+      message: 'Union rejected',
+      data: { id: parseInt(id, 10), approval_status: 'rejected' },
+    });
+  } catch (error) {
+    console.error('Reject apartment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject union',
+      error: error.message,
+    });
+  }
+};
+
+// Get feature flags for a union (super admin only)
+const FEATURE_KEYS = ['complaints', 'maintenance', 'announcements', 'finance_reports', 'defaulters_visible', 'messaging'];
+
+export const getFeatures = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const exists = await query('SELECT id FROM apartments WHERE id = $1', [id]);
+    if (exists.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Apartment not found' });
+    }
+
+    const result = await query(
+      'SELECT feature_key, enabled FROM union_features WHERE society_apartment_id = $1',
+      [id]
+    );
+    const map = Object.fromEntries((result.rows || []).map((r) => [r.feature_key, r.enabled]));
+    const data = {};
+    FEATURE_KEYS.forEach((k) => {
+      data[k] = map[k] !== false;
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Get union features error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch union features',
+      error: error.message,
+    });
+  }
+};
+
+// Update feature flags for a union (super admin only)
+export const updateFeatures = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { features } = req.body || {};
+
+    const exists = await query('SELECT id FROM apartments WHERE id = $1', [id]);
+    if (exists.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Apartment not found' });
+    }
+
+    if (!features || typeof features !== 'object') {
+      return res.status(400).json({ success: false, message: 'Body must include features object' });
+    }
+
+    for (const key of FEATURE_KEYS) {
+      if (typeof features[key] !== 'boolean') continue;
+      await query(
+        `INSERT INTO union_features (society_apartment_id, feature_key, enabled, updated_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT (society_apartment_id, feature_key) DO UPDATE SET enabled = $3, updated_at = CURRENT_TIMESTAMP`,
+        [id, key, features[key]]
+      );
+    }
+
+    await auditLog.log(req, {
+      action: 'apartment.features.update',
+      resourceType: 'apartment',
+      resourceId: id,
+      societyId: parseInt(id, 10),
+      details: features,
+    });
+
+    const result = await query('SELECT feature_key, enabled FROM union_features WHERE society_apartment_id = $1', [id]);
+    const map = Object.fromEntries((result.rows || []).map((r) => [r.feature_key, r.enabled]));
+    const data = {};
+    FEATURE_KEYS.forEach((k) => {
+      data[k] = map[k] !== false;
+    });
+
+    res.json({ success: true, message: 'Features updated', data });
+  } catch (error) {
+    console.error('Update union features error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update union features',
       error: error.message,
     });
   }

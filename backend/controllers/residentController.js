@@ -125,6 +125,7 @@ export const getById = async (req, res) => {
          u.k_electric_account, u.gas_account, u.water_account, u.phone_tv_account,
          u.telephone_bills, u.other_bills,
          u.car_make_model, u.license_plate, u.number_of_cars,
+         u.bike_make_model, u.bike_license_plate, u.number_of_bikes,
          s.name as society_name,
          d.status as defaulter_status,
          d.amount_due as defaulter_amount_due,
@@ -167,7 +168,23 @@ export const getById = async (req, res) => {
 // Create resident
 export const create = async (req, res) => {
   try {
-    const { email, password, name, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date } = req.body;
+    const {
+      email,
+      password,
+      name,
+      society_apartment_id,
+      unit_id,
+      cnic,
+      contact_number,
+      emergency_contact,
+      move_in_date,
+      number_of_cars,
+      number_of_bikes,
+      car_make_model,
+      license_plate,
+      bike_make_model,
+      bike_license_plate,
+    } = req.body;
 
     if (!email || !name || !society_apartment_id) {
       return res.status(400).json({
@@ -207,6 +224,60 @@ export const create = async (req, res) => {
       ]
     );
 
+    // If unit_id is set and vehicle fields provided, update the unit
+    const unitId = result.rows[0]?.unit_id;
+    if (unitId && (
+      number_of_cars !== undefined ||
+      number_of_bikes !== undefined ||
+      car_make_model !== undefined ||
+      license_plate !== undefined ||
+      bike_make_model !== undefined ||
+      bike_license_plate !== undefined
+    )) {
+      const unitUpdates = [];
+      const unitParams = [];
+      let paramCount = 0;
+      if (number_of_cars !== undefined) {
+        paramCount++;
+        unitUpdates.push(`number_of_cars = $${paramCount}::integer`);
+        unitParams.push(number_of_cars ?? 0);
+      }
+      if (number_of_bikes !== undefined) {
+        paramCount++;
+        unitUpdates.push(`number_of_bikes = $${paramCount}::integer`);
+        unitParams.push(number_of_bikes ?? 0);
+      }
+      if (car_make_model !== undefined) {
+        paramCount++;
+        unitUpdates.push(`car_make_model = $${paramCount}::varchar`);
+        unitParams.push(car_make_model || null);
+      }
+      if (license_plate !== undefined) {
+        paramCount++;
+        unitUpdates.push(`license_plate = $${paramCount}::varchar`);
+        unitParams.push(license_plate || null);
+      }
+      if (bike_make_model !== undefined) {
+        paramCount++;
+        unitUpdates.push(`bike_make_model = $${paramCount}::varchar`);
+        unitParams.push(bike_make_model || null);
+      }
+      if (bike_license_plate !== undefined) {
+        paramCount++;
+        unitUpdates.push(`bike_license_plate = $${paramCount}::varchar`);
+        unitParams.push(bike_license_plate || null);
+      }
+      if (unitUpdates.length > 0) {
+        paramCount++;
+        unitUpdates.push('updated_at = CURRENT_TIMESTAMP');
+        unitParams.push(unitId);
+        await query(
+          `UPDATE units SET ${unitUpdates.join(', ')} WHERE id = $${paramCount}`,
+          unitParams
+        ).catch((err) => console.warn('Unit vehicle update after create:', err.message));
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Resident created successfully',
@@ -226,16 +297,21 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      name, 
-      society_apartment_id, 
-      unit_id, 
-      cnic, 
-      contact_number, 
-      emergency_contact, 
+    const {
+      name,
+      society_apartment_id,
+      unit_id,
+      cnic,
+      contact_number,
+      emergency_contact,
       move_in_date,
       owner_name,
       license_plate,
+      number_of_cars,
+      number_of_bikes,
+      car_make_model,
+      bike_make_model,
+      bike_license_plate,
       telephone_bills,
       other_bills
     } = req.body;
@@ -266,7 +342,17 @@ export const update = async (req, res) => {
 
     // Update unit record if unit_id exists and additional fields are provided
     const finalUnitId = unit_id || existing.rows[0].unit_id;
-    if (finalUnitId && (owner_name !== undefined || license_plate !== undefined || telephone_bills !== undefined || other_bills !== undefined)) {
+    if (finalUnitId && (
+      owner_name !== undefined ||
+      license_plate !== undefined ||
+      number_of_cars !== undefined ||
+      number_of_bikes !== undefined ||
+      car_make_model !== undefined ||
+      bike_make_model !== undefined ||
+      bike_license_plate !== undefined ||
+      telephone_bills !== undefined ||
+      other_bills !== undefined
+    )) {
       try {
         // Build dynamic update query for unit
         const unitUpdates = [];
@@ -283,6 +369,32 @@ export const update = async (req, res) => {
           paramCount++;
           unitUpdates.push(`license_plate = $${paramCount}`);
           unitParams.push(license_plate);
+        }
+
+        if (number_of_cars !== undefined) {
+          paramCount++;
+          unitUpdates.push(`number_of_cars = $${paramCount}::integer`);
+          unitParams.push(number_of_cars ?? 0);
+        }
+        if (number_of_bikes !== undefined) {
+          paramCount++;
+          unitUpdates.push(`number_of_bikes = $${paramCount}::integer`);
+          unitParams.push(number_of_bikes ?? 0);
+        }
+        if (car_make_model !== undefined) {
+          paramCount++;
+          unitUpdates.push(`car_make_model = $${paramCount}::varchar`);
+          unitParams.push(car_make_model || null);
+        }
+        if (bike_make_model !== undefined) {
+          paramCount++;
+          unitUpdates.push(`bike_make_model = $${paramCount}::varchar`);
+          unitParams.push(bike_make_model || null);
+        }
+        if (bike_license_plate !== undefined) {
+          paramCount++;
+          unitUpdates.push(`bike_license_plate = $${paramCount}::varchar`);
+          unitParams.push(bike_license_plate || null);
         }
 
         // Handle JSONB fields

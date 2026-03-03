@@ -65,7 +65,11 @@ export const maintenanceApi = {
   },
 
   deleteByYear: (data) => {
-    return api.delete(API_ENDPOINTS.MAINTENANCE_DELETE_BY_YEAR, { data })
+    const params = new URLSearchParams();
+    if (data?.year != null) params.set('year', data.year);
+    if (data?.society_id != null) params.set('society_id', data.society_id);
+    const qs = params.toString();
+    return api.delete(API_ENDPOINTS.MAINTENANCE_DELETE_BY_YEAR + (qs ? `?${qs}` : ''));
   },
 
   createForAllUnits: (data) => {

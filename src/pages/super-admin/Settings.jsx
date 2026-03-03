@@ -41,6 +41,14 @@ const SuperAdminSettings = () => {
     () => superAdminApi.getSubscriptionPlans(true).then(res => res.data)
   )
 
+  const { data: globalData, mutate: mutateGlobal } = useSWR(
+    '/settings/global',
+    () => superAdminApi.getGlobalSettings().then(res => res.data)
+  )
+  const globalSettings = globalData?.data ?? {}
+  const [globalForm, setGlobalForm] = useState({})
+  const [globalSaving, setGlobalSaving] = useState(false)
+
   const plans = plansData?.data ?? []
 
   const openPlanDialog = (plan = null) => {
@@ -107,6 +115,26 @@ const SuperAdminSettings = () => {
     }
   }
 
+  const handleSaveGlobal = async () => {
+    setGlobalSaving(true)
+    try {
+      const payload = {
+        default_currency: globalForm.default_currency ?? globalSettings.default_currency,
+        default_due_day: globalForm.default_due_day ?? globalSettings.default_due_day,
+        maintenance_reminder_days_default: globalForm.maintenance_reminder_days_default ?? globalSettings.maintenance_reminder_days_default,
+        max_upload_size_mb: globalForm.max_upload_size_mb ?? globalSettings.max_upload_size_mb,
+      }
+      await superAdminApi.updateGlobalSettings(payload)
+      toast.success('Global settings saved')
+      mutateGlobal()
+      setGlobalForm({})
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save global settings')
+    } finally {
+      setGlobalSaving(false)
+    }
+  }
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -116,8 +144,67 @@ const SuperAdminSettings = () => {
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Configure monthly subscription plans for union admins.
+        Configure monthly subscription plans for union admins and platform-wide defaults.
       </Typography>
+
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 2 }}>Global settings</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Platform-wide defaults (payment defaults, system rules). Used when a society does not override them.
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Default currency"
+                value={globalForm.default_currency ?? globalSettings.default_currency ?? ''}
+                onChange={(e) => setGlobalForm((f) => ({ ...f, default_currency: e.target.value }))}
+                placeholder="PKR"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Default due day (1–31)"
+                type="number"
+                inputProps={{ min: 1, max: 31 }}
+                value={globalForm.default_due_day ?? globalSettings.default_due_day ?? ''}
+                onChange={(e) => setGlobalForm((f) => ({ ...f, default_due_day: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Maintenance reminder days"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={globalForm.maintenance_reminder_days_default ?? globalSettings.maintenance_reminder_days_default ?? ''}
+                onChange={(e) => setGlobalForm((f) => ({ ...f, maintenance_reminder_days_default: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Max upload size (MB)"
+                type="number"
+                inputProps={{ min: 1 }}
+                value={globalForm.max_upload_size_mb ?? globalSettings.max_upload_size_mb ?? ''}
+                onChange={(e) => setGlobalForm((f) => ({ ...f, max_upload_size_mb: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Button variant="contained" onClick={handleSaveGlobal} disabled={globalSaving}>
+                {globalSaving ? 'Saving…' : 'Save global settings'}
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       <Card>
           <CardContent>

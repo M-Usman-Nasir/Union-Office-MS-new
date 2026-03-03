@@ -76,6 +76,7 @@ export const login = async (req, res) => {
     }
 
     // Union Admin: allow login only if subscription exists and is active (super admin must activate first)
+    // and apartment is approved (formal approve workflow)
     if (user.role === 'union_admin') {
       const subResult = await query(
         'SELECT status FROM subscriptions WHERE user_id = $1',
@@ -86,6 +87,18 @@ export const login = async (req, res) => {
           success: false,
           message: 'Account not activated. Please contact the administrator.',
         });
+      }
+      if (user.society_apartment_id) {
+        const aptResult = await query(
+          'SELECT approval_status FROM apartments WHERE id = $1',
+          [user.society_apartment_id]
+        );
+        if (aptResult.rows.length > 0 && (aptResult.rows[0].approval_status || '').toLowerCase() !== 'approved') {
+          return res.status(401).json({
+            success: false,
+            message: 'Union is pending approval. Please contact the platform administrator.',
+          });
+        }
       }
     }
 
