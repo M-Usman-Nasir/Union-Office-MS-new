@@ -109,6 +109,21 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         additionalData: `@use "./src/styles/_variables.scss" as *;`,
+        silenceDeprecations: ['legacy-js-api'],
+      },
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-mui': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          'vendor-mui-x': ['@mui/x-data-grid', '@mui/x-date-pickers'],
+          'vendor-charts': ['apexcharts', 'react-apexcharts'],
+          'vendor-utils': ['axios', 'dayjs', 'lodash-es', 'formik', 'yup'],
+        },
       },
     },
   },

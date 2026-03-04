@@ -29,10 +29,10 @@
     "lodash-es": "^4.17.21",
     "react-to-print": "^2.14.15",
     "@tabler/icons-react": "^2.47.0",
-    "axios": "^1.6.2",
+    "axios": "^1.7.9",
     "react-hot-toast": "^2.4.1",
     "react-dropzone": "^14.2.3",
-    "jspdf": "^2.5.1",
+    "jspdf": "^4.2.0",
     "@fontsource/inter": "^5.0.18",
     "@fontsource/poppins": "^5.0.18",
     "@fontsource/roboto": "^5.0.18"
