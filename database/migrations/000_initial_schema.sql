@@ -216,11 +216,11 @@ DROP TRIGGER IF EXISTS update_maintenance_config_updated_at ON maintenance_confi
 CREATE TRIGGER update_maintenance_config_updated_at BEFORE UPDATE ON maintenance_config
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_finance_updated_at BEFORE UPDATE ON finance;
+DROP TRIGGER IF EXISTS update_finance_updated_at ON finance;
 CREATE TRIGGER update_finance_updated_at BEFORE UPDATE ON finance
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_announcements_updated_at BEFORE UPDATE ON announcements;
+DROP TRIGGER IF EXISTS update_announcements_updated_at ON announcements;
 CREATE TRIGGER update_announcements_updated_at BEFORE UPDATE ON announcements
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
