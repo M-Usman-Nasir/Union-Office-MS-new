@@ -125,11 +125,13 @@ app.get('/api/test/db', async (req, res) => {
   }
 });
 
-// 404 handler
+// 404 handler – include path in response to debug wrong URLs
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
+    path: req.path,
+    method: req.method,
   });
 });
 
