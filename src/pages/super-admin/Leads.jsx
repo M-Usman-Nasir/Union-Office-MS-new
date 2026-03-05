@@ -50,6 +50,7 @@ import { apartmentApi } from '@/api/apartmentApi'
 import { propertyApi } from '@/api/propertyApi'
 import { userApi } from '@/api/userApi'
 import { superAdminApi } from '@/api/superAdminApi'
+import { ROUTES } from '@/utils/constants'
 import DataTable from '@/components/common/DataTable'
 import AddressAutocomplete from '@/components/common/AddressAutocomplete'
 
@@ -97,7 +98,7 @@ const validationSchema = Yup.object({
     notes: Yup.string().nullable(),
   })
 
-const Apartments = () => {
+const Leads = () => {
   const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
@@ -107,12 +108,10 @@ const Apartments = () => {
   const [actionMenu, setActionMenu] = useState({ anchorEl: null, row: null })
   const [assignAdminRow, setAssignAdminRow] = useState(null)
   const [assignSelectedAdmin, setAssignSelectedAdmin] = useState(null)
-  const [viewDialogOpen, setViewDialogOpen] = useState(false)
-  const [viewingRow, setViewingRow] = useState(null)
   const [sortBy, setSortBy] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
   const [addressFilter, setAddressFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('inactive')
   const [approvalFilter, setApprovalFilter] = useState('')
 
   const handleSort = (key) => {
@@ -168,13 +167,6 @@ const Apartments = () => {
   )
   const apartmentDetail = apartmentDetailData?.data
 
-  // Full apartment detail for View dialog (so we show latest data and can show "—" for unset counts)
-  const { data: viewDetailData } = useSWR(
-    viewDialogOpen && viewingRow?.id ? ['/apartment-detail-view', viewingRow.id] : null,
-    () => apartmentApi.getById(viewingRow.id).then(res => res.data)
-  )
-  const viewApartmentDetail = viewDetailData?.data
-
   const [createJobRow, setCreateJobRow] = useState(null)
   const [selectedPlanIdForJob, setSelectedPlanIdForJob] = useState('')
   const [givingSubscription, setGivingSubscription] = useState(false)
@@ -220,7 +212,7 @@ const Apartments = () => {
   const handleOpenCreateJob = (adminRow) => {
     closeActionMenu()
     if (!adminRow?.society_apartment_id) {
-      toast.error('User has no apartment assigned.')
+      toast.error('This user is not assigned to a lead.')
       return
     }
     const sub = subscriptionByUserId[adminRow.id]
@@ -283,7 +275,7 @@ const Apartments = () => {
       })
       const nextBilling = new Date()
       nextBilling.setMonth(nextBilling.getMonth() + 1)
-      toast.success(`Subscription set. Next billing date: ${nextBilling.toLocaleDateString()}.`)
+      toast.success(`Job created. Lead removed from this list; manage from Users. Next billing: ${nextBilling.toLocaleDateString()}.`)
       await Promise.all([mutate(), mutateAdmins()])
       setCreateJobRow(null)
       setSelectedPlanIdForJob('')
@@ -452,7 +444,7 @@ const Apartments = () => {
           priority: values.priority || null,
           notes: values.notes || null,
         })
-        toast.success('Apartment updated successfully')
+        toast.success('Lead updated successfully')
         // Defer close and revalidate so dialog closes and list updates reliably
         setTimeout(() => {
           setOpenDialog(false)
@@ -514,7 +506,7 @@ const Apartments = () => {
             })
           }
         }
-        toast.success('Apartment created successfully.')
+        toast.success('Lead created successfully.')
       }
       setTimeout(() => {
         setOpenDialog(false)
@@ -532,7 +524,7 @@ const Apartments = () => {
     if (dismissToastId) toast.dismiss(dismissToastId)
     try {
       await apartmentApi.remove(id)
-      toast.success('Apartment deleted successfully')
+      toast.success('Lead deleted successfully')
       mutate()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Delete failed')
@@ -555,7 +547,7 @@ const Apartments = () => {
           }}
         >
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-            Delete this apartment?
+            Delete this lead?
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             This action cannot be undone.
@@ -588,7 +580,7 @@ const Apartments = () => {
     },
     {
       id: 'name',
-      label: 'Apartment Name',
+      label: 'Lead name',
       minWidth: 180,
       header: (
         <TableSortLabel
@@ -596,7 +588,7 @@ const Apartments = () => {
           direction={sortBy === 'name' ? sortOrder : 'asc'}
           onClick={() => handleSort('name')}
         >
-          Apartment Name
+          Lead name
         </TableSortLabel>
       ),
       render: (row) => {
@@ -610,7 +602,7 @@ const Apartments = () => {
               color: 'primary.main',
               '&:hover': { textDecoration: 'underline' },
             }}
-            onClick={() => (setViewingRow(row), setViewDialogOpen(true))}
+            onClick={() => navigate(`${ROUTES.SUPER_ADMIN_VIEW_DETAILS}?society_id=${row.id}&from=leads`)}
           >
             {label}
           </Typography>
@@ -699,7 +691,7 @@ const Apartments = () => {
               color: label !== '—' ? 'primary.main' : 'text.primary',
               '&:hover': label !== '—' ? { textDecoration: 'underline' } : {},
             }}
-            onClick={() => label !== '—' && (setViewingRow(row), setViewDialogOpen(true))}
+            onClick={() => label !== '—' && navigate(`${ROUTES.SUPER_ADMIN_VIEW_DETAILS}?society_id=${row.id}&from=leads`)}
           >
             {label}
           </Typography>
@@ -780,8 +772,7 @@ const Apartments = () => {
               <>
                 <MenuItem
                   onClick={() => {
-                    setViewingRow(actionMenu.row)
-                    setViewDialogOpen(true)
+                    navigate(`${ROUTES.SUPER_ADMIN_VIEW_DETAILS}?society_id=${actionMenu.row.id}&from=leads`)
                     closeActionMenu()
                   }}
                 >
@@ -842,7 +833,7 @@ const Apartments = () => {
                   }}
                 >
                   <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-                  <ListItemText>Edit apartment</ListItemText>
+                  <ListItemText>Edit lead</ListItemText>
                 </MenuItem>
                 {(actionMenu.row?.approval_status || '').toLowerCase() === 'pending' && (
                   <>
@@ -865,7 +856,7 @@ const Apartments = () => {
                   sx={{ color: 'error.main' }}
                 >
                   <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
-                  <ListItemText>Delete apartment</ListItemText>
+                  <ListItemText>Delete lead</ListItemText>
                 </MenuItem>
               </>
             )}
@@ -936,9 +927,12 @@ const Apartments = () => {
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" component="h1">
-            Apartments Management
+            Leads
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Leads shown here until a job is created for a union admin. After Create Job, manage from Users.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
             Total leads: {isLoading ? '—' : totalLeads}
           </Typography>
         </Box>
@@ -947,14 +941,14 @@ const Apartments = () => {
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
         >
-          Add Apartment
+          Add Lead
         </Button>
       </Box>
 
       <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
         <TextField
           sx={{ minWidth: 200, flex: '1 1 200px' }}
-          placeholder="Search apartments..."
+          placeholder="Search leads..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
           InputProps={{
@@ -982,12 +976,12 @@ const Apartments = () => {
           InputLabelProps={{ shrink: true }}
           SelectProps={{
             displayEmpty: true,
-            renderValue: (v) => (v === '' ? 'All' : v === 'active' ? 'Active (subscribed)' : 'Inactive (waiting)'),
+          renderValue: (v) => (v === '' ? 'All' : v === 'active' ? 'Active (job created)' : 'Leads only'),
           }}
         >
           <MenuItem value="">All</MenuItem>
-          <MenuItem value="active">Active (subscribed)</MenuItem>
-          <MenuItem value="inactive">Inactive (waiting for subscription)</MenuItem>
+          <MenuItem value="active">Active (job created)</MenuItem>
+          <MenuItem value="inactive">Leads only</MenuItem>
         </TextField>
         <TextField
           select
@@ -1022,7 +1016,7 @@ const Apartments = () => {
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         {editingSociety && apartmentDetailLoading ? (
           <>
-            <DialogTitle>Edit Apartment</DialogTitle>
+            <DialogTitle>Edit Lead</DialogTitle>
             <DialogContent>
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 120 }}>
                 <CircularProgress />
@@ -1040,7 +1034,7 @@ const Apartments = () => {
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
               <DialogTitle>
-                {editingSociety ? 'Edit Apartment' : 'Add New Apartment'}
+                {editingSociety ? 'Edit Lead' : 'Add New Lead'}
               </DialogTitle>
               <DialogContent>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1050,7 +1044,7 @@ const Apartments = () => {
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
-                      label="Apartment name"
+                      label="Lead name"
                       name="name"
                       value={values.name}
                       onChange={handleChange}
@@ -1456,197 +1450,12 @@ const Apartments = () => {
         )}
       </Dialog>
 
-      <Dialog
-        open={viewDialogOpen}
-        onClose={() => { setViewDialogOpen(false); setViewingRow(null) }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Apartment &amp; Union Admin details</DialogTitle>
-        <DialogContent dividers>
-          {viewingRow && (() => {
-            const viewApartment = { ...viewingRow, ...(viewApartmentDetail ?? {}) }
-            const showCount = (v) => (v == null || v === '') ? '—' : v
-            return (
-            <Grid container spacing={2} sx={{ pt: 1 }}>
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">Apartment Name</Typography>
-                <Typography variant="body1">{viewApartment.name || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">Address</Typography>
-                <Typography variant="body1">{viewApartment.address || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">City</Typography>
-                <Typography variant="body1">{viewApartment.city || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Area</Typography>
-                <Typography variant="body1">{viewApartment.area || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="body2" color="text.secondary">Total Blocks</Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
-                  onClick={() => {
-                    setViewDialogOpen(false)
-                    setViewingRow(null)
-                    navigate(`/super-admin/blocks?society_id=${viewingRow.id}`)
-                  }}
-                >
-                  {showCount(viewApartment.total_blocks)}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="body2" color="text.secondary">Total Floors</Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
-                  onClick={() => {
-                    setViewDialogOpen(false)
-                    setViewingRow(null)
-                    navigate(`/super-admin/floors?society_id=${viewingRow.id}`)
-                  }}
-                >
-                  {showCount(viewApartment.total_floors)}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="body2" color="text.secondary">Total Units</Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }}
-                  onClick={() => {
-                    setViewDialogOpen(false)
-                    setViewingRow(null)
-                    navigate(`/super-admin/units?society_id=${viewingRow.id}`)
-                  }}
-                >
-                  {showCount(viewApartment.total_units)}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Lead details</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Lead Source</Typography>
-                <Typography variant="body1">{viewApartment.lead_source || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Current Status</Typography>
-                <Typography variant="body1">{viewApartment.current_status || '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Next Follow-up Date</Typography>
-                <Typography variant="body1">{viewApartment.next_followup_date ? new Date(viewApartment.next_followup_date).toLocaleDateString() : '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Last Interaction Date</Typography>
-                <Typography variant="body1">{viewApartment.last_interaction_date ? new Date(viewApartment.last_interaction_date).toLocaleDateString() : '—'}</Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">Priority</Typography>
-                <Typography variant="body1">{viewApartment.priority || '—'}</Typography>
-              </Grid>
-              {viewApartment.notes && (
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">Notes</Typography>
-                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{viewApartment.notes}</Typography>
-                </Grid>
-              )}
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Union Admin</Typography>
-              </Grid>
-              {(() => {
-                const admin = admins.find((a) => a.society_apartment_id === viewingRow.id)
-                if (!admin) {
-                  const hasStored = viewApartment.union_admin_name || viewApartment.union_admin_email || viewApartment.union_admin_phone
-                  return (
-                    <>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">No Union Admin assigned.</Typography>
-                      </Grid>
-                      {hasStored && (
-                        <>
-                          {viewApartment.union_admin_name && (
-                            <Grid item xs={12} sm={6}>
-                              <Typography variant="body2" color="text.secondary">Lead contact name</Typography>
-                              <Typography variant="body1">{viewApartment.union_admin_name}</Typography>
-                            </Grid>
-                          )}
-                          {viewApartment.union_admin_email && (
-                            <Grid item xs={12} sm={6}>
-                              <Typography variant="body2" color="text.secondary">Lead contact email</Typography>
-                              <Typography variant="body1">{viewApartment.union_admin_email}</Typography>
-                            </Grid>
-                          )}
-                          {viewApartment.union_admin_phone && (
-                            <Grid item xs={12} sm={6}>
-                              <Typography variant="body2" color="text.secondary">Lead contact phone</Typography>
-                              <Typography variant="body1">{viewApartment.union_admin_phone}</Typography>
-                            </Grid>
-                          )}
-                        </>
-                      )}
-                    </>
-                  )
-                }
-                const subscriptionActivated = ['active', 'trial'].includes((admin.subscription_status || '').toLowerCase())
-                return (
-                  <>
-                    <Grid item xs={12}>
-                      <Typography variant="body2" color="text.secondary">Name</Typography>
-                      <Typography variant="body1">{admin.name || '—'}</Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">Email</Typography>
-                      <Typography variant="body1">{admin.email || '—'}</Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">Phone Number</Typography>
-                      <Typography variant="body1">{admin.contact_number || '—'}</Typography>
-                    </Grid>
-                    {subscriptionActivated && (
-                      <>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="body2" color="text.secondary">Subscription Status</Typography>
-                          <Typography variant="body1">{admin.subscription_status || '—'}</Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="body2" color="text.secondary">Plan</Typography>
-                          <Typography variant="body1">{admin.plan_name ? `${admin.plan_name} (${admin.plan_amount ?? 0} PKR)` : '—'}</Typography>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="body2" color="text.secondary">Next Billing Date</Typography>
-                          <Typography variant="body1">{admin.next_billing_date ? new Date(admin.next_billing_date).toLocaleDateString() : '—'}</Typography>
-                        </Grid>
-                      </>
-                    )}
-                  </>
-                )
-              })()}
-            </Grid>
-            )
-          })()}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setViewDialogOpen(false); setViewingRow(null) }}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
       <Dialog open={Boolean(assignAdminRow)} onClose={handleCloseAssignAdmin} maxWidth="xs" fullWidth>
         <DialogTitle>Assign Union Admin</DialogTitle>
         <DialogContent>
           {assignAdminRow && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Apartment: <strong>{assignAdminRow.name}</strong>
+              Lead: <strong>{assignAdminRow.name}</strong>
             </Typography>
           )}
           <Autocomplete
@@ -1683,7 +1492,7 @@ const Apartments = () => {
         <DialogContent>
           {approveRejectRow && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Apartment: <strong>{approveRejectRow.name}</strong>
+              Lead: <strong>{approveRejectRow.name}</strong>
             </Typography>
           )}
           <TextField
@@ -1742,14 +1551,14 @@ const Apartments = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Create Job dialog – Apartment & Union Admin details + package + Give subscription */}
+      {/* Create Job dialog – Lead & Union Admin details + package + Give subscription */}
       <Dialog
         open={Boolean(createJobRow)}
         onClose={() => { setCreateJobRow(null); setSelectedPlanIdForJob('') }}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Create Job — Apartment &amp; Union Admin details</DialogTitle>
+        <DialogTitle>Create Job — Lead &amp; Union Admin details</DialogTitle>
         <DialogContent dividers>
           {createJobRow && (
             <Grid container spacing={2} sx={{ pt: 1 }}>
@@ -1765,12 +1574,12 @@ const Apartments = () => {
                 ) : null
               })()}
               <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>Apartment</Typography>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Lead</Typography>
               </Grid>
               {createJobApartment ? (
                 <>
                   <Grid item xs={12}>
-                    <Typography variant="body2" color="text.secondary">Apartment Name</Typography>
+                    <Typography variant="body2" color="text.secondary">Lead name</Typography>
                     <Typography variant="body1">{createJobApartment.name || '—'}</Typography>
                   </Grid>
                   <Grid item xs={12}>
@@ -1911,4 +1720,4 @@ const Apartments = () => {
     </Container>
   )
 }
-export default Apartments
+export default Leads

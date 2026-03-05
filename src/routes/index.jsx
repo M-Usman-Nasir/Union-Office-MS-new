@@ -6,7 +6,7 @@ import { ROLES, ROUTES } from '@/utils/constants'
 // Import pages
 import LoginPage from '@/pages/auth/LoginPage'
 import SuperAdminDashboard from '@/pages/super-admin/Dashboard'
-import Apartments from '@/pages/super-admin/Apartments'
+import Leads from '@/pages/super-admin/Leads'
 import Blocks from '@/pages/super-admin/Blocks'
 import Floors from '@/pages/super-admin/Floors'
 import Units from '@/pages/super-admin/Units'
@@ -16,6 +16,8 @@ import Admins from '@/pages/super-admin/Admins'
 import SuperAdminSettings from '@/pages/super-admin/Settings'
 import SuperAdminInvoices from '@/pages/super-admin/Invoices'
 import AuditLogs from '@/pages/super-admin/AuditLogs'
+import SubscriptionManagement from '@/pages/super-admin/SubscriptionManagement'
+import ViewDetailsPage from '@/pages/super-admin/ViewDetailsPage'
 import Escalations from '@/pages/super-admin/Escalations'
 import Users from '@/pages/admin/Users'
 import Employees from '@/pages/admin/Employees'
@@ -57,12 +59,14 @@ export const AppRoutes = () => {
             <MainLayout>
               <Routes>
                 <Route path="dashboard" element={<SuperAdminDashboard />} />
-                <Route path="societies" element={<Apartments />} />
+                <Route path="societies" element={<Leads />} />
                 <Route path="blocks" element={<Blocks />} />
                 <Route path="floors" element={<Floors />} />
                 <Route path="units" element={<Units />} />
                 <Route path="users" element={<Users />} />
                 <Route path="admins" element={<Admins />} />
+                <Route path="subscription-management" element={<SubscriptionManagement />} />
+                <Route path="view-details" element={<ViewDetailsPage />} />
                 <Route path="invoices" element={<SuperAdminInvoices />} />
                 <Route path="settings" element={<SuperAdminSettings />} />
                 <Route path="profile" element={<SuperAdminProfile />} />

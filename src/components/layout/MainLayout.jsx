@@ -34,6 +34,7 @@ import FeedbackIcon from '@mui/icons-material/Feedback'
 import AnnouncementIcon from '@mui/icons-material/Announcement'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import CardMembershipIcon from '@mui/icons-material/CardMembership'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import MessageIcon from '@mui/icons-material/Message'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -138,6 +139,7 @@ const MainLayout = ({ children }) => {
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.SUPER_ADMIN_DASHBOARD },
         { text: 'Leads', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
         { text: 'Clients', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
+        { text: 'Subscription Management', icon: <CardMembershipIcon />, path: ROUTES.SUPER_ADMIN_SUBSCRIPTION_MANAGEMENT },
         { text: 'Invoices', icon: <ReceiptLongIcon />, path: ROUTES.SUPER_ADMIN_INVOICES },
         { text: 'Escalations', icon: <FeedbackIcon />, path: ROUTES.SUPER_ADMIN_ESCALATIONS },
         { text: 'Audit logs', icon: <AssessmentIcon />, path: ROUTES.SUPER_ADMIN_AUDIT_LOGS },

@@ -33,6 +33,7 @@ export const getAll = async (req, res) => {
       SELECT d.*, u.unit_number, u.owner_name, u.contact_number as resident_contact,
              u.block_id, u.floor_id, f.floor_number,
              s.name as society_name,
+             (SELECT usr.id FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1) AS resident_id,
              COALESCE(
                (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
                NULLIF(TRIM(u.resident_name), ''),
@@ -381,6 +382,13 @@ export async function runSyncForSocieties(societyIds) {
         FROM maintenance m
         WHERE (m.total_amount - COALESCE(m.amount_paid, 0)) > 0
           AND m.society_apartment_id = $1
+          AND (
+            m.year < EXTRACT(YEAR FROM CURRENT_DATE)::int
+            OR (
+              m.year = EXTRACT(YEAR FROM CURRENT_DATE)::int
+              AND m.month < EXTRACT(MONTH FROM CURRENT_DATE)::int
+            )
+          )
       ),
       agg AS (
         SELECT

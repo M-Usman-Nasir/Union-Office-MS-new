@@ -36,7 +36,6 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
@@ -75,12 +74,6 @@ function buildMaintenanceValidationSchema(maxAmount) {
       .required('Amount is required'),
   })
 }
-
-const recordPaymentOnlySchema = Yup.object({
-  unit_id: Yup.number().required('Unit is required'),
-  month: Yup.number().min(1).max(12).required('Month is required'),
-  year: Yup.number().required('Year is required'),
-})
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -132,7 +125,6 @@ const Maintenance = () => {
   const [deleting, setDeleting] = useState(false)
   const [paymentReceivedAmount, setPaymentReceivedAmount] = useState('')
   const [recordingPaymentInDialog, setRecordingPaymentInDialog] = useState(false)
-  const [markingFullyPaid, setMarkingFullyPaid] = useState(false)
   const [paymentSectionExpanded, setPaymentSectionExpanded] = useState(false)
   const [dialogMode, setDialogMode] = useState('create') // 'create' | 'edit' | 'record_payment' (edit only when cellContext set)
   const [recordPaymentLookup, setRecordPaymentLookup] = useState({ unit_id: null, month: null, year: null })
@@ -147,6 +139,8 @@ const Maintenance = () => {
   const [recordingChoice, setRecordingChoice] = useState(null) // null | 'add_maintenance' | 'upload_receipt'
   const [receiptFile, setReceiptFile] = useState(null)
   const [uploadReceiptLoading, setUploadReceiptLoading] = useState(false)
+  const [advancePaymentAmount, setAdvancePaymentAmount] = useState('')
+  const [recordingAdvancePayment, setRecordingAdvancePayment] = useState(false)
 
   const { data: maintenanceConfigData } = useSWR(
     societyId ? ['/settings/maintenance-config', societyId] : null,
@@ -317,6 +311,7 @@ const Maintenance = () => {
     setRecordPaymentLookup({ unit_id: null, month: null, year: null })
     setRecordingChoice(null)
     setReceiptFile(null)
+    setAdvancePaymentAmount('')
   }
 
   const handleUploadReceipt = async () => {
@@ -438,11 +433,12 @@ const Maintenance = () => {
     const paid = Number(editingMaintenance.amount_paid) || 0
     const due = Math.max(0, total - paid)
     setPaymentReceivedAmount(due > 0 ? String(due) : '')
+    setPaymentSectionExpanded(true)
   }, [openDialog, editingMaintenance?.id, editingMaintenance?.total_amount, editingMaintenance?.amount_paid])
 
-  // In record_payment mode: when auto-loaded record arrives, fetch full record by ID so total_amount/amount_paid are correct
+  // When record loads from lookup (unit/month/year selected in form), set editingMaintenance so user can edit or record payment
   useEffect(() => {
-    if (cellContext || dialogMode !== 'record_payment' || !recordPaymentLookupKey) return
+    if (cellContext || !recordPaymentLookupKey) return
     if (recordPaymentLoading) {
       setEditingMaintenance(null)
       return
@@ -464,7 +460,7 @@ const Maintenance = () => {
         if (!cancelled) setEditingMaintenance(recordPaymentRecord)
       })
     return () => { cancelled = true }
-  }, [cellContext, dialogMode, recordPaymentLookupKey, recordPaymentLoading, recordPaymentRecord])
+  }, [cellContext, recordPaymentLookupKey, recordPaymentLoading, recordPaymentRecord])
 
   const handleClosePaymentDialog = () => {
     setOpenPaymentDialog(false)
@@ -493,7 +489,7 @@ const Maintenance = () => {
         handleCloseDialog()
         return
       }
-      if (cellContext && dialogMode === 'edit') {
+      if (cellContext && !editingMaintenance?.id) {
         toast.error('Record not loaded yet. Please wait or close and try again.')
         setSubmitting(false)
         return
@@ -592,36 +588,50 @@ const Maintenance = () => {
     }
   }
 
-  const handleMarkFullyPaid = async () => {
-    if (!editingMaintenance?.id) return
-    const total = Number(editingMaintenance.total_amount) || 0
-    const paid = Number(editingMaintenance.amount_paid) || 0
-    if (paid >= total) {
-      toast.success('Record is already fully paid')
+  const handleRecordAdvancePayment = async () => {
+    if (!cellContext?.unit_id || !cellContext?.month || !cellContext?.year || !societyId) {
+      toast.error('Missing unit or period. Open from a month cell.')
       return
     }
-    setMarkingFullyPaid(true)
+    const amount = parseFloat(String(advancePaymentAmount).replace(/,/g, ''))
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+    setRecordingAdvancePayment(true)
     try {
-      await maintenanceApi.update(editingMaintenance.id, {
-        base_amount: editingMaintenance.base_amount ?? total,
-        total_amount: total,
-        status: 'paid',
-        amount_paid: total,
+      const createRes = await maintenanceApi.create({
+        unit_id: cellContext.unit_id,
+        society_apartment_id: societyId,
+        month: cellContext.month,
+        year: cellContext.year,
+        base_amount: amount,
+        total_amount: amount,
         due_date: null,
       })
-      toast.success('Marked as fully paid')
-      mutate()
-      mutateUnitMaintenance()
-      const res = await maintenanceApi.getById(editingMaintenance.id)
-      const updated = res.data?.data ?? res.data
+      const created = createRes.data?.data ?? createRes.data
+      if (!created?.id) {
+        toast.error('Failed to create maintenance record')
+        return
+      }
+      const payRes = await maintenanceApi.recordPayment(created.id, { amount_paid: amount })
+      const financeCreated = payRes.data?.finance_income_created === true
+      toast.success(financeCreated ? 'Advance payment recorded. Income added to Finance.' : 'Advance payment recorded successfully')
+      if (financeCreated) globalMutate((key) => Array.isArray(key) && key[0] === '/finance')
+      await mutate(undefined, { revalidate: true })
+      await mutateUnitMaintenance()
+      const getRes = await maintenanceApi.getById(created.id)
+      const updated = getRes.data?.data ?? getRes.data
       if (updated) {
         setEditingMaintenance(updated)
         setPaymentReceivedAmount('')
+        setAdvancePaymentAmount('')
       }
+      handleCloseDialog()
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to mark as fully paid')
+      toast.error(error.response?.data?.message || 'Advance payment failed')
     } finally {
-      setMarkingFullyPaid(false)
+      setRecordingAdvancePayment(false)
     }
   }
 
@@ -901,6 +911,7 @@ const Maintenance = () => {
           const isUnpaid = amount > 0
 
           if (isUpcoming) {
+            const paid = paidAmount > 0
             return (
               <Box
                 component="span"
@@ -909,11 +920,23 @@ const Maintenance = () => {
                   borderRadius: 1,
                   px: 0.75,
                   py: 0.25,
-                  color: 'text.secondary',
-                  fontWeight: 500,
+                  ...(paid
+                    ? {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'dark'
+                            ? 'rgba(76, 175, 80, 0.28)'
+                            : 'rgba(46, 125, 50, 0.18)',
+                        fontWeight: 600,
+                        color: (theme) =>
+                          theme.palette.mode === 'dark' ? 'rgb(129, 199, 132)' : theme.palette.success.main,
+                      }
+                    : {
+                        color: 'text.secondary',
+                        fontWeight: 500,
+                      }),
                 }}
               >
-                {formatCurrency(0)}
+                {formatCurrency(paid ? paidAmount : 0)}
               </Box>
             )
           }
@@ -996,6 +1019,8 @@ const Maintenance = () => {
             cellAmount: cellAmount || baseAmount,
           }
           setMonthCellEdit(payload)
+          const currentMonthNum = new Date().getMonth() + 1
+          const isUpcoming = monthNum > currentMonthNum
           setCellContext({
             block_id: row?.block_id ?? '',
             floor_id: row?.floor_id ?? '',
@@ -1013,10 +1038,12 @@ const Maintenance = () => {
             amount: cellAmount || baseAmount,
           })
           setEditingMaintenance(null)
-          setDialogMode('edit')
+          setDialogMode(isUpcoming ? 'record_payment' : 'edit')
           setFormBlockId(row?.block_id ?? '')
           setFormFloorId(row?.floor_id ?? '')
           setRecordingChoice('add_maintenance')
+          if (isUpcoming) setPaymentSectionExpanded(true)
+          setAdvancePaymentAmount(cellAmount || baseAmount ? String(cellAmount || baseAmount) : '')
           setOpenDialog(true)
         },
       }
@@ -1114,7 +1141,7 @@ const Maintenance = () => {
             amount: baseAmount,
           }
 
-  const formValidationSchema = dialogMode === 'record_payment' ? recordPaymentOnlySchema : buildMaintenanceValidationSchema(baseAmount)
+  const formValidationSchema = buildMaintenanceValidationSchema(baseAmount)
 
   const handleGenerateMonthlyDues = async () => {
     setGenerating(true)
@@ -1255,6 +1282,17 @@ const Maintenance = () => {
             >
               <ListItemText
                 primary={creatingNextYear ? 'Creating…' : `Create new year (${nextYearToCreate})`}
+              />
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                handleApplyBaseForYear()
+                setOptionsMenuAnchor(null)
+              }}
+              disabled={generating || applyingBaseYear || creatingNextYear || baseAmount <= 0}
+            >
+              <ListItemText
+                primary={applyingBaseYear ? 'Applying…' : `Apply base amount for ${year}`}
               />
             </MenuItem>
             {selectedBlockId && (
@@ -1644,17 +1682,9 @@ const Maintenance = () => {
               ) : (
                 <>
               <DialogTitle>
-                {cellContext
-                  ? (dialogMode === 'record_payment'
-                      ? 'Record payment'
-                      : dialogMode === 'edit'
-                        ? 'Edit Maintenance Record'
-                        : 'Create New Maintenance Record')
-                  : dialogMode === 'record_payment'
-                    ? 'Record payment (existing record)'
-                    : editingMaintenance
-                      ? 'Edit Maintenance Record'
-                      : 'Add New Maintenance Record'}
+                {editingMaintenance || cellContext
+                  ? 'Edit Maintenance Record'
+                  : 'Add New Maintenance Record'}
               </DialogTitle>
               {!cellContext && (
                 <Box sx={{ px: 2, pb: 0 }}>
@@ -1663,38 +1693,9 @@ const Maintenance = () => {
                   </Button>
                 </Box>
               )}
-              <Tabs
-                value={cellContext ? (dialogMode === 'create' ? 'edit' : dialogMode) : dialogMode}
-                onChange={(_, v) => {
-                  if (cellContext && v === 'create') return
-                  setDialogMode(v)
-                  if (!cellContext) {
-                    setEditingMaintenance(null)
-                  }
-                  if (cellContext && v === 'record_payment') {
-                    setPaymentSectionExpanded(true)
-                  }
-                  setPaymentReceivedAmount('')
-                  setRecordPaymentLookup({ unit_id: null, month: null, year: null })
-                }}
-                sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
-              >
-                {!cellContext && <Tab label="Create new record" value="create" />}
-                {cellContext && (
-                  <Tab
-                    label="Edit record"
-                    value="edit"
-                  />
-                )}
-                <Tab
-                  label={cellContext ? 'Record payment' : 'Record payment (existing)'}
-                  value="record_payment"
-                  disabled={!cellContext && !editingMaintenance}
-                />
-              </Tabs>
               <DialogContent>
                 <RecordPaymentLookupSync
-                  dialogMode={dialogMode}
+                  dialogMode={values.unit_id && values.unit_id !== 'all' && values.month && values.year ? 'record_payment' : dialogMode}
                   unitId={values.unit_id}
                   month={values.month}
                   year={values.year}
@@ -1775,7 +1776,7 @@ const Maintenance = () => {
                       }
                       onChange={(e) => {
                         handleChange(e)
-                        if (dialogMode === 'record_payment') {
+                        if (!cellContext) {
                           setRecordPaymentLookup({
                             unit_id: e.target.value === 'all' ? null : e.target.value || null,
                             month: values.month || null,
@@ -1787,10 +1788,10 @@ const Maintenance = () => {
                       onBlur={handleBlur}
                       error={touched.unit_id && !!errors.unit_id}
                       helperText={touched.unit_id && errors.unit_id}
-                      disabled={!!cellContext || (dialogMode === 'record_payment' ? !values.block_id : false)}
+                      disabled={!!cellContext || !values.block_id}
                       size="small"
                     >
-                      {dialogMode === 'create' && !cellContext && (
+                      {!cellContext && (
                         <MenuItem value="all">
                           <Typography component="span" fontWeight={600}>All units (create for every unit)</Typography>
                         </MenuItem>
@@ -1812,7 +1813,7 @@ const Maintenance = () => {
                       value={values.month}
                       onChange={(e) => {
                         handleChange(e)
-                        if (dialogMode === 'record_payment' && !cellContext) {
+                        if (!cellContext) {
                           setRecordPaymentLookup({
                             unit_id: values.unit_id || null,
                             month: e.target.value || null,
@@ -1845,7 +1846,7 @@ const Maintenance = () => {
                         const raw = e.target.value
                         if (raw === '') {
                           handleChange(e)
-                          if (dialogMode === 'record_payment' && !cellContext) {
+                          if (!cellContext) {
                             setRecordPaymentLookup({
                               unit_id: values.unit_id || null,
                               month: values.month || null,
@@ -1861,7 +1862,7 @@ const Maintenance = () => {
                           Math.max(2000, isNaN(yearNum) ? 2000 : yearNum)
                         )
                         handleChange({ target: { name: e.target.name, value: clamped } })
-                        if (dialogMode === 'record_payment' && !cellContext) {
+                        if (!cellContext) {
                           setRecordPaymentLookup({
                             unit_id: values.unit_id || null,
                             month: values.month || null,
@@ -1876,7 +1877,7 @@ const Maintenance = () => {
                       disabled={!!cellContext}
                     />
                   </Grid>
-                  {((dialogMode === 'create') || (cellContext && dialogMode === 'edit')) && (
+                  {((!!editingMaintenance) || !cellContext) && (
                     <>
                       <Grid item xs={12}>
                         <TextField
@@ -1901,7 +1902,7 @@ const Maintenance = () => {
                           helperText={touched.amount && errors.amount}
                         />
                       </Grid>
-                      {cellContext && dialogMode === 'edit' && editingMaintenance?.id && (
+                      {cellContext && (!!editingMaintenance) && editingMaintenance?.id && (
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" sx={{ mb: 1 }}>Upload receipt</Typography>
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
@@ -1959,7 +1960,7 @@ const Maintenance = () => {
                   <AccordionDetails>
                     {!editingMaintenance?.id ? (
                       <>
-                        {dialogMode === 'record_payment' && recordPaymentLookupKey && recordPaymentLoading ? (
+                        {recordPaymentLookupKey && recordPaymentLoading && !cellContext ? (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
                             <CircularProgress size={20} />
                             <Typography variant="body2" color="text.secondary">
@@ -1969,26 +1970,72 @@ const Maintenance = () => {
                         ) : (
                           <>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                              {dialogMode === 'record_payment'
-                                ? (recordPaymentLookupKey && !recordPaymentLoading && recordPaymentRecord === null
-                                    ? 'No maintenance record found for this unit, month, and year.'
-                                    : 'Select unit, month, and year above. The record loads automatically — then you can pay full or enter any amount to record payment.')
-                                : 'Create the maintenance record above, then you can record payment here. The payment section will show Total, Paid, and Due after the record is saved.'}
+                              {recordPaymentLookupKey && !recordPaymentLoading && recordPaymentRecord === null
+                                ? 'No maintenance record found for this unit, month, and year.'
+                                : !cellContext
+                                  ? 'Select unit, month, and year above. The record loads automatically — then you can enter an amount and record payment.'
+                                  : 'Create the maintenance record above, then you can record payment here. The payment section will show Due after the record is saved.'}
                             </Typography>
-                            <Grid container spacing={2}>
-                              <Grid item xs={12} sm={4}>
-                                <Typography variant="body2" color="text.secondary">Total</Typography>
-                                <Typography variant="body1" color="text.secondary">—</Typography>
-                              </Grid>
-                              <Grid item xs={12} sm={4}>
-                                <Typography variant="body2" color="text.secondary">Paid</Typography>
-                                <Typography variant="body1" color="text.secondary">—</Typography>
-                              </Grid>
-                              <Grid item xs={12} sm={4}>
-                                <Typography variant="body2" color="text.secondary">Due</Typography>
-                                <Typography variant="body1" color="text.secondary">—</Typography>
-                              </Grid>
-                            </Grid>
+                            {(() => {
+                              const currentYearNum = new Date().getFullYear()
+                              const currentMonthNum = new Date().getMonth() + 1
+                              const isUpcomingCell = cellContext && (Number(cellContext.year) > currentYearNum || (Number(cellContext.year) === currentYearNum && Number(cellContext.month) > currentMonthNum))
+                              if (cellContext && recordPaymentLookupKey && !recordPaymentLoading && recordPaymentRecord === null && isUpcomingCell) {
+                                const amountNum = parseFloat(String(advancePaymentAmount).replace(/,/g, ''))
+                                const isValidAdvance = !isNaN(amountNum) && amountNum > 0
+                                return (
+                                  <Box sx={{ mt: 2 }}>
+                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                      Record advance payment
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                                      Create a maintenance record for this upcoming month and record the payment in one step.
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                      <TextField
+                                        size="small"
+                                        label="Amount (PKR)"
+                                        type="number"
+                                        inputProps={{ min: 0, step: 0.01 }}
+                                        value={advancePaymentAmount}
+                                        onChange={(e) => {
+                                          const v = e.target.value
+                                          if (v === '' || /^\d*\.?\d*$/.test(v)) setAdvancePaymentAmount(v)
+                                        }}
+                                        disabled={recordingAdvancePayment}
+                                        sx={{ minWidth: 160 }}
+                                      />
+                                      <Button
+                                        size="small"
+                                        variant="contained"
+                                        color="primary"
+                                        onClick={handleRecordAdvancePayment}
+                                        disabled={recordingAdvancePayment || !isValidAdvance}
+                                        startIcon={recordingAdvancePayment ? <CircularProgress size={16} color="inherit" /> : null}
+                                      >
+                                        {recordingAdvancePayment ? 'Recording…' : 'Create & record advance payment'}
+                                      </Button>
+                                    </Box>
+                                  </Box>
+                                )
+                              }
+                              return (
+                                <Grid container spacing={2}>
+                                  <Grid item xs={12} sm={4}>
+                                    <Typography variant="body2" color="text.secondary">Total</Typography>
+                                    <Typography variant="body1" color="text.secondary">—</Typography>
+                                  </Grid>
+                                  <Grid item xs={12} sm={4}>
+                                    <Typography variant="body2" color="text.secondary">Paid</Typography>
+                                    <Typography variant="body1" color="text.secondary">—</Typography>
+                                  </Grid>
+                                  <Grid item xs={12} sm={4}>
+                                    <Typography variant="body2" color="text.secondary">Due</Typography>
+                                    <Typography variant="body1" color="text.secondary">—</Typography>
+                                  </Grid>
+                                </Grid>
+                              )
+                            })()}
                           </>
                         )}
                       </>
@@ -1998,78 +2045,35 @@ const Maintenance = () => {
                       const due = Math.max(0, total - paid)
                       const amountNum = parseFloat(String(paymentReceivedAmount).replace(/,/g, ''))
                       const isValidAmount = !isNaN(amountNum) && amountNum > 0
-                      const hasRemainingDue = due > 0
                       return (
                         <>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                            Amount below is the <strong>remaining due</strong>. Submit to record that payment (it is added to already paid). Change the amount for a partial payment.
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            Due: {formatCurrency(due)}
                           </Typography>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={4}>
-                              <Typography variant="body2" color="text.secondary">Total</Typography>
-                              <Typography variant="body1" fontWeight={600}>{formatCurrency(total)}</Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={4}>
-                              <Typography variant="body2" color="text.secondary">Paid</Typography>
-                              <Typography variant="body1" fontWeight={600}>{formatCurrency(paid)}</Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={4}>
-                              <Typography variant="body2" color="text.secondary">Due</Typography>
-                              <Typography variant="body1" fontWeight={600}>{formatCurrency(due)}</Typography>
-                            </Grid>
-                            {due > 0 && (
-                              <Grid item xs={12}>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                  onClick={handleMarkFullyPaid}
-                                  disabled={markingFullyPaid || recordingPaymentInDialog}
-                                  startIcon={markingFullyPaid ? <CircularProgress size={16} /> : null}
-                                >
-                                  Mark fully paid (clear due)
-                                </Button>
-                              </Grid>
-                            )}
-                            <Grid item xs={12}>
-                              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                                <TextField
-                                  size="small"
-                                  label="Amount to record (remaining due)"
-                                  type="number"
-                                  inputProps={{ min: 0, max: due, step: 0.01 }}
-                                  value={paymentReceivedAmount}
-                                  onChange={(e) => {
-                                    const v = e.target.value
-                                    if (v === '' || /^\d*\.?\d*$/.test(v)) setPaymentReceivedAmount(v)
-                                  }}
-                                  disabled={recordingPaymentInDialog}
-                                  sx={{ minWidth: 140 }}
-                                />
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={() => {
-                                    setPaymentReceivedAmount(String(due))
-                                    handleRecordPaymentInDialog(due)
-                                  }}
-                                  disabled={recordingPaymentInDialog || !hasRemainingDue}
-                                  startIcon={recordingPaymentInDialog ? <CircularProgress size={16} /> : null}
-                                >
-                                  Pay full & update record
-                                </Button>
-                                <Button
-                                  size="small"
-                                  variant="contained"
-                                  onClick={handleRecordPaymentInDialog}
-                                  disabled={recordingPaymentInDialog || !isValidAmount}
-                                  startIcon={recordingPaymentInDialog ? <CircularProgress size={16} /> : null}
-                                >
-                                  Record payment
-                                </Button>
-                              </Box>
-                            </Grid>
-                          </Grid>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                            <TextField
+                              size="small"
+                              label="Amount to record"
+                              type="number"
+                              inputProps={{ min: 0, max: due, step: 0.01 }}
+                              value={paymentReceivedAmount}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                if (v === '' || /^\d*\.?\d*$/.test(v)) setPaymentReceivedAmount(v)
+                              }}
+                              disabled={recordingPaymentInDialog}
+                              sx={{ minWidth: 140 }}
+                            />
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => handleRecordPaymentInDialog()}
+                              disabled={recordingPaymentInDialog || !isValidAmount}
+                              startIcon={recordingPaymentInDialog ? <CircularProgress size={16} /> : null}
+                            >
+                              Record payment
+                            </Button>
+                          </Box>
                         </>
                       )
                     })()}
@@ -2078,9 +2082,9 @@ const Maintenance = () => {
               </DialogContent>
               <DialogActions>
                 <Button onClick={handleCloseDialog}>Cancel</Button>
-                {(dialogMode === 'create' || (cellContext && dialogMode === 'edit')) && (
+                {(editingMaintenance || !cellContext) && (
                   <Button type="submit" variant="contained" disabled={isSubmitting}>
-                    {(cellContext && dialogMode === 'edit') || (editingMaintenance && dialogMode === 'create') ? 'Update' : 'Create'}
+                    {editingMaintenance ? 'Update' : 'Create'}
                   </Button>
                 )}
               </DialogActions>

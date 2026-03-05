@@ -35,7 +35,9 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import useSWR from 'swr'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { superAdminApi } from '@/api/superAdminApi'
+import { ROUTES } from '@/utils/constants'
 import dayjs from 'dayjs'
 import toast from 'react-hot-toast'
 
@@ -58,6 +60,9 @@ const statusColor = (status) => {
 }
 
 const SuperAdminInvoices = () => {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const userIdFromUrl = searchParams.get('user_id') || ''
   const [statusFilter, setStatusFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [autoGenerating, setAutoGenerating] = useState(false)
@@ -67,6 +72,7 @@ const SuperAdminInvoices = () => {
   const [uploadMarkPaid, setUploadMarkPaid] = useState(true)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
+  const [statusChangingId, setStatusChangingId] = useState(null)
   const [createForm, setCreateForm] = useState({
     user_id: '',
     society_apartment_id: '',
@@ -78,10 +84,14 @@ const SuperAdminInvoices = () => {
   })
 
   const { data: invoicesRes, isLoading, mutate } = useSWR(
-    ['/super-admin/invoices', statusFilter],
+    ['/super-admin/invoices', statusFilter, userIdFromUrl],
     () =>
       superAdminApi
-        .listInvoices({ limit: 100, ...(statusFilter ? { status: statusFilter } : {}) })
+        .listInvoices({
+          limit: 100,
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(userIdFromUrl ? { user_id: userIdFromUrl } : {}),
+        })
         .then((res) => res.data)
   )
   const { data: adminsData } = useSWR(
@@ -140,12 +150,15 @@ const SuperAdminInvoices = () => {
   }
 
   const handleStatusChange = async (invoiceId, newStatus) => {
+    setStatusChangingId(invoiceId)
     try {
       await superAdminApi.updateInvoiceStatus(invoiceId, newStatus)
       toast.success('Status updated')
       mutate()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Update failed')
+    } finally {
+      setStatusChangingId(null)
     }
   }
 
@@ -206,6 +219,16 @@ const SuperAdminInvoices = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         All invoices for union admins. Create invoices manually or run auto-generation to create monthly invoices from active subscriptions.
       </Typography>
+
+      {userIdFromUrl && (
+        <Alert
+          severity="info"
+          onClose={() => navigate(ROUTES.SUPER_ADMIN_INVOICES)}
+          sx={{ mb: 2 }}
+        >
+          Showing invoices for: <strong>{admins.find((a) => String(a.id) === userIdFromUrl)?.name || userIdFromUrl}</strong>. Close to show all.
+        </Alert>
+      )}
 
       <Box display="flex" flexWrap="wrap" gap={2} alignItems="center" sx={{ mb: 3 }}>
         <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -319,32 +342,21 @@ const SuperAdminInvoices = () => {
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        {inv.status === 'draft' && (
-                          <>
-                            <Button
-                              size="small"
-                              onClick={() => handleStatusChange(inv.id, 'sent')}
-                            >
-                              Mark sent
-                            </Button>
-                            <Button
-                              size="small"
-                              color="success"
-                              onClick={() => handleStatusChange(inv.id, 'paid')}
-                            >
-                              Mark paid
-                            </Button>
-                          </>
-                        )}
-                        {inv.status === 'sent' && (
-                          <Button
-                            size="small"
-                            color="success"
-                            onClick={() => handleStatusChange(inv.id, 'paid')}
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                          <Select
+                            value={inv.status}
+                            label="Status"
+                            onChange={(e) => handleStatusChange(inv.id, e.target.value)}
+                            disabled={statusChangingId === inv.id}
+                            displayEmpty
+                            renderValue={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
                           >
-                            Mark paid
-                          </Button>
-                        )}
+                            <MenuItem value="draft">Draft</MenuItem>
+                            <MenuItem value="sent">Sent</MenuItem>
+                            <MenuItem value="paid">Paid</MenuItem>
+                            <MenuItem value="cancelled">Cancelled</MenuItem>
+                          </Select>
+                        </FormControl>
                       </TableCell>
                     </TableRow>
                   ))}

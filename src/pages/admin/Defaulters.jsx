@@ -25,6 +25,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import SyncIcon from '@mui/icons-material/Sync'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import { defaulterApi } from '@/api/defaulterApi'
 import { settingsApi } from '@/api/settingsApi'
@@ -37,6 +38,7 @@ import { ROLES } from '@/utils/constants'
 
 const Defaulters = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { mutate: globalMutate } = useSWRConfig()
   const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN
   const [page, setPage] = useState(1)
@@ -167,7 +169,35 @@ const Defaulters = () => {
   }
 
   const columns = [
-    { id: 'resident_name', label: 'Full Name', render: (row) => row.resident_name || '-' },
+    {
+      id: 'resident_name',
+      label: 'Full Name',
+      render: (row) => {
+        const name = row.resident_name || '-'
+        const residentId = row.resident_id
+        if (residentId) {
+          return (
+            <Typography
+              component="button"
+              type="button"
+              onClick={() => navigate(`/admin/residents/${residentId}`)}
+              sx={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                color: 'primary.main',
+                textDecoration: 'underline',
+                font: 'inherit',
+              }}
+            >
+              {name}
+            </Typography>
+          )
+        }
+        return name
+      },
+    },
     { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '-' },
     { id: 'resident_contact', label: 'Phone Number', render: (row) => row.resident_contact || '-' },
     {

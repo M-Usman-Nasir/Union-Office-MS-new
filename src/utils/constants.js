@@ -180,6 +180,8 @@ export const ROUTES = {
   SUPER_ADMIN_UNITS: '/super-admin/units',
   SUPER_ADMIN_USERS: '/super-admin/users',
   SUPER_ADMIN_ADMINS: '/super-admin/admins',
+  SUPER_ADMIN_SUBSCRIPTION_MANAGEMENT: '/super-admin/subscription-management',
+  SUPER_ADMIN_VIEW_DETAILS: '/super-admin/view-details',
   SUPER_ADMIN_INVOICES: '/super-admin/invoices',
   SUPER_ADMIN_SETTINGS: '/super-admin/settings',
   SUPER_ADMIN_PROFILE: '/super-admin/profile',

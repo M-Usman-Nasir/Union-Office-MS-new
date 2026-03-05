@@ -24,6 +24,14 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AddIcon from '@mui/icons-material/Add'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import PersonIcon from '@mui/icons-material/Person'
+import BuildIcon from '@mui/icons-material/Build'
+import BoltIcon from '@mui/icons-material/Bolt'
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
+import TwoWheelerIcon from '@mui/icons-material/TwoWheeler'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import GroupIcon from '@mui/icons-material/Group'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import { residentApi } from '@/api/residentApi'
@@ -32,8 +40,69 @@ import DataTable from '@/components/common/DataTable'
 import { ROUTES } from '@/utils/constants'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
+import PropTypes from 'prop-types'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+const DetailRow = ({ label, value, fullWidth }) => (
+  <Grid item xs={12} sm={fullWidth ? 12 : 6} md={fullWidth ? 12 : 4} sx={{ minWidth: 0 }}>
+    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25 }}>
+      {label}
+    </Typography>
+    <Typography
+      variant="body1"
+      fontWeight={500}
+      sx={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+    >
+      {value ?? '—'}
+    </Typography>
+  </Grid>
+)
+DetailRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.node]),
+  fullWidth: PropTypes.bool,
+}
+
+const SectionCard = ({ title, icon: Icon, children }) => (
+  <Paper
+    variant="outlined"
+    sx={{
+      p: 3,
+      height: '100%',
+      borderRadius: 2,
+      borderColor: (theme) => (theme.palette.mode === 'dark' ? 'divider' : 'rgba(0,0,0,0.08)'),
+      bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'background.paper' : 'grey.50'),
+    }}
+  >
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 40,
+          height: 40,
+          borderRadius: 2,
+          bgcolor: 'primary.main',
+          color: 'primary.contrastText',
+        }}
+      >
+        {Icon && <Icon fontSize="small" />}
+      </Box>
+      <Typography variant="subtitle1" fontWeight={700}>
+        {title}
+      </Typography>
+    </Box>
+    <Divider sx={{ mb: 2 }} />
+    {children}
+  </Paper>
+)
+SectionCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  icon: PropTypes.elementType,
+  children: PropTypes.node,
+}
 
 const ResidentDetails = () => {
   const { id } = useParams()
@@ -87,6 +156,7 @@ const ResidentDetails = () => {
     setMaintenanceDialogYear(state.maintenanceYear ?? new Date().getFullYear())
     setOpenMaintenanceDialog(true)
     navigate(location.pathname, { replace: true, state: {} })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when dialog flag from navigation state
   }, [location.state?.openMaintenanceDialog, location.pathname, navigate, residentData?.unit_id])
 
   const resident = residentData
@@ -163,10 +233,10 @@ const ResidentDetails = () => {
     },
   ]
 
-  if (isLoading || !residentData && !error) {
+  if (isLoading || (!residentData && !error)) {
     return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
+      <Container maxWidth="lg" sx={{ py: 8 }}>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight={280}>
           <CircularProgress />
         </Box>
       </Container>
@@ -175,9 +245,9 @@ const ResidentDetails = () => {
 
   if (error || !resident) {
     return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
         <Typography color="error">Resident not found.</Typography>
-        <Button startIcon={<ArrowBackIcon />} onClick={handleBack} sx={{ mt: 2 }}>
+        <Button startIcon={<ArrowBackIcon />} onClick={handleBack} variant="outlined" sx={{ mt: 2 }}>
           Back to Residents
         </Button>
       </Container>
@@ -185,139 +255,142 @@ const ResidentDetails = () => {
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={handleBack}
-          size="small"
-          sx={{ minWidth: 'auto', p: 0.5 }}
-        >
-          Back
-        </Button>
-        <Typography variant="h6" component="h1" sx={{ fontWeight: 600 }}>
-          Resident details
-        </Typography>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBack}
+            variant="outlined"
+            size="medium"
+            sx={{ minWidth: 0 }}
+          >
+            Back
+          </Button>
+          <Divider orientation="vertical" flexItem />
+          <Typography variant="h5" fontWeight={700} component="h1">
+            Resident details
+          </Typography>
+          <Chip
+            label={resident.name || '—'}
+            size="medium"
+            sx={{ fontWeight: 600 }}
+            color="primary"
+            variant="outlined"
+          />
+          <Typography variant="body2" color="text.secondary">
+            Unit {resident.unit_number || '—'}
+          </Typography>
+        </Box>
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {resident.name || '—'} · Unit {resident.unit_number || '—'}
-      </Typography>
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Grid container spacing={1.5}>
-          <Grid item xs={12}>
-            <Typography variant="caption" color="primary.main" display="block">Full Name</Typography>
-            <Typography variant="body2">{resident.name || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Unit No.</Typography>
-            <Typography variant="body2">{resident.unit_number || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Phone No.</Typography>
-            <Typography variant="body2">{resident.contact_number || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Email</Typography>
-            <Typography variant="body2">{resident.email || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Role</Typography>
-            <Typography variant="body2">{resident.role === 'union_admin' ? 'Union Admin' : 'Resident'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Status</Typography>
-            <Chip
-              size="small"
-              label={resident.is_active !== false ? 'Active' : 'Inactive'}
-              color={resident.is_active !== false ? 'success' : 'default'}
-              variant="outlined"
-            />
-          </Grid>
+      <Grid container spacing={3}>
+        {/* Profile */}
+        <Grid item xs={12} md={6}>
+          <SectionCard title="Profile" icon={PersonIcon}>
+            <Grid container spacing={2}>
+              <DetailRow label="Full Name" value={resident.name} fullWidth />
+              <DetailRow label="Unit No." value={resident.unit_number} />
+              <DetailRow label="Phone No." value={resident.contact_number} />
+              <DetailRow label="Email" value={resident.email} />
+              <DetailRow label="Role" value={resident.role === 'union_admin' ? 'Union Admin' : 'Resident'} />
+              <Grid item xs={12} sm={6} md={4}>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25 }}>
+                  Status
+                </Typography>
+                <Chip
+                  size="small"
+                  label={resident.is_active !== false ? 'Active' : 'Inactive'}
+                  color={resident.is_active !== false ? 'success' : 'default'}
+                  variant="outlined"
+                />
+              </Grid>
+            </Grid>
+          </SectionCard>
+        </Grid>
 
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
-              Utilities
-            </Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">K-Electric</Typography>
-            <Typography variant="body2">{resident.k_electric_account || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Gas</Typography>
-            <Typography variant="body2">{resident.gas_account || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Water</Typography>
-            <Typography variant="body2">{resident.water_account || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="caption" color="primary.main" display="block">Phone/TV</Typography>
-            <Typography variant="body2">{resident.phone_tv_account || '-'}</Typography>
-          </Grid>
+        {/* Utilities */}
+        <Grid item xs={12} md={6}>
+          <SectionCard title="Utilities" icon={BoltIcon}>
+            <Grid container spacing={2}>
+              <DetailRow label="K-Electric" value={resident.k_electric_account} />
+              <DetailRow label="Gas" value={resident.gas_account} />
+              <DetailRow label="Water" value={resident.water_account} />
+              <DetailRow label="Phone / TV" value={resident.phone_tv_account} />
+            </Grid>
+          </SectionCard>
+        </Grid>
 
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
-              Vehicles
-            </Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontWeight: 600 }}>Car</Typography>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Typography variant="caption" color="text.secondary" display="block">Cars No.</Typography>
-            <Typography variant="body2">{resident.number_of_cars ?? '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Typography variant="caption" color="text.secondary" display="block">Make &amp; Model</Typography>
-            <Typography variant="body2">{resident.car_make_model || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Typography variant="caption" color="text.secondary" display="block">License Plate</Typography>
-            <Typography variant="body2">{resident.license_plate || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontWeight: 600 }}>Bike</Typography>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Typography variant="caption" color="text.secondary" display="block">Bikes No.</Typography>
-            <Typography variant="body2">{resident.number_of_bikes ?? '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Typography variant="caption" color="text.secondary" display="block">Make &amp; Model</Typography>
-            <Typography variant="body2">{resident.bike_make_model || '-'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Typography variant="caption" color="text.secondary" display="block">License Plate</Typography>
-            <Typography variant="body2">{resident.bike_license_plate || '-'}</Typography>
-          </Grid>
+        {/* Vehicles */}
+        <Grid item xs={12} md={6}>
+          <SectionCard title="Car" icon={DirectionsCarIcon}>
+            <Grid container spacing={2}>
+              <DetailRow label="Number of cars" value={resident.number_of_cars} />
+              <DetailRow label="Make & Model" value={resident.car_make_model} />
+              <DetailRow label="License Plate" value={resident.license_plate} />
+            </Grid>
+          </SectionCard>
+        </Grid>
 
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
-              Defaulter
-            </Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2">
+        <Grid item xs={12} md={6}>
+          <SectionCard title="Bike" icon={TwoWheelerIcon}>
+            <Grid container spacing={2}>
+              <DetailRow label="Number of bikes" value={resident.number_of_bikes} />
+              <DetailRow label="Make & Model" value={resident.bike_make_model} />
+              <DetailRow label="License Plate" value={resident.bike_license_plate} />
+            </Grid>
+          </SectionCard>
+        </Grid>
+
+        {/* Defaulter */}
+        <Grid item xs={12} md={6}>
+          <SectionCard title="Defaulter" icon={WarningAmberIcon}>
+            <Typography variant="body1" fontWeight={500}>
               {resident.defaulter_status
                 ? `${resident.defaulter_status}${resident.defaulter_amount_due != null ? ` (Amount due: ${resident.defaulter_amount_due})` : ''}${resident.defaulter_months_overdue != null ? `, ${resident.defaulter_months_overdue} mo. overdue` : ''}`
                 : 'Not a defaulter'}
             </Typography>
-          </Grid>
+          </SectionCard>
+        </Grid>
 
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
-              Maintenance Records
-            </Typography>
+        {/* Bills (conditional) */}
+        {(Array.isArray(resident.telephone_bills) && resident.telephone_bills.length > 0) ||
+        (Array.isArray(resident.other_bills) && resident.other_bills.length > 0) ? (
+          <Grid item xs={12} md={6}>
+            <SectionCard title="Bills" icon={ReceiptLongIcon}>
+              <Grid container spacing={2}>
+                {Array.isArray(resident.telephone_bills) && resident.telephone_bills.length > 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25 }}>
+                      Telephone
+                    </Typography>
+                    <Typography variant="body1" fontWeight={500}>
+                      {resident.telephone_bills.map((b) => `${b.provider || 'N/A'} ${b.account_number || ''} (${b.amount ?? 0})`).join(', ') || '—'}
+                    </Typography>
+                  </Grid>
+                )}
+                {Array.isArray(resident.other_bills) && resident.other_bills.length > 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25 }}>
+                      Other
+                    </Typography>
+                    <Typography variant="body1" fontWeight={500}>
+                      {resident.other_bills.map((b) => `${b.type || 'N/A'} ${b.provider || ''} (${b.amount ?? 0})`).join(', ') || '—'}
+                    </Typography>
+                  </Grid>
+                )}
+              </Grid>
+            </SectionCard>
           </Grid>
-          <Grid item xs={12}>
+        ) : null}
+
+        {/* Maintenance Records */}
+        <Grid item xs={12}>
+          <SectionCard title="Maintenance Records" icon={BuildIcon}>
             {!resident.unit_id ? (
-              <Typography variant="body2" color="text.secondary">No unit assigned.</Typography>
+              <Typography variant="body2" color="text.secondary">
+                No unit assigned.
+              </Typography>
             ) : (
               <Box sx={{ mt: 0.5 }}>
                 <DataTable
@@ -329,64 +402,38 @@ const ResidentDetails = () => {
                 />
               </Box>
             )}
-          </Grid>
+          </SectionCard>
+        </Grid>
 
-          {(Array.isArray(resident.telephone_bills) && resident.telephone_bills.length > 0) ||
-           (Array.isArray(resident.other_bills) && resident.other_bills.length > 0) ? (
-            <>
-              <Grid item xs={12}>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
-                  Bills
-                </Typography>
-              </Grid>
-              {Array.isArray(resident.telephone_bills) && resident.telephone_bills.length > 0 && (
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary" display="block">Telephone</Typography>
-                  <Typography variant="body2" component="span">
-                    {resident.telephone_bills.map((b) => `${b.provider || 'N/A'} ${b.account_number || ''} (${b.amount ?? 0})`).join(', ') || '-'}
-                  </Typography>
-                </Grid>
-              )}
-              {Array.isArray(resident.other_bills) && resident.other_bills.length > 0 && (
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary" display="block">Other</Typography>
-                  <Typography variant="body2" component="span">
-                    {resident.other_bills.map((b) => `${b.type || 'N/A'} ${b.provider || ''} (${b.amount ?? 0})`).join(', ') || '-'}
-                  </Typography>
-                </Grid>
-              )}
-            </>
-          ) : null}
-
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
-              Family Members
-            </Typography>
-          </Grid>
-          <Grid item xs={12}>
+        {/* Family Members */}
+        <Grid item xs={12}>
+          <SectionCard title="Family Members" icon={GroupIcon}>
             {familyMembers.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No family members added.</Typography>
+              <Typography variant="body2" color="text.secondary">
+                No family members added.
+              </Typography>
             ) : (
-              <Box component="ul" sx={{ m: 0, pl: 2, py: 0.25 }}>
+              <Box component="ul" sx={{ m: 0, pl: 2.5, py: 0 }}>
                 {familyMembers.map((fm) => (
-                  <li key={fm.id}>
-                    <Typography variant="body2">{fm.name}{fm.relation ? ` (${fm.relation})` : ''}</Typography>
+                  <li key={fm.id} style={{ marginBottom: 4 }}>
+                    <Typography variant="body1" fontWeight={500}>
+                      {fm.name}{fm.relation ? ` (${fm.relation})` : ''}
+                    </Typography>
                   </li>
                 ))}
               </Box>
             )}
-          </Grid>
-          <Grid item xs={12}>
-            <Divider sx={{ my: 1.5 }} />
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+              Add family member
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
               <TextField
                 size="small"
                 placeholder="Name"
                 value={familyMemberName}
                 onChange={(e) => setFamilyMemberName(e.target.value)}
-                sx={{ minWidth: 140 }}
+                sx={{ minWidth: 160 }}
                 disabled={addFamilyMemberLoading}
               />
               <TextField
@@ -394,22 +441,22 @@ const ResidentDetails = () => {
                 placeholder="Relation (e.g. Spouse, Child)"
                 value={familyMemberRelation}
                 onChange={(e) => setFamilyMemberRelation(e.target.value)}
-                sx={{ minWidth: 160 }}
+                sx={{ minWidth: 180 }}
                 disabled={addFamilyMemberLoading}
               />
               <Button
                 size="small"
-                variant="outlined"
-                startIcon={addFamilyMemberLoading ? <CircularProgress size={16} /> : <AddIcon />}
+                variant="contained"
+                startIcon={addFamilyMemberLoading ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
                 onClick={handleAddFamilyMember}
                 disabled={addFamilyMemberLoading}
               >
                 Add family member
               </Button>
             </Box>
-          </Grid>
+          </SectionCard>
         </Grid>
-      </Paper>
+      </Grid>
 
       <Dialog
         open={openMaintenanceDialog}
@@ -434,7 +481,7 @@ const ResidentDetails = () => {
               No maintenance records for this unit in {maintenanceDialogYear}.
             </Typography>
           ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto', borderRadius: 1 }}>
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'action.hover' }}>

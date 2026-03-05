@@ -413,6 +413,16 @@ const Users = () => {
       toast.error('User has no apartment assigned.')
       return
     }
+    if (mode === 'view') {
+      if (currentUser?.role === 'super_admin') {
+        navigate(`${ROUTES.SUPER_ADMIN_VIEW_DETAILS}?user_id=${row.id}&from=users`)
+        return
+      }
+      setCreateJobRow(row)
+      setCreateJobDialogMode('view')
+      setSelectedPlanIdForJob('')
+      return
+    }
     setCreateJobRow(row)
     setCreateJobDialogMode(mode)
     setSelectedPlanIdForJob('')
