@@ -23,6 +23,7 @@ import {
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import SyncIcon from '@mui/icons-material/Sync'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -34,6 +35,7 @@ import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
+import { jsPDF } from 'jspdf'
 import { ROLES } from '@/utils/constants'
 
 const Defaulters = () => {
@@ -48,6 +50,7 @@ const Defaulters = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [selectedDefaulter, setSelectedDefaulter] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
   const [selectedBlockId, setSelectedBlockId] = useState(null)
@@ -130,6 +133,82 @@ const Defaulters = () => {
       toast.error(error.response?.data?.message || 'Export failed')
     } finally {
       setExporting(false)
+    }
+  }
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    try {
+      const exportParams = { page: 1, limit: 10000, search, status: statusFilter, society_id: societyId }
+      if (selectedBlockId != null && selectedBlockId !== '') exportParams.block_id = selectedBlockId
+      if (selectedFloorId != null && selectedFloorId !== '') exportParams.floor_id = selectedFloorId
+      const res = await defaulterApi.getAll(exportParams)
+      const list = res?.data?.data || []
+      if (!list.length) {
+        toast.error('No data to export')
+        return
+      }
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const colCount = 8
+      const colWidth = (pageWidth - 20) / colCount
+      const rowHeight = 8
+      const startX = 10
+      let y = 15
+
+      doc.setFontSize(14)
+      doc.text('Defaulter List', startX, y)
+      y += 8
+      doc.setFontSize(9)
+      doc.text(`Generated on ${dayjs().format('DD MMM YYYY HH:mm')}`, startX, y)
+      y += 10
+
+      const headers = ['Full Name', 'Unit No.', 'Phone', 'Floor', 'Last Payment', 'Amount Due', 'Months Overdue', 'Remarks']
+      doc.setFont(undefined, 'bold')
+      headers.forEach((h, i) => {
+        doc.text(h.substring(0, 14), startX + i * colWidth + 2, y)
+      })
+      y += rowHeight
+      doc.setDrawColor(200, 200, 200)
+      doc.line(startX, y - 4, pageWidth - 10, y - 4)
+      doc.setFont(undefined, 'normal')
+
+      list.forEach((row) => {
+        if (y > 180) {
+          doc.addPage('a4', 'landscape')
+          y = 15
+          doc.setFontSize(9)
+          headers.forEach((h, i) => {
+            doc.setFont(undefined, 'bold')
+            doc.text(h.substring(0, 14), startX + i * colWidth + 2, y)
+          })
+          y += rowHeight
+          doc.line(startX, y - 4, pageWidth - 10, y - 4)
+          doc.setFont(undefined, 'normal')
+        }
+        const cells = [
+          (row.resident_name || '-').substring(0, 14),
+          (row.unit_number != null ? String(row.unit_number) : '-').substring(0, 8),
+          (row.resident_contact || '-').substring(0, 12),
+          formatFloorLabel(row.floor_number).substring(0, 6),
+          row.last_payment_date ? dayjs(row.last_payment_date).format('DD/MM/YY') : '-',
+          formatCurrency(row.amount_due).replace(/\s/g, '').substring(0, 12),
+          (row.months_overdue != null ? String(row.months_overdue) : '-').substring(0, 6),
+          (row.remarks || '-').substring(0, 14),
+        ]
+        cells.forEach((cell, i) => {
+          doc.text(cell, startX + i * colWidth + 2, y)
+        })
+        y += rowHeight
+      })
+
+      doc.save(`defaulters-${societyId || 'all'}-${dayjs().format('YYYY-MM-DD')}.pdf`)
+      toast.success('Defaulter list exported as PDF')
+    } catch (err) {
+      console.error(err)
+      toast.error(err.response?.data?.message || 'Failed to generate PDF')
+    } finally {
+      setExportingPdf(false)
     }
   }
 
@@ -394,6 +473,14 @@ const Defaulters = () => {
           disabled={exporting}
         >
           {exporting ? 'Exporting...' : 'Export CSV'}
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<PictureAsPdfIcon />}
+          onClick={handleExportPdf}
+          disabled={exportingPdf}
+        >
+          {exportingPdf ? 'Exporting...' : 'Download PDF'}
         </Button>
         <Tooltip title="Update defaulters list from unpaid maintenance records">
           <span>

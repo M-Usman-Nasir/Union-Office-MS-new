@@ -21,6 +21,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material'
+import Autocomplete from '@mui/material/Autocomplete'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
@@ -450,25 +451,25 @@ const Finance = () => {
                   )}
                   {values.transaction_type === 'expense' && (
                     <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        select
-                        label="Expense Type"
-                        name="expense_type"
-                        value={values.expense_type}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        error={touched.expense_type && !!errors.expense_type}
-                        helperText={touched.expense_type && errors.expense_type}
-                        required
-                      >
-                        <MenuItem value="">Select Expense Type</MenuItem>
-                        {expenseTypes.map((type) => (
-                          <MenuItem key={type} value={type}>
-                            {type}
-                          </MenuItem>
-                        ))}
-                      </TextField>
+                      <Autocomplete
+                        freeSolo
+                        options={expenseTypes}
+                        value={values.expense_type || null}
+                        inputValue={values.expense_type ?? ''}
+                        onInputChange={(_, newInputValue) => setFieldValue('expense_type', newInputValue || '')}
+                        onChange={(_, newValue) => setFieldValue('expense_type', typeof newValue === 'string' ? newValue : newValue || '')}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            name="expense_type"
+                            label="Expense Type"
+                            required
+                            error={touched.expense_type && !!errors.expense_type}
+                            helperText={touched.expense_type && errors.expense_type}
+                            onBlur={handleBlur}
+                          />
+                        )}
+                      />
                     </Grid>
                   )}
                   <Grid item xs={12}>
