@@ -68,14 +68,25 @@ api.interceptors.response.use(
         // Retry original request
         return api(originalRequest)
       } catch (refreshError) {
-        // Refresh failed - logout user
-        localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
-        localStorage.removeItem(STORAGE_KEYS.USER)
-        
-        // Redirect to login
-        window.location.href = '/login'
-        
-        toast.error('Session expired. Please login again.')
+        // Only logout when refresh explicitly returns 401 (expired/invalid token)
+        if (refreshError.response?.status === 401) {
+          localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
+          localStorage.removeItem(STORAGE_KEYS.USER)
+          window.location.href = '/login'
+          toast.error('Session expired. Please login again.')
+          return Promise.reject(refreshError)
+        }
+        // No response = network error, timeout, or server cold start – do not logout
+        if (!refreshError.response) {
+          if (!navigator.onLine) {
+            toast.error('Network issue. Please check your connection.')
+          } else {
+            toast.error('Server waking up. Please wait and try again.')
+          }
+          return Promise.reject(refreshError)
+        }
+        // 5xx or other server error – allow retry, do not logout
+        toast.error('Server error. Please try again later.')
         return Promise.reject(refreshError)
       }
     }
