@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+/* global require */
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,6 +22,7 @@ import { defaultersApi } from '../api/defaulters';
 import { colors } from '../theme';
 
 const RECENT_COMPLAINTS_LIMIT = 3;
+// Carousel: 6 Unsplash URLs + 14 local assets (all in one place)
 const CAROUSEL_IMAGES = [
   'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800',
   'https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800',
@@ -28,6 +30,20 @@ const CAROUSEL_IMAGES = [
   'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
   'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800',
   'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800',
+  require('../../assets/images/1.png'),
+  require('../../assets/images/2.jpg'),
+  require('../../assets/images/3.jpg'),
+  require('../../assets/images/4.jpg'),
+  require('../../assets/images/5.jpg'),
+  require('../../assets/images/6.jpg'),
+  require('../../assets/images/7.jpg'),
+  require('../../assets/images/8.jpg'),
+  require('../../assets/images/9.jpg'),
+  require('../../assets/images/10.jpg'),
+  require('../../assets/images/11.jpg'),
+  require('../../assets/images/12.png'),
+  require('../../assets/images/13.jpg'),
+  require('../../assets/images/14.png'),
 ];
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_ITEM_WIDTH = SCREEN_WIDTH * 0.85;
@@ -48,9 +64,9 @@ export default function DashboardScreen() {
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
   const [complaints, setComplaints] = useState({ data: [], total: 0 });
-  const [maintenance, setMaintenance] = useState({ data: [], total: 0 });
-  const [announcements, setAnnouncements] = useState([]);
-  const [defaulterVisible, setDefaulterVisible] = useState(false);
+  const [, setMaintenance] = useState({ data: [], total: 0 });
+  const [, setAnnouncements] = useState([]);
+  const [, setDefaulterVisible] = useState(false);
   const [defaulters, setDefaulters] = useState([]);
   const [loading, setLoading] = useState(true);
   const carouselRef = useRef(null);
@@ -172,7 +188,7 @@ export default function DashboardScreen() {
                 activeOpacity={1}
                 onPress={() => scrollToCarouselIndex(i)}
               >
-                <Image source={{ uri }} style={styles.carouselImage} resizeMode="cover" />
+                <Image source={typeof uri === 'string' ? { uri } : uri} style={styles.carouselImage} resizeMode="cover" />
               </TouchableOpacity>
             ))}
           </ScrollView>

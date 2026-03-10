@@ -53,10 +53,8 @@ const HomeStack = createNativeStackNavigator();
 
 function HomeStackScreen() {
   const insets = useSafeAreaInsets();
-  const headerStyle = {
-    backgroundColor: colors.surface,
-    paddingTop: Platform.OS === 'android' ? (insets.top || 24) : insets.top,
-  };
+  const statusBarHeight = Platform.OS === 'android' ? (insets.top || 24) : insets.top;
+  const headerStyle = { backgroundColor: colors.surface };
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Dashboard" component={DashboardScreen} />
@@ -67,6 +65,7 @@ function HomeStackScreen() {
           headerShown: true,
           title: 'Notifications',
           headerStyle,
+          headerStatusBarHeight: statusBarHeight,
           headerTintColor: colors.text,
         }}
       />
@@ -90,11 +89,9 @@ function ComplaintsStackScreen() {
 
 function MoreStackScreen() {
   const insets = useSafeAreaInsets();
-  const headerStyle = {
-    backgroundColor: colors.surface,
-    paddingTop: Platform.OS === 'android' ? (insets.top || 24) : insets.top,
-  };
-  const screenOpts = { headerStyle, headerTintColor: colors.text };
+  const statusBarHeight = Platform.OS === 'android' ? (insets.top || 24) : insets.top;
+  const headerStyle = { backgroundColor: colors.surface };
+  const screenOpts = { headerStyle, headerStatusBarHeight: statusBarHeight, headerTintColor: colors.text };
   return (
     <MoreStack.Navigator screenOptions={screenOpts}>
       <MoreStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
@@ -106,10 +103,8 @@ function MoreStackScreen() {
 
 export default function MainTabs() {
   const insets = useSafeAreaInsets();
-  const headerStyle = {
-    backgroundColor: colors.surface,
-    paddingTop: Platform.OS === 'android' ? (insets.top || 24) : insets.top,
-  };
+  const statusBarHeight = Platform.OS === 'android' ? (insets.top || 24) : insets.top;
+  const headerStyle = { backgroundColor: colors.surface };
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -140,6 +135,7 @@ export default function MainTabs() {
           paddingVertical: 4,
         },
         headerStyle,
+        headerStatusBarHeight: statusBarHeight,
         headerTintColor: colors.text,
         headerShadowVisible: false,
       })}

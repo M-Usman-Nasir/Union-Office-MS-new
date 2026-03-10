@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+/* global process */
+import { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { authApi } from '../api/auth';
 import { ROLES, STORAGE_KEYS } from '../constants';
@@ -11,6 +12,7 @@ export const useAuth = () => {
   return ctx;
 };
 
+/* eslint-disable-next-line react/prop-types */
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,12 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       return { success: true, user: userData };
     } catch (err) {
-      const msg = err.response?.data?.message || 'Login failed';
+      console.warn('Login error:', err.message, err.response?.status, err.response?.data);
+      let msg = err.response?.data?.message || err.message || 'Login failed';
+      if (err.message === 'Network Error') {
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+        msg = `Cannot reach server at ${apiUrl}. Check: 1) Backend running (cd backend && npm run dev). 2) If using phone: same WiFi as PC, restart Expo after changing .env. 3) If using emulator: set EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api in .env.`;
+      }
       return { success: false, error: msg };
     }
   };
@@ -78,7 +85,9 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await authApi.logout();
-    } catch (e) {}
+    } catch {
+      // Ignore; clearStorage runs regardless
+    }
     await clearStorage();
   };
 
@@ -90,7 +99,9 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(userData));
       }
-    } catch (e) {}
+    } catch {
+      // Ignore; user state unchanged on refresh failure
+    }
   };
 
   const value = {

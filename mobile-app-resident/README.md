@@ -59,6 +59,27 @@ Then:
 - Press **i** for iOS simulator  
 - Scan QR code with **Expo Go** on a physical device (ensure API URL in `.env` is reachable from the device)
 
+## Troubleshooting: "Cannot reach server" in Expo Go
+
+If the app shows "Cannot reach server" when logging in:
+
+1. **Backend must be running**  
+   In repo root: `cd backend && npm run dev`. The server must listen on all interfaces (default after recent change).
+
+2. **Restart Expo after changing `.env`**  
+   Stop Metro (Ctrl+C), run `npm start` again, then reload the app in Expo Go. `EXPO_PUBLIC_API_URL` is read when Metro starts.
+
+3. **Expo Go on a physical phone**
+   - In `.env` set `EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000/api` (e.g. `192.168.1.152`). Get your IP: `ipconfig` (Windows) or `ifconfig` (Mac/Linux).
+   - Phone and PC must be on the **same WiFi**.
+   - On the phone’s browser open `http://YOUR_PC_IP:3000/health`. If it doesn’t load, the phone can’t reach the backend (fix firewall or network).
+
+4. **Expo Go in Android emulator**  
+   In `.env` set `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api` (do not use your PC’s LAN IP in the emulator).
+
+5. **Expo Go in iOS simulator**  
+   In `.env` set `EXPO_PUBLIC_API_URL=http://localhost:3000/api`.
+
 ## Test resident account
 
 Use a resident user from your seeded data, e.g.:

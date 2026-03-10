@@ -200,8 +200,8 @@ const startServer = async () => {
       console.warn('⚠️  Could not initialize invoice auto-generate scheduler:', error.message);
     }
 
-    // Start listening
-    app.listen(PORT, () => {
+    // Start listening (0.0.0.0 so mobile app / other devices can reach the API)
+    app.listen(PORT, '0.0.0.0', () => {
       console.log('\n🚀 Server is running!');
       console.log(`📍 Server URL: http://localhost:${PORT}`);
       console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);

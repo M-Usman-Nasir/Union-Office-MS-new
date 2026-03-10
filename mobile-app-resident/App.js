@@ -2,13 +2,15 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
 import AuthStack from './src/navigation/AuthStack';
 import MainTabs from './src/navigation/MainTabs';
+
+const SPLASH_IMAGE = require('./assets/images/1.png');
 
 const Stack = createNativeStackNavigator();
 
@@ -18,6 +20,7 @@ function RootNavigator() {
   if (loading) {
     return (
       <View style={styles.loading}>
+        <Image source={SPLASH_IMAGE} style={styles.loadingImage} resizeMode="contain" />
         <View style={styles.loadingIconWrap}>
           <Ionicons name="home" size={80} color={colors.primary} />
         </View>
@@ -70,6 +73,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
+  },
+  loadingImage: {
+    width: 200,
+    height: 200,
+    marginBottom: 16,
   },
   loadingIconWrap: {
     width: 120,
