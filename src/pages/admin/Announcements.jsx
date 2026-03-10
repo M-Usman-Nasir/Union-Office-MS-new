@@ -14,6 +14,7 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
+  Chip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -34,11 +35,14 @@ const validationSchema = Yup.object({
   type: Yup.string(),
   audience: Yup.string(),
   announcement_date: Yup.string(),
+  scheduled_publish_at: Yup.string().nullable(),
 })
 
 const audienceOptions = [
-  { value: 'all_residents', label: 'All residents' },
-  { value: 'selected_residents', label: 'Selected residents' },
+  { value: 'all', label: 'All (everyone)' },
+  { value: 'resident', label: 'Residents only' },
+  { value: 'staff', label: 'Staff only' },
+  { value: 'union_admin', label: 'Union admins only' },
 ]
 
 const Announcements = () => {
@@ -74,11 +78,15 @@ const Announcements = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      const payload = {
+        ...values,
+        scheduled_publish_at: values.scheduled_publish_at?.trim() ? values.scheduled_publish_at : null,
+      }
       if (editingAnnouncement) {
-        await announcementApi.update(editingAnnouncement.id, values)
+        await announcementApi.update(editingAnnouncement.id, payload)
         toast.success('Announcement updated successfully')
       } else {
-        await announcementApi.create({ ...values, society_apartment_id: societyId })
+        await announcementApi.create({ ...payload, society_apartment_id: societyId })
         toast.success('Announcement created successfully')
       }
       mutate()
@@ -118,11 +126,20 @@ const Announcements = () => {
     return dayjs(dateString).format('DD/MM/YYYY')
   }
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A'
+    return dayjs(dateString).format('DD/MM/YYYY HH:mm')
+  }
+
   const columns = [
     { id: 'title', label: 'Title' },
     { id: 'audience', label: 'Audience', render: (row) => {
       const opt = audienceOptions.find(o => o.value === row.audience)
-      return opt ? opt.label : (row.audience || '-')
+      if (opt) return opt.label
+      // Legacy values
+      if (row.audience === 'all_residents') return 'All residents'
+      if (row.audience === 'selected_residents') return 'Selected residents'
+      return row.audience || 'All (everyone)'
     }},
     { id: 'description', label: 'Description', render: (row) => (
       <Typography variant="body2" noWrap sx={{ maxWidth: '100%', display: 'block' }} title={row.description}>
@@ -130,6 +147,21 @@ const Announcements = () => {
       </Typography>
     )},
     { id: 'type', label: 'Type', render: (row) => row.type || '-' },
+    {
+      id: 'scheduled_publish_at',
+      label: 'Publish',
+      render: (row) => {
+        if (!row.scheduled_publish_at) return <Chip size="small" label="Immediate" variant="outlined" />
+        const at = dayjs(row.scheduled_publish_at)
+        const isFuture = at.isAfter(dayjs())
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Chip size="small" label={isFuture ? 'Scheduled' : 'Published'} color={isFuture ? 'warning' : 'default'} variant={isFuture ? 'filled' : 'outlined'} />
+            <Typography variant="caption" color="text.secondary">{formatDateTime(row.scheduled_publish_at)}</Typography>
+          </Box>
+        )
+      },
+    },
     { id: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at) },
     {
       id: 'actions',
@@ -159,17 +191,21 @@ const Announcements = () => {
         title: editingAnnouncement.title || '',
         description: editingAnnouncement.description || '',
         type: editingAnnouncement.type || '',
-        audience: editingAnnouncement.audience || 'all_residents',
+        audience: editingAnnouncement.audience || 'all',
         announcement_date: editingAnnouncement.announcement_date
           ? dayjs(editingAnnouncement.announcement_date).format('YYYY-MM-DD')
           : dayjs().format('YYYY-MM-DD'),
+        scheduled_publish_at: editingAnnouncement.scheduled_publish_at
+          ? dayjs(editingAnnouncement.scheduled_publish_at).format('YYYY-MM-DDTHH:mm')
+          : '',
       }
     : {
         title: '',
         description: '',
         type: '',
-        audience: 'all_residents',
+        audience: 'all',
         announcement_date: dayjs().format('YYYY-MM-DD'),
+        scheduled_publish_at: '',
       }
 
   return (
@@ -258,6 +294,21 @@ const Announcements = () => {
                       }}
                     />
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Publish at (optional)"
+                      name="scheduled_publish_at"
+                      type="datetime-local"
+                      value={values.scheduled_publish_at || ''}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      helperText="Allows announcements to be posted automatically at the chosen date and time. Leave empty to publish immediately."
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
+                    />
+                  </Grid>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -294,10 +345,10 @@ const Announcements = () => {
                       select
                       label="Audience"
                       name="audience"
-                      value={values.audience}
+                      value={values.audience || 'all'}
                       onChange={handleChange}
                       onBlur={handleBlur}
-                      helperText="Who should see this announcement"
+                      helperText="Sends targeted updates to specific user groups."
                     >
                       {audienceOptions.map((opt) => (
                         <MenuItem key={opt.value} value={opt.value}>

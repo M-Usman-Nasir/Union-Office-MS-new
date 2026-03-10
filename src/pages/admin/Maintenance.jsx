@@ -40,6 +40,7 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
+import VisibilityIcon from '@mui/icons-material/Visibility'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR, { useSWRConfig } from 'swr'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -1065,6 +1066,25 @@ const Maintenance = () => {
       label: 'Due',
       align: 'right',
       render: (row) => formatCurrency(Number(row.due) || 0),
+    },
+    {
+      id: 'view_details',
+      label: 'View',
+      align: 'center',
+      minWidth: 88,
+      render: (row) => (
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<VisibilityIcon />}
+          onClick={(e) => {
+            e.stopPropagation()
+            setSelectedLedgerRow(row)
+          }}
+        >
+          View
+        </Button>
+      ),
     },
   ]
 

@@ -107,6 +107,12 @@ export const API_ENDPOINTS = {
   UNITS_IMPORT: '/properties/units/import',
   UNIT_BY_ID: (id) => `/properties/units/${id}`,
   
+  // Unit claims (ownership/tenancy)
+  UNIT_CLAIMS: '/unit-claims',
+  UNIT_CLAIMS_MINE: '/unit-claims/mine',
+  UNIT_CLAIM_APPROVE: (id) => `/unit-claims/${id}/approve`,
+  UNIT_CLAIM_REJECT: (id) => `/unit-claims/${id}/reject`,
+  
   // Users
   USERS: '/users',
   USER_CHECK_EMAIL: '/users/check-email',
@@ -203,6 +209,7 @@ export const ROUTES = {
   ADMIN_PROFILE: '/admin/profile',
   ADMIN_MESSAGES: '/admin/messages',
   ADMIN_UNION_MEMBERS: '/admin/union-members',
+  ADMIN_UNIT_CLAIMS: '/admin/unit-claims',
   
   // Resident
   RESIDENT_DASHBOARD: '/resident/dashboard',

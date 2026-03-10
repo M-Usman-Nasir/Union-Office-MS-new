@@ -33,6 +33,7 @@ import Settings from '@/pages/admin/Settings'
 import AdminProfile from '@/pages/admin/Profile'
 import Messages from '@/pages/admin/Messages'
 import UnionMembers from '@/pages/admin/UnionMembers'
+import UnitClaims from '@/pages/admin/UnitClaims'
 import ResidentDashboard from '@/pages/resident/Dashboard'
 import ResidentComplaints from '@/pages/resident/Complaints'
 import ResidentMaintenance from '@/pages/resident/Maintenance'
@@ -99,6 +100,7 @@ export const AppRoutes = () => {
                 <Route path="users" element={<Users />} />
                 <Route path="employees" element={<Employees />} />
                 <Route path="union-members" element={<UnionMembers />} />
+                <Route path="unit-claims" element={<UnitClaims />} />
                 <Route path="profile" element={<AdminProfile />} />
               </Routes>
             </MainLayout>

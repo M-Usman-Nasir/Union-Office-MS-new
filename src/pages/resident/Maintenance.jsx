@@ -21,6 +21,8 @@ import useSWR from 'swr'
 import { maintenanceApi } from '@/api/maintenanceApi'
 import DataTable from '@/components/common/DataTable'
 import toast from 'react-hot-toast'
+import dayjs from 'dayjs'
+import { getBaseUrl } from '@/utils/constants'
 
 const ResidentMaintenance = () => {
   const { user } = useAuth()
@@ -52,6 +54,11 @@ const ResidentMaintenance = () => {
       style: 'currency',
       currency: 'PKR',
     }).format(amount || 0)
+  }
+
+  const formatPaymentDate = (dateValue) => {
+    if (!dateValue) return '—'
+    return dayjs(dateValue).format('YYYY-MM-DD')
   }
 
   const getStatusColor = (status) => {
@@ -107,10 +114,28 @@ const ResidentMaintenance = () => {
   }
 
   const columns = [
+    {
+      id: 'payment_id',
+      label: 'Payment ID',
+      minWidth: 100,
+      render: (row) => row.id != null ? `PAY-${String(row.id).padStart(3, '0')}` : '—',
+    },
+    {
+      id: 'unit_number',
+      label: 'Flat No',
+      minWidth: 80,
+      render: (row) => row.unit_number ?? '—',
+    },
     { id: 'month', label: 'Month', render: (row) => `${row.month}/${row.year}` },
     { id: 'base_amount', label: 'Base Amount', render: (row) => formatCurrency(row.base_amount) },
     { id: 'total_amount', label: 'Total Amount', render: (row) => formatCurrency(row.total_amount) },
-    { id: 'amount_paid', label: 'Amount Paid', render: (row) => formatCurrency(row.amount_paid || 0) },
+    { id: 'amount_paid', label: 'Amount', render: (row) => formatCurrency(row.amount_paid || 0) },
+    {
+      id: 'payment_date',
+      label: 'Payment Date',
+      minWidth: 110,
+      render: (row) => formatPaymentDate(row.payment_date),
+    },
     {
       id: 'status',
       label: 'Status',
@@ -119,6 +144,25 @@ const ResidentMaintenance = () => {
           return <Chip label="Pending verification" color="info" size="small" />
         }
         return <Chip label={row.status} color={getStatusColor(row.status)} size="small" />
+      },
+    },
+    {
+      id: 'receipt',
+      label: 'Receipt',
+      minWidth: 100,
+      render: (row) => {
+        if (!row.receipt_path) return '—'
+        const base = getBaseUrl()
+        return (
+          <Button
+            size="small"
+            href={`${base}${row.receipt_path}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View receipt
+          </Button>
+        )
       },
     },
     {

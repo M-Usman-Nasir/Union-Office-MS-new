@@ -26,6 +26,7 @@ import notificationRoutes from './routes/notifications.js';
 import messageRoutes from './routes/messages.js';
 import cronRoutes from './routes/cron.js';
 import bootstrapRoutes from './routes/bootstrap.js';
+import unitClaimsRoutes from './routes/unitClaims.js';
 
 // Load environment variables
 dotenv.config();
@@ -97,6 +98,7 @@ app.use('/api/staff', staffRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/cron', cronRoutes);
+app.use('/api/unit-claims', unitClaimsRoutes);
 
 // Database connection test endpoint
 app.get('/api/test/db', async (req, res) => {

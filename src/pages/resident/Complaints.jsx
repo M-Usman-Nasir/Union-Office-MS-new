@@ -166,10 +166,17 @@ const ResidentComplaints = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A'
-    return dayjs(dateString).format('DD/MM/YYYY HH:mm')
+    // Server may send UTC as ISO with Z, or as datetime without timezone (e.g. from PostgreSQL).
+    // Treat datetimes without Z as UTC so the displayed time is correct in the user's timezone.
+    const str =
+      typeof dateString === 'string' && dateString.trim() && !/Z$/i.test(dateString.trim())
+        ? dateString.trim().replace(' ', 'T') + 'Z'
+        : dateString
+    return dayjs(str).format('DD/MM/YYYY HH:mm')
   }
 
   const columns = [
+    { id: 'id', label: 'Complaint ID', minWidth: 100, render: (row) => row.id ?? '—' },
     { id: 'title', label: 'Title' },
     { id: 'description', label: 'Description', render: (row) => (
       <Typography variant="body2" noWrap sx={{ maxWidth: 300 }}>
@@ -277,6 +284,7 @@ const ResidentComplaints = () => {
           </Box>
 
           <DataTable
+            dense
             columns={columns}
             data={filteredData}
             loading={isLoading}

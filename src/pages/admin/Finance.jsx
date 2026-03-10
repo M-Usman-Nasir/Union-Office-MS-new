@@ -31,6 +31,7 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { financeApi } from '@/api/financeApi'
+import { employeesApi } from '@/api/employeesApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -90,6 +91,12 @@ const Finance = () => {
     })
   )
 
+  const { data: employeesData } = useSWR(
+    openDialog && societyId ? ['/employees/list', societyId] : null,
+    () => employeesApi.getAll({ limit: 500 }).then(res => res.data)
+  )
+  const employeesList = employeesData?.data ?? []
+
   const handleOpenDialog = (finance = null) => {
     setEditingFinance(finance)
     setOpenDialog(true)
@@ -107,6 +114,11 @@ const Finance = () => {
         month: Number(values.month),
         year: Number(values.year),
         status: values.status || 'paid',
+      }
+      if (values.transaction_type === 'expense' && values.expense_type?.trim() === 'Salary') {
+        payload.employee_id = values.employee_id || null
+      } else {
+        payload.employee_id = null
       }
       if (editingFinance) {
         await financeApi.update(editingFinance.id, payload)
@@ -170,6 +182,11 @@ const Finance = () => {
     )},
     { id: 'income_type', label: 'Income Type', render: (row) => row.income_type || '-' },
     { id: 'expense_type', label: 'Expense Type', render: (row) => row.expense_type || '-' },
+    {
+      id: 'employee_name',
+      label: 'Employee',
+      render: (row) => (row.transaction_type === 'expense' && row.expense_type === 'Salary' && row.employee_name ? row.employee_name : '—'),
+    },
     { id: 'description', label: 'Description' },
     { id: 'payment_mode', label: 'Payment Mode', render: (row) => row.payment_mode || '-' },
     {
@@ -238,6 +255,7 @@ const Finance = () => {
         transaction_type: editingFinance.transaction_type || 'income',
         income_type: editingFinance.income_type || '',
         expense_type: editingFinance.expense_type || '',
+        employee_id: editingFinance.employee_id ?? '',
         amount: editingFinance.amount || 0,
         description: editingFinance.description || '',
         transaction_date: editingFinance.transaction_date ? dayjs(editingFinance.transaction_date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
@@ -251,6 +269,7 @@ const Finance = () => {
         transaction_type: 'income',
         income_type: '',
         expense_type: '',
+        employee_id: '',
         amount: 0,
         description: '',
         transaction_date: dayjs().format('YYYY-MM-DD'),
@@ -456,8 +475,15 @@ const Finance = () => {
                         options={expenseTypes}
                         value={values.expense_type || null}
                         inputValue={values.expense_type ?? ''}
-                        onInputChange={(_, newInputValue) => setFieldValue('expense_type', newInputValue || '')}
-                        onChange={(_, newValue) => setFieldValue('expense_type', typeof newValue === 'string' ? newValue : newValue || '')}
+                        onInputChange={(_, newInputValue) => {
+                          setFieldValue('expense_type', newInputValue || '')
+                          if (newInputValue?.trim() !== 'Salary') setFieldValue('employee_id', '')
+                        }}
+                        onChange={(_, newValue) => {
+                          const val = typeof newValue === 'string' ? newValue : newValue || ''
+                          setFieldValue('expense_type', val)
+                          if (val !== 'Salary') setFieldValue('employee_id', '')
+                        }}
                         renderInput={(params) => (
                           <TextField
                             {...params}
@@ -470,6 +496,26 @@ const Finance = () => {
                           />
                         )}
                       />
+                    </Grid>
+                  )}
+                  {values.transaction_type === 'expense' && values.expense_type?.trim() === 'Salary' && (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Employee (Salary to)"
+                        name="employee_id"
+                        value={values.employee_id ?? ''}
+                        onChange={(e) => setFieldValue('employee_id', e.target.value)}
+                        onBlur={handleBlur}
+                      >
+                        <MenuItem value="">Select employee</MenuItem>
+                        {employeesList.map((emp) => (
+                          <MenuItem key={emp.employee_id ?? emp.id} value={emp.employee_id ?? emp.id}>
+                            {emp.name} {emp.designation ? `(${emp.designation})` : ''}
+                          </MenuItem>
+                        ))}
+                      </TextField>
                     </Grid>
                   )}
                   <Grid item xs={12}>

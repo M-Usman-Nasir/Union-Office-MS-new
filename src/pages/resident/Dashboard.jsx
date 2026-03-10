@@ -254,18 +254,28 @@ const ResidentDashboard = () => {
                       <Table size="small">
                         <TableHead>
                           <TableRow>
-                            <TableCell>Type</TableCell>
+                            <TableCell>Period</TableCell>
                             <TableCell>Amount</TableCell>
                             <TableCell>Due Date</TableCell>
                             <TableCell>Status</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {maintenanceData?.data?.slice(0, 5).map((maintenance) => (
+                          {maintenanceData?.data?.slice(0, 5).map((maintenance) => {
+                            const periodLabel =
+                              maintenance.month && maintenance.year
+                                ? new Date(2000, maintenance.month - 1).toLocaleString('default', { month: 'short' }) + ' ' + maintenance.year
+                                : '—'
+                            const dueDisplay = maintenance.due_date
+                              ? formatDate(maintenance.due_date)
+                              : periodLabel !== '—'
+                                ? periodLabel
+                                : 'N/A'
+                            return (
                             <TableRow key={maintenance.id}>
-                              <TableCell>{maintenance.type}</TableCell>
-                              <TableCell>{formatCurrency(maintenance.amount)}</TableCell>
-                              <TableCell>{formatDate(maintenance.due_date)}</TableCell>
+                              <TableCell>{periodLabel}</TableCell>
+                              <TableCell>{formatCurrency(maintenance.total_amount ?? 0)}</TableCell>
+                              <TableCell>{dueDisplay}</TableCell>
                               <TableCell>
                                 <Chip
                                   label={maintenance.status}
@@ -274,7 +284,8 @@ const ResidentDashboard = () => {
                                 />
                               </TableCell>
                             </TableRow>
-                          ))}
+                            )
+                          })}
                           {(!maintenanceData?.data || maintenanceData.data.length === 0) && (
                             <TableRow>
                               <TableCell colSpan={4} align="center">

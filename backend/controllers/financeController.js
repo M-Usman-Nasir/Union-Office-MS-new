@@ -7,10 +7,13 @@ export const getAll = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let sql = `
-      SELECT f.*, s.name as society_name, u.name as added_by_name
+      SELECT f.*, s.name as society_name, u.name as added_by_name,
+             emp_u.name as employee_name
       FROM finance f
       LEFT JOIN apartments s ON f.society_apartment_id = s.id
       LEFT JOIN users u ON f.added_by = u.id
+      LEFT JOIN employees emp ON f.employee_id = emp.id
+      LEFT JOIN users emp_u ON emp.user_id = emp_u.id
       WHERE 1=1
     `;
     const params = [];
@@ -171,10 +174,13 @@ export const getById = async (req, res) => {
     const { id } = req.params;
 
     const result = await query(
-      `SELECT f.*, s.name as society_name, u.name as added_by_name
+      `SELECT f.*, s.name as society_name, u.name as added_by_name,
+              emp_u.name as employee_name
        FROM finance f
        LEFT JOIN apartments s ON f.society_apartment_id = s.id
        LEFT JOIN users u ON f.added_by = u.id
+       LEFT JOIN employees emp ON f.employee_id = emp.id
+       LEFT JOIN users emp_u ON emp.user_id = emp_u.id
        WHERE f.id = $1`,
       [id]
     );
@@ -203,7 +209,7 @@ export const getById = async (req, res) => {
 // Create finance record
 export const create = async (req, res) => {
   try {
-    const { society_apartment_id, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status } = req.body;
+    const { society_apartment_id, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, employee_id } = req.body;
 
     if (!society_apartment_id || !transaction_date || !transaction_type || !amount) {
       return res.status(400).json({
@@ -213,8 +219,8 @@ export const create = async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO finance (society_apartment_id, added_by, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO finance (society_apartment_id, added_by, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, employee_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         society_apartment_id,
@@ -230,6 +236,7 @@ export const create = async (req, res) => {
         month || new Date(transaction_date).getMonth() + 1,
         year || new Date(transaction_date).getFullYear(),
         status || 'paid',
+        employee_id || null,
       ]
     );
 
@@ -252,7 +259,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status } = req.body;
+    const { transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, employee_id } = req.body;
 
     const existing = await query('SELECT id FROM finance WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
@@ -275,10 +282,11 @@ export const update = async (req, res) => {
            month = COALESCE($9, month),
            year = COALESCE($10, year),
            status = COALESCE($11, status),
+           employee_id = $12,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $12
+       WHERE id = $13
        RETURNING *`,
-      [transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, id]
+      [transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, employee_id ?? null, id]
     );
 
     res.json({

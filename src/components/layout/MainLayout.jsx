@@ -159,6 +159,7 @@ const MainLayout = ({ children }) => {
         { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
         { text: 'Union Members', icon: <PeopleIcon />, path: ROUTES.ADMIN_UNION_MEMBERS },
+        { text: 'Ownership Requests', icon: <ApartmentIcon />, path: ROUTES.ADMIN_UNIT_CLAIMS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.ADMIN_PROFILE },
         { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
       ]

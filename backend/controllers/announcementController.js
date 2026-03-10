@@ -28,6 +28,24 @@ export const getAll = async (req, res) => {
       params.push(society_id);
     }
 
+    // Role-specific: residents and staff only see announcements targeted to them or "all"
+    const userRole = req.user?.role;
+    if (userRole === 'resident' || userRole === 'staff') {
+      paramCount++;
+      // Include legacy: all_residents/selected_residents visible to residents
+      sql += ` AND (
+        a.audience IS NULL OR a.audience = '' OR a.audience = 'all'
+        OR a.audience = $${paramCount}
+        OR ($${paramCount} = 'resident' AND a.audience IN ('all_residents', 'selected_residents'))
+      )`;
+      params.push(userRole);
+    }
+
+    // Scheduled publishing: residents/staff only see announcements that are already "live"
+    if (userRole === 'resident' || userRole === 'staff') {
+      sql += ` AND (a.scheduled_publish_at IS NULL OR a.scheduled_publish_at <= NOW())`;
+    }
+
     if (type) {
       paramCount++;
       sql += ` AND a.type = $${paramCount}`;
@@ -54,6 +72,18 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND society_apartment_id = $${countParamCount}`;
       countParams.push(society_id);
+    }
+    if (userRole === 'resident' || userRole === 'staff') {
+      countParamCount++;
+      countSql += ` AND (
+        audience IS NULL OR audience = '' OR audience = 'all'
+        OR audience = $${countParamCount}
+        OR ($${countParamCount} = 'resident' AND audience IN ('all_residents', 'selected_residents'))
+      )`;
+      countParams.push(userRole);
+    }
+    if (userRole === 'resident' || userRole === 'staff') {
+      countSql += ` AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= NOW())`;
     }
     if (type) {
       countParamCount++;
@@ -127,7 +157,7 @@ export const getById = async (req, res) => {
 // Create announcement
 export const create = async (req, res) => {
   try {
-    const { title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, announcement_date } = req.body;
+    const { title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, announcement_date, scheduled_publish_at } = req.body;
 
     if (!title || !description || !society_apartment_id) {
       return res.status(400).json({
@@ -137,8 +167,8 @@ export const create = async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO announcements (title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, created_by, is_active, announcement_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10::DATE)
+      `INSERT INTO announcements (title, description, type, audience, language, visible_to_all, society_apartment_id, block_id, created_by, is_active, announcement_date, scheduled_publish_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10::DATE, $11::TIMESTAMP)
        RETURNING *`,
       [
         title,
@@ -151,6 +181,7 @@ export const create = async (req, res) => {
         block_id || null,
         req.user.id,
         announcement_date || null,
+        scheduled_publish_at || null,
       ]
     );
 
@@ -173,7 +204,7 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, type, audience, language, visible_to_all, is_active, announcement_date } = req.body;
+    const { title, description, type, audience, language, visible_to_all, is_active, announcement_date, scheduled_publish_at } = req.body;
 
     const existing = await query('SELECT id FROM announcements WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
@@ -193,10 +224,11 @@ export const update = async (req, res) => {
            visible_to_all = COALESCE($6, visible_to_all),
            is_active = COALESCE($7, is_active),
            announcement_date = COALESCE($8::DATE, announcement_date),
+           scheduled_publish_at = $9,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9
+       WHERE id = $10
        RETURNING *`,
-      [title, description, type, audience, language, visible_to_all, is_active, announcement_date || null, id]
+      [title, description, type, audience, language, visible_to_all, is_active, announcement_date || null, scheduled_publish_at || null, id]
     );
 
     res.json({

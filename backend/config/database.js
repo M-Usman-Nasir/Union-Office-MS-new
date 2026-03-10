@@ -3,7 +3,18 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const { Pool } = pkg;
+const { Pool, types: pgTypes } = pkg;
+
+// Interpret PostgreSQL "timestamp without time zone" as UTC so API always sends correct UTC.
+// OID 1114 = timestamp without time zone. Without this, node-pg uses server local timezone.
+if (pgTypes && pgTypes.setTypeParser) {
+  pgTypes.setTypeParser(1114, (stringValue) => {
+    if (stringValue == null) return null;
+    const s = String(stringValue).trim();
+    if (!s) return null;
+    return new Date(s.endsWith('Z') ? s : s.replace(' ', 'T') + 'Z');
+  });
+}
 
 // Prefer DATABASE_URL (e.g. Render Internal URL); otherwise use individual DB_* vars
 const poolConfig = process.env.DATABASE_URL
@@ -28,8 +39,11 @@ const poolConfig = process.env.DATABASE_URL
 
 const pool = new Pool(poolConfig);
 
-// Test database connection
-pool.on('connect', () => {
+// Use UTC for session so CURRENT_TIMESTAMP / NOW() store and compare in UTC
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'UTC'").catch((err) => {
+    console.warn('Could not set session timezone to UTC:', err.message);
+  });
   console.log('✅ Database connection established');
 });
 

@@ -58,7 +58,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Responsibility | Status |
 |----------------|--------|
 | Manage residents | ✅ |
-| Approve property ownership/tenancy | ❌ |
+| Approve property ownership/tenancy | ✅ (resident requests unit link → admin approves/rejects) |
 | Manage staff (guards, maintenance) | ✅ |
 | Manage finances | ✅ |
 | Post announcements | ✅ |
