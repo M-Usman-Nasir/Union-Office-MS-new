@@ -39,6 +39,7 @@ import ResidentComplaints from '@/pages/resident/Complaints'
 import ResidentMaintenance from '@/pages/resident/Maintenance'
 import ResidentProfile from '@/pages/resident/Profile'
 import UnionInfo from '@/pages/resident/UnionInfo'
+import ResidentUnionMembers from '@/pages/resident/UnionMembers'
 import ResidentFinancialSummary from '@/pages/resident/FinancialSummary'
 import StaffDashboard from '@/pages/staff/Dashboard'
 import StaffComplaints from '@/pages/staff/Complaints'
@@ -121,6 +122,7 @@ export const AppRoutes = () => {
                 <Route path="complaints" element={<ResidentComplaints />} />
                 <Route path="maintenance" element={<ResidentMaintenance />} />
                 <Route path="union-info" element={<UnionInfo />} />
+                <Route path="union-members" element={<ResidentUnionMembers />} />
                 <Route path="profile" element={<ResidentProfile />} />
                 <Route path="financial-summary" element={<ResidentFinancialSummary />} />
               </Routes>

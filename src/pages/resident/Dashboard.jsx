@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import {
   Container,
   Typography,
@@ -13,7 +14,20 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  CardActionArea,
 } from '@mui/material'
+import AssignmentIcon from '@mui/icons-material/Assignment'
+import BuildIcon from '@mui/icons-material/Build'
+import CampaignIcon from '@mui/icons-material/Campaign'
+import PeopleIcon from '@mui/icons-material/People'
+import HistoryIcon from '@mui/icons-material/History'
+import PaymentIcon from '@mui/icons-material/Payment'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'
+import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService'
+import PendingActionsIcon from '@mui/icons-material/PendingActions'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
@@ -21,6 +35,8 @@ import { maintenanceApi } from '@/api/maintenanceApi'
 import { announcementApi } from '@/api/announcementApi'
 import { defaulterApi } from '@/api/defaulterApi'
 import { settingsApi } from '@/api/settingsApi'
+import { ROUTES } from '@/utils/constants'
+import { propertyApi } from '@/api/propertyApi'
 
 const ResidentDashboard = () => {
   const { user } = useAuth()
@@ -28,7 +44,7 @@ const ResidentDashboard = () => {
   // Fetch resident-specific data
   const { data: complaintsData, isLoading: complaintsLoading } = useSWR(
     user ? '/complaints/my' : null,
-    () => complaintApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
+    () => complaintApi.getAll({ limit: 50, page: 1 }).then(res => res.data)
   )
 
   const societyId = user?.society_apartment_id
@@ -36,8 +52,14 @@ const ResidentDashboard = () => {
 
   const { data: maintenanceData, isLoading: maintenanceLoading } = useSWR(
     user && unitId ? ['/maintenance/my', unitId] : null,
-    () => maintenanceApi.getAll({ limit: 5, page: 1, unit_id: unitId }).then(res => res.data)
+    () => maintenanceApi.getAll({ limit: 20, page: 1, unit_id: unitId }).then(res => res.data)
   )
+
+  const { data: paymentRequestsData } = useSWR(
+    user ? '/maintenance/payment-requests/mine' : null,
+    () => maintenanceApi.getMyPaymentRequests().then(res => res.data).catch(() => ({ data: [] }))
+  )
+  const pendingApprovalCount = paymentRequestsData?.data?.filter(r => r.status === 'pending').length ?? 0
 
   const { data: announcementsData, isLoading: announcementsLoading } = useSWR(
     societyId ? ['/announcements/recent', societyId] : null,
@@ -57,8 +79,35 @@ const ResidentDashboard = () => {
     () => defaulterApi.getAll({ society_id: societyId, limit: 100 }).then(res => res.data)
   )
 
+  const { data: unitData } = useSWR(
+    user?.unit_id ? ['/properties/units', user.unit_id] : null,
+    () => propertyApi.getUnitById(user.unit_id).then(res => res.data.data).catch(() => null)
+  )
+  const unit = unitData ?? null
+
   // Resident's own defaulter row (backend returns society defaulters; we show only this unit's status)
   const myDefaulter = defaulterData?.data?.find((d) => Number(d.unit_id) === Number(unitId)) ?? null
+
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    if (location.hash === '#announcements') {
+      const el = document.getElementById('announcements')
+      if (el) el.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [location.hash])
+
+  // Derived stats for overview cards (all from real backend data)
+  const complaintsList = complaintsData?.data ?? []
+  const myComplaintsList = complaintsList.filter((c) => Number(c.submitted_by) === Number(user?.id))
+  const activeComplaintsCount = myComplaintsList.filter(c => c.status !== 'resolved' && c.status !== 'closed').length
+  const inProgressComplaintsCount = myComplaintsList.filter(c => c.status === 'in_progress').length
+  const maintenanceList = maintenanceData?.data ?? []
+  const maintenanceTotalCount = maintenanceData?.pagination?.total ?? maintenanceList.length
+  const lastPaidMaintenance = maintenanceList
+    .filter(m => m.status === 'paid' && (m.payment_date || m.updated_at))
+    .sort((a, b) => new Date(b.payment_date || b.updated_at) - new Date(a.payment_date || a.updated_at))[0]
 
   const isLoading = complaintsLoading || maintenanceLoading || announcementsLoading
 
@@ -101,6 +150,20 @@ const ResidentDashboard = () => {
         <Typography variant="body1" color="text.secondary">
           Welcome, {user?.name || user?.email}
         </Typography>
+        {(unit || user?.created_at) && (
+          <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+            {unit && (
+              <Typography variant="body2" color="text.secondary">
+                {[unit.unit_number, unit.block_name].filter(Boolean).join(' · ')}
+              </Typography>
+            )}
+            {user?.created_at && (
+              <Typography variant="body2" color="text.secondary">
+                Member since {new Date(user.created_at).getFullYear()}
+              </Typography>
+            )}
+          </Box>
+        )}
       </Box>
 
       {isLoading ? (
@@ -109,81 +172,220 @@ const ResidentDashboard = () => {
         </Box>
       ) : (
         <>
-          {/* Status Cards */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    My Complaints
-                  </Typography>
-                  <Typography variant="h4" component="div">
-                    {complaintsData?.pagination?.total || 0}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Total complaints submitted
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Pending Maintenance
-                  </Typography>
-                  <Typography variant="h4" component="div">
-                    {maintenanceData?.data?.filter(m => m.status === 'pending').length || 0}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Unpaid maintenance fees
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {defaulterListVisible && (
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Defaulter Status
+          {/* Overview Cards */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
+                  <PaymentIcon sx={{ color: 'primary.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Pending Dues
                     </Typography>
-                    {defaulterLoading ? (
-                      <Box display="flex" justifyContent="center" py={2}>
-                        <CircularProgress size={24} />
-                      </Box>
+                    {defaulterListVisible && defaulterLoading ? (
+                      <CircularProgress size={24} />
                     ) : myDefaulter ? (
+                      <Typography variant="h6" color="error">
+                        {formatCurrency(myDefaulter.amount_due)}
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" color="success.main">
+                        No outstanding payments
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
+                  <ReportProblemOutlinedIcon sx={{ color: 'warning.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Active Complaints
+                    </Typography>
+                    <Typography variant="h6">{activeComplaintsCount}</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
+                  <HourglassEmptyIcon sx={{ color: 'info.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      In Progress
+                    </Typography>
+                    <Typography variant="h6">{inProgressComplaintsCount}</Typography>
+                    <Typography variant="caption" color="text.secondary">complaints</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
+                  <HomeRepairServiceIcon sx={{ color: 'primary.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Maintenance Requests
+                    </Typography>
+                    <Typography variant="h6">{maintenanceTotalCount}</Typography>
+                    <Typography variant="caption" color="text.secondary">total records</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
+                  <PendingActionsIcon sx={{ color: 'warning.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Pending Approval
+                    </Typography>
+                    <Typography variant="h6">{pendingApprovalCount}</Typography>
+                    <Typography variant="caption" color="text.secondary">payment proof</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
+                  <ReceiptLongIcon sx={{ color: 'success.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Last Payment
+                    </Typography>
+                    {lastPaidMaintenance ? (
                       <>
-                        <Typography variant="h6" color="error" component="div">
-                          {formatCurrency(myDefaulter.amount_due)}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Amount due
+                        <Typography variant="h6">{formatCurrency(lastPaidMaintenance.total_amount ?? lastPaidMaintenance.amount_paid)}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDate(lastPaidMaintenance.payment_date || lastPaidMaintenance.updated_at)}
                         </Typography>
                       </>
                     ) : (
-                      <>
-                        <Typography variant="h6" color="success.main" component="div">
-                          Clear
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          No pending dues
-                        </Typography>
-                      </>
+                      <Typography variant="body2" color="text.secondary">—</Typography>
                     )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Payment History link card */}
+          <Grid container spacing={2} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardActionArea
+                  onClick={() => navigate(ROUTES.RESIDENT_FINANCIAL_SUMMARY)}
+                  sx={{
+                    '&:hover': { backgroundColor: 'primary.light' },
+                    '&:hover .MuiTypography-root': { color: 'primary.dark' },
+                    '&:hover .MuiSvgIcon-root': { color: 'primary.dark' },
+                  }}
+                >
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <HistoryIcon color="action" />
+                    <Box flex={1}>
+                      <Typography variant="subtitle1">Payment history</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        View full financial summary and payment history
+                      </Typography>
+                    </Box>
                   </CardContent>
-                </Card>
-              </Grid>
-            )}
+                </CardActionArea>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Quick Actions */}
+          <Grid container spacing={2} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>Quick Actions</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+                <CardActionArea
+                  onClick={() => navigate(ROUTES.RESIDENT_COMPLAINTS, { state: { openSubmit: true } })}
+                  sx={{
+                    flex: 1,
+                    '&:hover': { backgroundColor: 'primary.light' },
+                    '&:hover .MuiTypography-root': { color: 'primary.dark' },
+                    '&:hover .MuiSvgIcon-root': { color: 'primary.dark' },
+                  }}
+                >
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <AssignmentIcon color="primary" />
+                    <Typography>Submit Complaint</Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+                <CardActionArea
+                  onClick={() => navigate(ROUTES.RESIDENT_DASHBOARD + '#announcements')}
+                  sx={{
+                    flex: 1,
+                    '&:hover': { backgroundColor: 'primary.light' },
+                    '&:hover .MuiTypography-root': { color: 'primary.dark' },
+                    '&:hover .MuiSvgIcon-root': { color: 'primary.dark' },
+                  }}
+                >
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <CampaignIcon color="primary" />
+                    <Typography>View Announcements</Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+                <CardActionArea
+                  onClick={() => navigate(ROUTES.RESIDENT_MAINTENANCE)}
+                  sx={{
+                    flex: 1,
+                    '&:hover': { backgroundColor: 'primary.light' },
+                    '&:hover .MuiTypography-root': { color: 'primary.dark' },
+                    '&:hover .MuiSvgIcon-root': { color: 'primary.dark' },
+                  }}
+                >
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <BuildIcon color="primary" />
+                    <Typography>Maintenance Request</Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+                <CardActionArea
+                  onClick={() => navigate(ROUTES.RESIDENT_UNION_MEMBERS)}
+                  sx={{
+                    flex: 1,
+                    '&:hover': { backgroundColor: 'primary.light' },
+                    '&:hover .MuiTypography-root': { color: 'primary.dark' },
+                    '&:hover .MuiSvgIcon-root': { color: 'primary.dark' },
+                  }}
+                >
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <PeopleIcon color="primary" />
+                    <Typography>Union Members</Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
           </Grid>
 
           {/* My Complaints */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" gutterBottom>
                     My Complaints
                   </Typography>
@@ -202,7 +404,7 @@ const ResidentDashboard = () => {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {complaintsData?.data?.slice(0, 5).map((complaint) => (
+                          {myComplaintsList.slice(0, 5).map((complaint) => (
                             <TableRow key={complaint.id}>
                               <TableCell>
                                 <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
@@ -221,7 +423,7 @@ const ResidentDashboard = () => {
                               </TableCell>
                             </TableRow>
                           ))}
-                          {(!complaintsData?.data || complaintsData.data.length === 0) && (
+                          {myComplaintsList.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={3} align="center">
                                 <Typography variant="body2" color="text.secondary">
@@ -239,9 +441,9 @@ const ResidentDashboard = () => {
             </Grid>
 
             {/* My Maintenance */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" gutterBottom>
                     My Maintenance
                   </Typography>
@@ -305,7 +507,7 @@ const ResidentDashboard = () => {
           </Grid>
 
           {/* Announcements */}
-          <Grid item xs={12}>
+          <Grid item xs={12} id="announcements">
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>

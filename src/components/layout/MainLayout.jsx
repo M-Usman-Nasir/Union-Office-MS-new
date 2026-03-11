@@ -244,7 +244,8 @@ const MainLayout = ({ children }) => {
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.RESIDENT_MAINTENANCE },
         { text: 'Financial Summary', icon: <AssessmentIcon />, path: ROUTES.RESIDENT_FINANCIAL_SUMMARY },
         { text: 'Union Info', icon: <ApartmentIcon />, path: ROUTES.RESIDENT_UNION_INFO },
-        { text: 'Profile', icon: <PeopleIcon />, path: ROUTES.RESIDENT_PROFILE },
+        { text: 'Union Members', icon: <PeopleIcon />, path: ROUTES.RESIDENT_UNION_MEMBERS },
+        { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.RESIDENT_PROFILE },
         { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
       ]
     }

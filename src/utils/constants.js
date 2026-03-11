@@ -219,6 +219,7 @@ export const ROUTES = {
   RESIDENT_MAINTENANCE: '/resident/maintenance',
   RESIDENT_PROFILE: '/resident/profile',
   RESIDENT_UNION_INFO: '/resident/union-info',
+  RESIDENT_UNION_MEMBERS: '/resident/union-members',
   RESIDENT_FINANCIAL_SUMMARY: '/resident/financial-summary',
   
   // Staff

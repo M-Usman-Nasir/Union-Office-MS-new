@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Container,
   Typography,
@@ -20,10 +20,17 @@ import {
   List,
   ListItem,
   ListItemText,
+  Card,
+  CardContent,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
+import AssignmentIcon from '@mui/icons-material/Assignment'
+import ScheduleIcon from '@mui/icons-material/Schedule'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import ReportEscalationIcon from '@mui/icons-material/Report'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
@@ -34,6 +41,7 @@ import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
 import { getBaseUrl } from '@/utils/constants'
+import { useLocation } from 'react-router-dom'
 
 const validationSchema = Yup.object({
   title: Yup.string().required('Title is required'),
@@ -55,6 +63,7 @@ const SUGGESTED_COMPLAINT_TITLES = [
 
 const ResidentComplaints = () => {
   const { user } = useAuth()
+  const location = useLocation()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [openDialog, setOpenDialog] = useState(false)
@@ -78,6 +87,20 @@ const ResidentComplaints = () => {
     () => complaintApi.getAll({ page, limit }).then(res => res.data)
   )
 
+  // Fetch more complaints for stats (my complaints only)
+  const { data: statsData } = useSWR(
+    complaintLogsVisible && user ? ['/complaints/my-stats', user.id] : null,
+    () => complaintApi.getAll({ limit: 200, page: 1 }).then(res => res.data)
+  )
+  const myComplaintsForStats = (statsData?.data ?? []).filter((c) => Number(c.submitted_by) === Number(user?.id))
+  const stats = {
+    total: myComplaintsForStats.length,
+    pending: myComplaintsForStats.filter((c) => c.status === 'pending').length,
+    inProgress: myComplaintsForStats.filter((c) => c.status === 'in_progress').length,
+    resolved: myComplaintsForStats.filter((c) => c.status === 'resolved' || c.status === 'closed').length,
+    escalated: myComplaintsForStats.filter((c) => c.escalated_at).length,
+  }
+
   const handleOpenDialog = () => {
     setOpenDialog(true)
   }
@@ -86,6 +109,13 @@ const ResidentComplaints = () => {
     setOpenDialog(false)
     setAttachmentFiles([])
   }
+
+  useEffect(() => {
+    if (location.state?.openSubmit) {
+      setOpenDialog(true)
+      window.history.replaceState({}, '', location.pathname)
+    }
+  }, [location.state?.openSubmit, location.pathname])
 
   const handleOpenEscalate = (complaint) => setEscalateDialog({ open: true, complaint, reason: '' })
   const closeEscalateDialog = () => setEscalateDialog({ open: false, complaint: null, reason: '' })
@@ -274,6 +304,80 @@ const ResidentComplaints = () => {
 
       {complaintLogsVisible && (
         <>
+          {/* Summary cards */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6} md={4} lg={2.4}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <AssignmentIcon sx={{ color: 'primary.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      My Complaints
+                    </Typography>
+                    <Typography variant="h6">{stats.total}</Typography>
+                    <Typography variant="caption" color="text.secondary">total submitted</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2.4}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <ScheduleIcon sx={{ color: 'warning.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Pending
+                    </Typography>
+                    <Typography variant="h6">{stats.pending}</Typography>
+                    <Typography variant="caption" color="text.secondary">awaiting action</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2.4}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <TrendingUpIcon sx={{ color: 'info.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      In Progress
+                    </Typography>
+                    <Typography variant="h6">{stats.inProgress}</Typography>
+                    <Typography variant="caption" color="text.secondary">being worked on</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2.4}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <CheckCircleOutlineIcon sx={{ color: 'success.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Resolved
+                    </Typography>
+                    <Typography variant="h6">{stats.resolved}</Typography>
+                    <Typography variant="caption" color="text.secondary">closed / resolved</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={4} lg={2.4}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <ReportEscalationIcon sx={{ color: 'secondary.main', mt: 0.25 }} fontSize="small" />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Escalated
+                    </Typography>
+                    <Typography variant="h6">{stats.escalated}</Typography>
+                    <Typography variant="caption" color="text.secondary">sent to platform</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
           {/* Filter Tabs */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
             <Tabs value={filterType} onChange={(e, newValue) => setFilterType(newValue)}>
