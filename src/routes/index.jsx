@@ -73,6 +73,7 @@ export const AppRoutes = () => {
                 <Route path="profile" element={<SuperAdminProfile />} />
                 <Route path="audit-logs" element={<AuditLogs />} />
                 <Route path="escalations" element={<Escalations />} />
+                <Route path="messages" element={<Messages />} />
                 <Route path="reports" element={<GlobalReports />} />
               </Routes>
             </MainLayout>

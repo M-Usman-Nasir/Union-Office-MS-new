@@ -6,7 +6,7 @@ export const getConversations = async (req, res) => {
     const userId = req.user.id;
     const role = req.user.role;
 
-    // Get distinct other users + last message + unread count
+    // Get distinct other users + last message + unread count (unread = messages TO current user FROM partner, not yet read)
     const result = await query(
       `WITH partners AS (
         SELECT DISTINCT CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END AS partner_id
@@ -21,9 +21,10 @@ export const getConversations = async (req, res) => {
         ORDER BY CASE WHEN m.sender_id = $1 THEN m.receiver_id ELSE m.sender_id END, m.created_at DESC
       ),
       unread_counts AS (
-        SELECT receiver_id AS partner_id, COUNT(*) AS unread
-        FROM messages WHERE receiver_id = $1 AND read_at IS NULL
-        GROUP BY receiver_id
+        SELECT sender_id AS partner_id, COUNT(*) AS unread
+        FROM messages
+        WHERE receiver_id = $1 AND read_at IS NULL
+        GROUP BY sender_id
       )
       SELECT u.id, u.name, u.email, u.role,
              lm.body AS last_message, lm.created_at AS last_at, lm.sender_id = $1 AS last_sent_by_me,

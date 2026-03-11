@@ -109,6 +109,7 @@ export default function Messages() {
         setOtherUser(res.data?.otherUser || null)
         setLoadingConv(false)
         messagesApi.getConversations().then(r => setConversations(r.data?.data || [])).catch(() => {})
+        window.dispatchEvent(new CustomEvent('hums-refresh-messages-count'))
       })
       .catch(() => {
         setMessages([])

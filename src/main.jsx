@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { Toaster } from 'react-hot-toast'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { MessagesUnreadProvider } from './contexts/MessagesUnreadContext'
 import { ConfigProvider } from './contexts/ConfigContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import ErrorBoundary from './components/error/ErrorBoundary'
@@ -22,7 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <ThemeProvider>
           <ConfigProvider>
             <AuthProvider>
-              <App />
+              <MessagesUnreadProvider>
+                <App />
+              </MessagesUnreadProvider>
               <Toaster
                 position="top-right"
                 toastOptions={{

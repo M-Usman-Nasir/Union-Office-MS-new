@@ -193,6 +193,7 @@ export const ROUTES = {
   SUPER_ADMIN_PROFILE: '/super-admin/profile',
   SUPER_ADMIN_AUDIT_LOGS: '/super-admin/audit-logs',
   SUPER_ADMIN_ESCALATIONS: '/super-admin/escalations',
+  SUPER_ADMIN_MESSAGES: '/super-admin/messages',
 
   // Admin
   ADMIN_DASHBOARD: '/admin/dashboard',

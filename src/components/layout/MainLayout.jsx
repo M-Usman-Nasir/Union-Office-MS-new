@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import PropTypes from 'prop-types'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -20,6 +20,7 @@ import {
   TextField,
   InputAdornment,
   Badge,
+  Button,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -50,7 +51,9 @@ import { ROUTES, ROLES } from '@/utils/constants'
 import { messagesApi } from '@/api/messagesApi'
 import PushNotificationEnabler from '@/components/notifications/PushNotificationEnabler'
 import superAdminAvatar from '@/assets/images/users/super_admin.webp'
+import toast from 'react-hot-toast'
 
+const POLL_INTERVAL_MS = 15000
 const sidebarLogo = '/icons/mob_Logo.png'
 const drawerWidth = 240
 const drawerWidthCollapsed = 64
@@ -75,7 +78,7 @@ const MainLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [anchorEl, setAnchorEl] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
+  const [topNavUnreadCount, setTopNavUnreadCount] = useState(0)
   const effectiveDrawerWidth = sidebarOpen ? drawerWidth : drawerWidthCollapsed
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('sm'))
@@ -83,23 +86,84 @@ const MainLayout = ({ children }) => {
   const { mode, toggleMode } = useAppTheme()
   const navigate = useNavigate()
   const location = useLocation()
+  const prevUnreadRef = useRef({ total: -1, byId: {} })
+  const fetchUnreadRef = useRef(null)
 
-  // Fetch unread message count for admin and resident (shown in toolbar chat icon badge)
+  const role = user?.role ? String(user.role).toLowerCase().replace(/\s/g, '_') : ''
+  const showMessagesInToolbar = ['super_admin', 'union_admin', 'resident', 'admin'].includes(role)
+
+  const getMessagesRoute = () => {
+    if (role === 'super_admin') return ROUTES.SUPER_ADMIN_MESSAGES
+    if (role === 'union_admin' || role === 'admin') return ROUTES.ADMIN_MESSAGES
+    if (role === 'resident') return ROUTES.RESIDENT_MESSAGES
+    return null
+  }
+
+  // Fetch unread count and show toast when new messages arrive (no context dependency)
   useEffect(() => {
-    if (user?.role !== ROLES.ADMIN && user?.role !== ROLES.RESIDENT) return
-    const fetchUnread = () => {
-      messagesApi.getConversations()
-        .then((res) => {
-          const list = res.data?.data || []
-          const total = list.reduce((sum, c) => sum + (c.unread_count || 0), 0)
-          setUnreadMessagesCount(total)
-        })
-        .catch(() => setUnreadMessagesCount(0))
+    if (!user?.id || !showMessagesInToolbar) {
+      setTopNavUnreadCount(0)
+      fetchUnreadRef.current = null
+      return
     }
+    const fetchUnread = async () => {
+      try {
+        const res = await messagesApi.getConversations()
+        const raw = res.data?.data ?? res.data
+        const list = Array.isArray(raw) ? raw : []
+        const getUnread = (c) => Number(c.unread_count ?? c.unreadCount ?? 0) || 0
+        const total = list.reduce((sum, c) => sum + getUnread(c), 0)
+        setTopNavUnreadCount(total)
+        const prev = prevUnreadRef.current
+        const messagesRoute = getMessagesRoute()
+        const isOnMessagesPage = location.pathname === messagesRoute
+        if (prev.total >= 0 && total > prev.total && !isOnMessagesPage) {
+          const fromConv = list.find((c) => getUnread(c) > (prev.byId[c.id] || 0))
+          const fromName = fromConv?.name || 'Someone'
+          toast(
+            (t) => (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <span>New message from {fromName}</span>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => {
+                    navigate(messagesRoute)
+                    toast.dismiss(t.id)
+                  }}
+                >
+                  View
+                </Button>
+              </Box>
+            ),
+            { duration: 6000 }
+          )
+        }
+        prevUnreadRef.current = {
+          total,
+          byId: list.reduce((acc, c) => ({ ...acc, [c.id]: getUnread(c) }), {}),
+        }
+      } catch {
+        setTopNavUnreadCount(0)
+      }
+    }
+    fetchUnreadRef.current = fetchUnread
     fetchUnread()
-    const interval = setInterval(fetchUnread, 60000) // refresh every minute
-    return () => clearInterval(interval)
-  }, [user?.role])
+    const interval = setInterval(fetchUnread, POLL_INTERVAL_MS)
+    return () => {
+      fetchUnreadRef.current = null
+      clearInterval(interval)
+    }
+  }, [user?.id, showMessagesInToolbar, location.pathname, navigate])
+
+  // When Messages page opens a conversation it dispatches this event so we refresh the count immediately
+  useEffect(() => {
+    const handler = () => {
+      if (typeof fetchUnreadRef.current === 'function') fetchUnreadRef.current()
+    }
+    window.addEventListener('hums-refresh-messages-count', handler)
+    return () => window.removeEventListener('hums-refresh-messages-count', handler)
+  }, [])
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
@@ -142,6 +206,7 @@ const MainLayout = ({ children }) => {
         { text: 'Subscription Management', icon: <CardMembershipIcon />, path: ROUTES.SUPER_ADMIN_SUBSCRIPTION_MANAGEMENT },
         { text: 'Invoices', icon: <ReceiptLongIcon />, path: ROUTES.SUPER_ADMIN_INVOICES },
         { text: 'Escalations', icon: <FeedbackIcon />, path: ROUTES.SUPER_ADMIN_ESCALATIONS },
+        { text: 'Messages', icon: <MessageIcon />, path: ROUTES.SUPER_ADMIN_MESSAGES },
         { text: 'Audit logs', icon: <AssessmentIcon />, path: ROUTES.SUPER_ADMIN_AUDIT_LOGS },
         { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.SUPER_ADMIN_SETTINGS },
         { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
@@ -151,6 +216,7 @@ const MainLayout = ({ children }) => {
       return [
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.ADMIN_DASHBOARD },
         { text: 'Residents', icon: <PeopleIcon />, path: ROUTES.ADMIN_RESIDENTS },
+        { text: 'Messages', icon: <MessageIcon />, path: ROUTES.ADMIN_MESSAGES },
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.ADMIN_MAINTENANCE },
         { text: 'Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_DEFAULTERS },
         { text: 'Finance', icon: <AccountBalanceIcon />, path: ROUTES.ADMIN_FINANCE },
@@ -475,18 +541,31 @@ const MainLayout = ({ children }) => {
               '& .MuiInputBase-input::placeholder': { color: 'inherit', opacity: 0.7 },
             }}
           />
-          {(user?.role === ROLES.ADMIN || user?.role === ROLES.RESIDENT) && (
+          {showMessagesInToolbar && (
             <IconButton
               color="inherit"
               aria-label="Messages"
-              onClick={() => navigate(user?.role === ROLES.ADMIN ? ROUTES.ADMIN_MESSAGES : ROUTES.RESIDENT_MESSAGES)}
+              onClick={() => navigate(getMessagesRoute())}
               sx={{
                 mr: 0.5,
                 transition: 'transform 0.2s ease',
                 '&:hover': { transform: 'scale(1.08)' },
               }}
             >
-              <Badge badgeContent={unreadMessagesCount} color="error">
+              <Badge
+                badgeContent={Math.min(99, Math.max(0, Number(topNavUnreadCount) || 0))}
+                color="error"
+                max={99}
+                showZero
+                sx={{
+                  '& .MuiBadge-badge': {
+                    fontWeight: 600,
+                    color: '#fff',
+                    minWidth: 18,
+                    height: 18,
+                  },
+                }}
+              >
                 <MessageIcon />
               </Badge>
             </IconButton>
