@@ -45,6 +45,8 @@ import FinancialSummaryScreen from '../screens/FinancialSummaryScreen';
 import UnionInfoScreen from '../screens/UnionInfoScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MessagesScreen from '../screens/MessagesScreen';
+import UnionMembersScreen from '../screens/UnionMembersScreen';
+import UnionMemberDetailScreen from '../screens/UnionMemberDetailScreen';
 
 const Tab = createBottomTabNavigator();
 const ComplaintsStack = createNativeStackNavigator();
@@ -97,6 +99,8 @@ function MoreStackScreen() {
       <MoreStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
       <MoreStack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
       <MoreStack.Screen name="UnionInfo" component={UnionInfoScreen} options={{ title: 'Union Info' }} />
+      <MoreStack.Screen name="UnionMembers" component={UnionMembersScreen} options={{ title: 'Union Members' }} />
+      <MoreStack.Screen name="UnionMemberDetail" component={UnionMemberDetailScreen} options={{ title: 'Member' }} />
     </MoreStack.Navigator>
   );
 }

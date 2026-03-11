@@ -32,4 +32,6 @@ export const API_ENDPOINTS = {
   MESSAGES_PARTNERS: '/messages/partners',
   MESSAGES_WITH: (userId) => `/messages/with/${userId}`,
   MESSAGES_SEND: '/messages',
+  UNION_MEMBERS: '/union-members',
+  UNION_MEMBER_BY_ID: (id) => `/union-members/${id}`,
 };

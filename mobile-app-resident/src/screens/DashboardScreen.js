@@ -252,6 +252,21 @@ export default function DashboardScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="people-outline" size={20} color={colors.primary} />
+                <Text style={styles.sectionTitle}>Union Members</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.card}
+                onPress={() => navigation.navigate('More', { screen: 'UnionMembers' })}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.cardTitle}>View union members</Text>
+                <Text style={styles.muted}>Committee and contact details</Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
       </ScrollView>

@@ -46,6 +46,14 @@ export default function ProfileScreen() {
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => navigation.navigate('UnionMembers')}
+        >
+          <Text style={styles.linkText}>Union Members</Text>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={[styles.button, styles.logout]} onPress={handleLogout}>
           <Text style={styles.buttonText}>Sign Out</Text>
         </TouchableOpacity>
