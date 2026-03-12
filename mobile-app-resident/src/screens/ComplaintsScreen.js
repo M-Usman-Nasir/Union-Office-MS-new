@@ -8,7 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
 import { complaintsApi } from '../api/complaints';
 import { useNavigation } from '@react-navigation/native';
@@ -76,16 +76,16 @@ export default function ComplaintsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <View style={styles.container}>
         <TouchableOpacity
           style={styles.fab}
@@ -102,7 +102,7 @@ export default function ComplaintsScreen() {
           ListEmptyComponent={<Text style={styles.empty}>No complaints yet</Text>}
         />
       </View>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { padding: 16, paddingBottom: 80 },
+  list: { paddingBottom: 80 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -127,8 +127,8 @@ const styles = StyleSheet.create({
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 24 },
   fab: {
     position: 'absolute',
-    right: 16,
-    top: 16,
+    right: 0,
+    top: 0,
     backgroundColor: colors.primary,
     paddingHorizontal: 14,
     paddingVertical: 8,

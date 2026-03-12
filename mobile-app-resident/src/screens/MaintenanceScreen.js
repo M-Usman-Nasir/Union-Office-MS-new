@@ -7,7 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
 import { maintenanceApi } from '../api/maintenance';
 import { colors } from '../theme';
@@ -58,16 +58,16 @@ export default function MaintenanceScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <FlatList
         data={list}
         renderItem={renderItem}
@@ -76,14 +76,14 @@ export default function MaintenanceScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={<Text style={styles.empty}>No maintenance records for your unit</Text>}
       />
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { padding: 16, paddingBottom: 40 },
+  list: { paddingBottom: 16 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,

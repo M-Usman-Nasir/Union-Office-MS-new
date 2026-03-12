@@ -297,7 +297,9 @@ export const create = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
+    const isSelfUpdate = req.residentSelfUpdate === true;
+
+    let {
       name,
       society_apartment_id,
       unit_id,
@@ -305,6 +307,7 @@ export const update = async (req, res) => {
       contact_number,
       emergency_contact,
       move_in_date,
+      address,
       owner_name,
       license_plate,
       number_of_cars,
@@ -312,9 +315,27 @@ export const update = async (req, res) => {
       car_make_model,
       bike_make_model,
       bike_license_plate,
+      k_electric_account,
+      gas_account,
+      water_account,
+      phone_tv_account,
       telephone_bills,
       other_bills
     } = req.body;
+
+    // Resident self-update: only allow additional-detail fields
+    if (isSelfUpdate) {
+      name = undefined;
+      society_apartment_id = undefined;
+      unit_id = undefined;
+      cnic = undefined;
+      contact_number = undefined;
+      emergency_contact = undefined;
+      move_in_date = undefined;
+      owner_name = undefined;
+      telephone_bills = undefined;
+      other_bills = undefined;
+    }
 
     const existing = await query('SELECT id, unit_id FROM users WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
@@ -324,24 +345,50 @@ export const update = async (req, res) => {
       });
     }
 
-    // Update user record
-    const result = await query(
-      `UPDATE users 
-       SET name = COALESCE($1, name),
-           society_apartment_id = COALESCE($2, society_apartment_id),
-           unit_id = COALESCE($3, unit_id),
-           cnic = COALESCE($4, cnic),
-           contact_number = COALESCE($5, contact_number),
-           emergency_contact = COALESCE($6, emergency_contact),
-           move_in_date = COALESCE($7, move_in_date),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $8
-       RETURNING id, email, name, role, society_apartment_id, unit_id, updated_at`,
-      [name, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, id]
-    );
+    let result;
+
+    if (isSelfUpdate) {
+      // Resident can only update address (users) and utility/vehicle (units)
+      const userUpdates = [];
+      const userParams = [];
+      let ui = 0;
+      if (address !== undefined) {
+        ui++;
+        userUpdates.push(`address = $${ui}`);
+        userParams.push(address || null);
+      }
+      if (userUpdates.length > 0) {
+        ui++;
+        userUpdates.push('updated_at = CURRENT_TIMESTAMP');
+        userParams.push(id);
+        result = await query(
+          `UPDATE users SET ${userUpdates.join(', ')} WHERE id = $${ui} RETURNING id, email, name, role, society_apartment_id, unit_id, updated_at`,
+          userParams
+        );
+      } else {
+        result = await query('SELECT id, email, name, role, society_apartment_id, unit_id, updated_at FROM users WHERE id = $1', [id]);
+      }
+    } else {
+      // Admin: full user update
+      result = await query(
+        `UPDATE users 
+         SET name = COALESCE($1, name),
+             society_apartment_id = COALESCE($2, society_apartment_id),
+             unit_id = COALESCE($3, unit_id),
+             cnic = COALESCE($4, cnic),
+             contact_number = COALESCE($5, contact_number),
+             emergency_contact = COALESCE($6, emergency_contact),
+             move_in_date = COALESCE($7, move_in_date),
+             address = COALESCE($8, address),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $9
+         RETURNING id, email, name, role, society_apartment_id, unit_id, updated_at`,
+        [name, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, address, id]
+      );
+    }
 
     // Update unit record if unit_id exists and additional fields are provided
-    const finalUnitId = unit_id || existing.rows[0].unit_id;
+    const finalUnitId = unit_id ?? existing.rows[0].unit_id;
     if (finalUnitId && (
       owner_name !== undefined ||
       license_plate !== undefined ||
@@ -350,6 +397,10 @@ export const update = async (req, res) => {
       car_make_model !== undefined ||
       bike_make_model !== undefined ||
       bike_license_plate !== undefined ||
+      k_electric_account !== undefined ||
+      gas_account !== undefined ||
+      water_account !== undefined ||
+      phone_tv_account !== undefined ||
       telephone_bills !== undefined ||
       other_bills !== undefined
     )) {
@@ -395,6 +446,27 @@ export const update = async (req, res) => {
           paramCount++;
           unitUpdates.push(`bike_license_plate = $${paramCount}::varchar`);
           unitParams.push(bike_license_plate || null);
+        }
+
+        if (k_electric_account !== undefined) {
+          paramCount++;
+          unitUpdates.push(`k_electric_account = $${paramCount}`);
+          unitParams.push(k_electric_account || null);
+        }
+        if (gas_account !== undefined) {
+          paramCount++;
+          unitUpdates.push(`gas_account = $${paramCount}`);
+          unitParams.push(gas_account || null);
+        }
+        if (water_account !== undefined) {
+          paramCount++;
+          unitUpdates.push(`water_account = $${paramCount}`);
+          unitParams.push(water_account || null);
+        }
+        if (phone_tv_account !== undefined) {
+          paramCount++;
+          unitUpdates.push(`phone_tv_account = $${paramCount}`);
+          unitParams.push(phone_tv_account || null);
         }
 
         // Handle JSONB fields

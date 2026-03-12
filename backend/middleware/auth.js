@@ -88,11 +88,11 @@ export const requireRole = (...roles) => {
 export const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
+
       const result = await query(
         'SELECT id, email, name, role, society_apartment_id, unit_id FROM users WHERE id = $1 AND is_active = true',
         [decoded.userId]
@@ -102,10 +102,26 @@ export const optionalAuth = async (req, res, next) => {
         req.user = result.rows[0];
       }
     }
-    
+
     next();
   } catch (error) {
     // Continue without authentication
     next();
   }
+};
+
+/**
+ * Allow PUT /residents/:id if user is resident updating own record (req.params.id === req.user.id),
+ * otherwise require super_admin or union_admin.
+ */
+export const allowResidentSelfOrAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  const isResidentSelf = req.user.role === 'resident' && String(req.params.id) === String(req.user.id);
+  if (isResidentSelf) {
+    req.residentSelfUpdate = true;
+    return next();
+  }
+  return requireRole('super_admin', 'union_admin')(req, res, next);
 };

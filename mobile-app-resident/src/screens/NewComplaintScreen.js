@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '../context/AuthContext';
@@ -114,7 +114,7 @@ export default function NewComplaintScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -188,14 +188,14 @@ export default function NewComplaintScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { paddingBottom: 16 },
   error: { color: colors.error, marginBottom: 12, fontSize: 14 },
   label: {
     fontSize: 14,

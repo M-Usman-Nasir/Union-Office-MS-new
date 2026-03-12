@@ -7,7 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
 import { financeApi } from '../api/finance';
 import { colors } from '../theme';
@@ -56,16 +56,16 @@ export default function FinancialSummaryScreen() {
 
   if (loading && !summary) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <ScrollView
         style={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -99,14 +99,14 @@ export default function FinancialSummaryScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { paddingBottom: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   period: { color: colors.text, fontWeight: '600', marginBottom: 16 },
   card: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border },

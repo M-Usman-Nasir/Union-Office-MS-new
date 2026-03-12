@@ -7,7 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { Ionicons } from '@expo/vector-icons';
 import { announcementsApi } from '../api/announcements';
 import { colors } from '../theme';
@@ -57,16 +57,16 @@ export default function NotificationsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <FlatList
         data={list}
         renderItem={renderItem}
@@ -75,19 +75,19 @@ export default function NotificationsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="notifications-off-outline" size={48} color={colors.textMuted} />
-            <Text style={styles.emptyText}>No notifications yet</Text>
+            <Ionicons name="megaphone-outline" size={48} color={colors.textMuted} />
+            <Text style={styles.emptyText}>No announcements yet</Text>
           </View>
         }
       />
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { padding: 16, paddingBottom: 24 },
+  list: { paddingBottom: 16 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,

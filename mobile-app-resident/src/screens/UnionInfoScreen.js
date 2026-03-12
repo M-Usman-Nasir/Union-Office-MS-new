@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
 import { apartmentApi } from '../api/apartment';
 import { propertyApi } from '../api/property';
@@ -43,26 +43,26 @@ export default function UnionInfoScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   if (!society) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <Text style={styles.muted}>No society information available</Text>
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.card}>
           <Text style={styles.name}>{society.name}</Text>
@@ -95,14 +95,14 @@ export default function UnionInfoScreen() {
           {units.length > 50 && <Text style={styles.muted}>... and {units.length - 50} more</Text>}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { paddingBottom: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   card: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: colors.border },
   name: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8 },

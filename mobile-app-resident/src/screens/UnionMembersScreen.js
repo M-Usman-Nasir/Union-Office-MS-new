@@ -9,7 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
@@ -109,26 +109,26 @@ export default function UnionMembersScreen() {
 
   if (!societyId) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <Text style={styles.muted}>No society assigned</Text>
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   if (loading && list.length === 0) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={20} color={colors.textMuted} />
         <TextInput
@@ -166,7 +166,7 @@ export default function UnionMembersScreen() {
           ) : null
         }
       />
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
@@ -178,7 +178,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: 12,
-    marginHorizontal: 16,
     marginBottom: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -192,7 +191,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingVertical: 4,
   },
-  list: { paddingHorizontal: 16, paddingBottom: 24 },
+  list: { paddingBottom: 16 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,

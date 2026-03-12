@@ -10,7 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { messagesApi } from '../api/messages';
@@ -103,15 +103,15 @@ export default function MessagesScreen({ navigation }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   if (!selectedUserId) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.listContainer}>
           <Text style={styles.sectionTitle}>Chat with admin</Text>
           {partners.map((p) => (
@@ -151,12 +151,12 @@ export default function MessagesScreen({ navigation }) {
             <Text style={styles.empty}>No admins available to message.</Text>
           )}
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         {loadingChat ? (
           <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>
@@ -196,14 +196,14 @@ export default function MessagesScreen({ navigation }) {
           </>
         )}
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContainer: { padding: 16 },
+  listContainer: { paddingBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 12 },
   convRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
   convText: { flex: 1, marginLeft: 12 },
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   badgeText: { color: '#fff', fontSize: 12 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 24 },
   chatContainer: { flex: 1 },
-  messagesList: { padding: 16, paddingBottom: 8 },
+  messagesList: { paddingBottom: 16 },
   bubble: { maxWidth: '80%', padding: 12, borderRadius: 16, marginBottom: 8 },
   bubbleMe: { alignSelf: 'flex-end', backgroundColor: colors.primary },
   bubbleThem: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },

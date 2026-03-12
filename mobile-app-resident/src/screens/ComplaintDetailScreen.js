@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import SafeScreen from '../components/SafeScreen';
 import { useRoute } from '@react-navigation/native';
 import { complaintsApi } from '../api/complaints';
 import { colors } from '../theme';
@@ -38,26 +38,26 @@ export default function ComplaintDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   if (!complaint) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeScreen style={styles.safe} edges={[]}>
         <View style={styles.centered}>
           <Text style={styles.muted}>Complaint not found</Text>
         </View>
-      </SafeAreaView>
+      </SafeScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.subject}>{complaint.subject || complaint.title || 'Complaint'}</Text>
         <View style={styles.meta}>
@@ -79,14 +79,14 @@ export default function ComplaintDetailScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { paddingBottom: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   subject: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },

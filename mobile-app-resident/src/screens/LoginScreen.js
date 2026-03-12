@@ -38,7 +38,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeScreen style={styles.safe} edges={['top', 'bottom']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       <ImageBackground
         source={require('../../assets/images/12.png')}
         style={styles.backgroundImage}
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   backgroundImage: { flex: 1 },
   container: { flex: 1 },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  scroll: { flexGrow: 1, justifyContent: 'center' },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,

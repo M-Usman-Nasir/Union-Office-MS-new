@@ -13,3 +13,10 @@ export const colors = {
   success: '#16a34a',
   warning: '#ca8a04',
 };
+
+// Screen edge margins – applied centrally in SafeScreen
+export const spacing = {
+  screenHorizontal: 20,
+  screenTop: 20,
+  screenBottom: 24,
+};

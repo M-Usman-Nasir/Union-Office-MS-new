@@ -59,6 +59,10 @@ function formatDate(str) {
   return new Date(str).toLocaleDateString('en-PK', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function getTodayFormatted() {
+  return new Date().toLocaleDateString('en-PK', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 export default function DashboardScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
@@ -81,7 +85,7 @@ export default function DashboardScreen() {
   const scrollToCarouselIndex = (index) => {
     const i = Math.max(0, Math.min(index, CAROUSEL_IMAGES.length - 1));
     setCarouselIndex(i);
-    const x = 20 + i * (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP);
+    const x = i * (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP);
     carouselRef.current?.scrollTo({ x, animated: true });
   };
 
@@ -89,7 +93,7 @@ export default function DashboardScreen() {
     autoScrollTimerRef.current = setInterval(() => {
       const next = (carouselIndexRef.current + 1) % CAROUSEL_IMAGES.length;
       setCarouselIndex(next);
-      const x = 20 + next * (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP);
+      const x = next * (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP);
       carouselRef.current?.scrollTo({ x, animated: true });
     }, CAROUSEL_AUTO_INTERVAL_MS);
     return () => {
@@ -99,7 +103,7 @@ export default function DashboardScreen() {
 
   const onCarouselScroll = (e) => {
     const x = e.nativeEvent.contentOffset.x;
-    const index = Math.round((x - 20) / (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP));
+    const index = Math.round(x / (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP));
     const clamped = Math.max(0, Math.min(index, CAROUSEL_IMAGES.length - 1));
     if (clamped !== carouselIndex) setCarouselIndex(clamped);
   };
@@ -145,12 +149,27 @@ export default function DashboardScreen() {
   const totalPending = defaulters.reduce((sum, d) => sum + (parseFloat(d.pending_amount) || 0), 0);
 
   return (
-    <SafeScreen style={styles.safe} edges={['top']}>
+    <SafeScreen style={styles.safe} edges={[]}>
       {/* Top bar */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
           <Text style={styles.topBarTitle}>Dashboard</Text>
           <Text style={styles.topBarWelcome}>Welcome, {user?.name || user?.email}</Text>
+          <View style={styles.topBarDetails}>
+            {(user?.unit_name || user?.unit_number) && (
+              <Text style={styles.topBarDetailText}>Unit: {user?.unit_name || user?.unit_number}</Text>
+            )}
+            {(user?.block_name || user?.block_number) && (
+              <>
+                {(user?.unit_name || user?.unit_number) && <Text style={styles.topBarDetailDot}> · </Text>}
+                <Text style={styles.topBarDetailText}>Block: {user?.block_name || user?.block_number}</Text>
+              </>
+            )}
+            <Text style={styles.topBarDetailText}>
+              {(user?.unit_name || user?.unit_number || user?.block_name || user?.block_number) ? ' · ' : ''}
+              {getTodayFormatted()}
+            </Text>
+          </View>
         </View>
         <TouchableOpacity
           style={styles.bellBtn}
@@ -277,12 +296,11 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
-  content: { paddingBottom: 24 },
+  content: { paddingBottom: 16 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 12,
     backgroundColor: colors.background,
@@ -292,16 +310,24 @@ const styles = StyleSheet.create({
   topBarLeft: { flex: 1 },
   topBarTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
   topBarWelcome: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  topBarDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  topBarDetailText: { fontSize: 13, color: colors.textMuted },
+  topBarDetailDot: { fontSize: 13, color: colors.textMuted },
   bellBtn: { padding: 8 },
   carouselWrap: { marginBottom: 8 },
   carouselContent: {
-    paddingHorizontal: 20,
     paddingVertical: 16,
     gap: CAROUSEL_GAP,
   },
   carouselItem: {
     width: CAROUSEL_ITEM_WIDTH,
-    height: 160,
+    height: 220,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: colors.surface,
@@ -326,7 +352,7 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  section: { paddingHorizontal: 20, marginBottom: 24 },
+  section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
   card: {

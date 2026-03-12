@@ -1,7 +1,7 @@
 import express from 'express';
 import * as residentController from '../controllers/residentController.js';
 import * as familyMemberController from '../controllers/familyMemberController.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import { authenticate, requireRole, allowResidentSelfOrAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -23,8 +23,8 @@ router.get('/:id', residentController.getById);
 // Create resident (admin only)
 router.post('/', requireRole('super_admin', 'union_admin'), residentController.create);
 
-// Update resident (admin only)
-router.put('/:id', requireRole('super_admin', 'union_admin'), residentController.update);
+// Update resident (admin or resident updating own additional details)
+router.put('/:id', allowResidentSelfOrAdmin, residentController.update);
 
 // Delete resident (admin only)
 router.delete('/:id', requireRole('super_admin', 'union_admin'), residentController.remove);
