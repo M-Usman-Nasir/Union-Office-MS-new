@@ -25,7 +25,11 @@
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#f1f5f9"
       },
-      "package": "com.unionoffice.resident"
+      "package": "com.unionoffice.resident",
+      "permissions": [
+        "READ_CONTACTS",
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "plugins": [
       "expo-secure-store"
