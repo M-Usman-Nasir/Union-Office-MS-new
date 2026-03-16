@@ -2,9 +2,20 @@
 
 ## Build command
 
+From project root (or from `mobile-app-resident`):
+
 ```bash
-eas build --platform android
+npm run build:android
 ```
+
+Or directly with EAS CLI:
+
+```bash
+cd mobile-app-resident
+eas build --platform android --profile preview
+```
+
+The `preview` profile is configured to produce an **APK** (not AAB) for internal distribution.
 
 ## If the build fails at the Prebuild phase
 
@@ -27,8 +38,3 @@ eas build --platform android
 
 3. **Inspect EAS logs:**  
    Open the build URL from the terminal (e.g. `https://expo.dev/accounts/.../builds/...`) and expand the **Prebuild** phase to see the exact error.
-
-
-EAS build
-cd mobile-app-resident
-eas build --platform android
