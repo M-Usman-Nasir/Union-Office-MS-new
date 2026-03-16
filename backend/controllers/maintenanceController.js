@@ -22,6 +22,23 @@ async function createFinanceIncomeFromMaintenance({ societyId, addedBy, amount, 
 // Get all maintenance records
 export const getAll = async (req, res) => {
   try {
+    // Resident must belong to a society and unit; otherwise return empty (no access)
+    if (req.user?.role === 'resident') {
+      if (!req.user.society_apartment_id || !req.user.unit_id) {
+        const limitNum = Number(req.query.limit) || 10;
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            page: 1,
+            limit: limitNum,
+            total: 0,
+            pages: 0,
+          },
+        });
+      }
+    }
+
     const { page = 1, limit = 10, society_id, unit_id, status, month, year } = req.query;
     const offset = (page - 1) * limit;
 

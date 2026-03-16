@@ -50,6 +50,7 @@ import { useTheme as useAppTheme } from '@/contexts/ThemeContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import { messagesApi } from '@/api/messagesApi'
 import PushNotificationEnabler from '@/components/notifications/PushNotificationEnabler'
+import ResidentPendingAssignment from '@/pages/resident/PendingAssignment'
 import superAdminAvatar from '@/assets/images/users/super_admin.webp'
 import toast from 'react-hot-toast'
 
@@ -91,6 +92,9 @@ const MainLayout = ({ children }) => {
 
   const role = user?.role ? String(user.role).toLowerCase().replace(/\s/g, '_') : ''
   const showMessagesInToolbar = ['super_admin', 'union_admin', 'resident', 'admin'].includes(role)
+  const isResidentWithoutSociety =
+    user?.role === ROLES.RESIDENT &&
+    (user?.society_apartment_id == null || user?.society_apartment_id === '')
 
   const getMessagesRoute = () => {
     if (role === 'super_admin') return ROUTES.SUPER_ADMIN_MESSAGES
@@ -707,7 +711,7 @@ const MainLayout = ({ children }) => {
         }}
       >
         <Toolbar />
-        {children}
+        {isResidentWithoutSociety ? <ResidentPendingAssignment /> : children}
         <PushNotificationEnabler />
       </Box>
     </Box>

@@ -49,7 +49,7 @@ function ComplaintsStackHeader({ navigation, options, back }) {
 
   return (
     <View style={[headerStyles.complaintsHeader, { paddingTop: topInset }]}>
-      {renderBack ? renderBack({}) : null}
+      {renderBack ? renderBack({ navigation }) : null}
       <View style={headerStyles.headerTitleRow}>
         <View style={headerStyles.headerIcon}>
           <Ionicons name={iconName} size={22} color={iconColor} />
@@ -150,7 +150,27 @@ function MoreStackScreen() {
   };
   return (
     <MoreStack.Navigator screenOptions={screenOpts}>
-      <MoreStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile', headerIconName: 'person-outline', headerIconColor: colors.primary }} />
+      <MoreStack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          headerIconName: 'person-outline',
+          headerIconColor: colors.primary,
+          headerLeft: ({ navigation }) => {
+            const tabNav = navigation?.getParent?.();
+            return (
+              <TouchableOpacity
+                onPress={() => tabNav?.navigate('Home')}
+                style={headerStyles.headerBack}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+            );
+          },
+        }}
+      />
       <MoreStack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages', headerIconName: 'mail-outline', headerIconColor: colors.primary }} />
       <MoreStack.Screen name="UnionInfo" component={UnionInfoScreen} options={{ title: 'Union Info', headerIconName: 'business-outline', headerIconColor: colors.success }} />
       <MoreStack.Screen name="UnionMembers" component={UnionMembersScreen} options={{ title: 'Union Members', headerIconName: 'people-outline', headerIconColor: colors.warning }} />

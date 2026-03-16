@@ -22,8 +22,16 @@ export const getAll = async (req, res) => {
     const params = [];
     let paramCount = 0;
 
-    // Residents can see their own complaints and public complaints
+    // Residents can see their own complaints and public complaints only when assigned to a society
     if (req.user.role === 'resident') {
+      if (!req.user.society_apartment_id) {
+        const limitNum = Number(limit) || 10;
+        return res.json({
+          success: true,
+          data: [],
+          pagination: { page: 1, limit: limitNum, total: 0, pages: 0 },
+        });
+      }
       paramCount++;
       sql += ` AND (c.submitted_by = $${paramCount} OR c.is_public = true)`;
       params.push(req.user.id);
@@ -207,6 +215,13 @@ export const getById = async (req, res) => {
 // Create complaint
 export const create = async (req, res) => {
   try {
+    if (req.user.role === 'resident' && !req.user.society_apartment_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must be added to a society by an administrator before you can submit a complaint.',
+      });
+    }
+
     const { unit_id, society_apartment_id, title, subject, description, priority, is_public, type, remarks, submitted_by, submitted_by_name_override } = req.body;
     const complaintTitle = title || subject;
 
@@ -308,6 +323,13 @@ export const create = async (req, res) => {
 // Create complaint with file attachments (multipart/form-data)
 export const createWithAttachments = async (req, res) => {
   try {
+    if (req.user.role === 'resident' && !req.user.society_apartment_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must be added to a society by an administrator before you can submit a complaint.',
+      });
+    }
+
     const { unit_id, society_apartment_id, title, subject, description, priority, is_public, type, remarks, submitted_by, submitted_by_name_override } = req.body;
     const complaintTitle = title || subject;
 

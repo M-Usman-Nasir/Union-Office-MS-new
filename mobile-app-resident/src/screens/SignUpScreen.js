@@ -1,6 +1,5 @@
 /* global require */
-import { useState, useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -17,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
-import { STORAGE_KEYS } from '../constants';
+import { authApi } from '../api/auth';
 import { colors } from '../theme';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,43 +25,70 @@ function isValidEmail(value) {
   return value.trim().length > 0 && EMAIL_REGEX.test(value.trim());
 }
 
-export default function LoginScreen() {
+export default function SignUpScreen() {
+  const navigation = useNavigation();
+  const { login } = useAuth();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
-  const navigation = useNavigation();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [savedEmail, savedPassword] = await Promise.all([
-          SecureStore.getItemAsync(STORAGE_KEYS.LAST_EMAIL),
-          SecureStore.getItemAsync(STORAGE_KEYS.LAST_PASSWORD),
-        ]);
-        if (savedEmail != null) setEmail(savedEmail);
-        if (savedPassword != null) setPassword(savedPassword);
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const emailValid = isValidEmail(email);
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
 
-  const handleLogin = async () => {
+  const handleSignUp = async () => {
     setError('');
-    if (!email.trim() || !password) {
-      setError('Email and password are required');
+    setSuccessMessage('');
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedName) {
+      setError('Name is required');
+      return;
+    }
+    if (!trimmedEmail) {
+      setError('Email is required');
+      return;
+    }
+    if (!emailValid) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    if (!password) {
+      setError('Password is required');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
     setLoading(true);
-    const result = await login({ email: email.trim().toLowerCase(), password });
-    setLoading(false);
-    if (result.success) return;
-    setError(result.error || 'Login failed');
+    try {
+      await authApi.registerResident({
+        name: trimmedName,
+        email: trimmedEmail,
+        password,
+      });
+      const result = await login({ email: trimmedEmail, password });
+      if (result.success) {
+        setSuccessMessage('Account created! Taking you in...');
+        setLoading(false);
+        return;
+      }
+      setSuccessMessage('Account created. Please sign in with your email and password.');
+    } catch (e) {
+      setError(e.response?.data?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -80,8 +106,19 @@ export default function LoginScreen() {
             <View style={styles.card}>
               <Text style={styles.title}>Union Resident</Text>
               <Text style={styles.tagline}>Your community, connected.</Text>
-              <Text style={styles.subtitle}>Sign in to your account</Text>
+              <Text style={styles.subtitle}>Create an account</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
+              {successMessage ? <Text style={styles.success}>{successMessage}</Text> : null}
+
+              <TextInput
+                style={styles.input}
+                placeholder="Full name"
+                placeholderTextColor={colors.textMuted}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                editable={!loading}
+              />
               <View style={styles.emailWrapper}>
                 <TextInput
                   style={[styles.input, emailValid && styles.inputWithTick]}
@@ -102,7 +139,7 @@ export default function LoginScreen() {
               <View style={styles.passwordWrapper}>
                 <TextInput
                   style={styles.inputPassword}
-                  placeholder="Password"
+                  placeholder="Password (min 6 characters)"
                   placeholderTextColor={colors.textMuted}
                   value={password}
                   onChangeText={setPassword}
@@ -121,24 +158,46 @@ export default function LoginScreen() {
                   />
                 </TouchableOpacity>
               </View>
+              <View style={styles.passwordWrapper}>
+                <TextInput
+                  style={[styles.inputPassword, passwordsMatch && password.length > 0 && styles.inputValid]}
+                  placeholder="Confirm password"
+                  placeholderTextColor={colors.textMuted}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                  editable={!loading}
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={() => setShowConfirmPassword((prev) => !prev)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color={colors.textMuted}
+                  />
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
-                onPress={handleLogin}
+                onPress={handleSignUp}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonText}>Sign In</Text>
+                  <Text style={styles.buttonText}>Sign Up</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.signUpRow}
-                onPress={() => navigation.navigate('SignUp')}
+                style={styles.signInRow}
+                onPress={() => navigation.navigate('Login')}
                 disabled={loading}
               >
-                <Text style={styles.signUpHint}>Don&apos;t have an account? </Text>
-                <Text style={styles.signUpLink}>Sign up</Text>
+                <Text style={styles.signInHint}>Already have an account? </Text>
+                <Text style={styles.signInLink}>Sign in</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -164,23 +223,20 @@ const styles = StyleSheet.create({
   tagline: { fontSize: 13, fontStyle: 'italic', color: colors.textMuted, textAlign: 'center', marginBottom: 8 },
   subtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginBottom: 24 },
   error: { color: colors.error, marginBottom: 12, textAlign: 'center' },
-  emailWrapper: {
-    position: 'relative',
-    marginBottom: 12,
-  },
+  success: { color: colors.success, marginBottom: 12, textAlign: 'center', fontSize: 14 },
   input: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: 10,
     padding: 14,
     color: colors.text,
-    marginBottom: 0,
     fontSize: 16,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: 12,
   },
-  inputWithTick: {
-    paddingRight: 44,
-  },
+  inputValid: { borderColor: colors.success },
+  emailWrapper: { position: 'relative', marginBottom: 12 },
+  inputWithTick: { paddingRight: 44 },
   emailTick: {
     position: 'absolute',
     right: 12,
@@ -188,10 +244,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
   },
-  passwordWrapper: {
-    position: 'relative',
-    marginBottom: 12,
-  },
+  passwordWrapper: { position: 'relative', marginBottom: 12 },
   inputPassword: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: 10,
@@ -218,7 +271,7 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  signUpRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
-  signUpHint: { fontSize: 14, color: colors.textSecondary },
-  signUpLink: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  signInRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
+  signInHint: { fontSize: 14, color: colors.textSecondary },
+  signInLink: { fontSize: 14, fontWeight: '600', color: colors.primary },
 });

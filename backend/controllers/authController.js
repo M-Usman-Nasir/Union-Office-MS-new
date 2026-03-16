@@ -287,6 +287,50 @@ export const register = async (req, res) => {
   }
 };
 
+// Public resident self-registration (no auth). User is created with no society/apartment; they can log in but must be assigned by admin to use app features.
+export const registerResident = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Name is required' });
+    }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existing = await query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'An account with this email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await query(
+      `INSERT INTO users (email, password, name, role, is_active, society_apartment_id, unit_id, created_by)
+       VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL)`,
+      [normalizedEmail, hashedPassword, name.trim(), 'resident', true]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created. You can sign in now. You will need to be added to a society by an admin to use the app.',
+    });
+  } catch (error) {
+    console.error('Register resident error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed',
+      error: error.message,
+    });
+  }
+};
+
 // Get current user
 export const getMe = async (req, res) => {
   try {

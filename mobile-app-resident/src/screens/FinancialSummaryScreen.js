@@ -38,7 +38,7 @@ export default function FinancialSummaryScreen() {
   const [error, setError] = useState(null);
 
   const isVisible = settings === null ? null : (settings?.financial_reports_visible !== false);
-  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  const yearOptions = [currentYear];
 
   const loadSettings = async () => {
     if (!societyId) return;

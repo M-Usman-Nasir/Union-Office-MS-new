@@ -9,6 +9,7 @@ const router = express.Router();
 router.post('/login', authController.login);
 router.post('/refresh', authController.refreshToken);
 router.post('/logout', authController.logout);
+router.post('/register/resident', authController.registerResident);
 
 // Protected routes
 router.get('/me', authenticate, authController.getMe);

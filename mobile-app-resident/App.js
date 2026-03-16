@@ -9,13 +9,15 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
 import AuthStack from './src/navigation/AuthStack';
 import MainTabs from './src/navigation/MainTabs';
+import PendingAssignmentScreen from './src/screens/PendingAssignmentScreen';
 
 const TAGLINE = 'Your community, connected.';
 
 const Stack = createNativeStackNavigator();
 
 function RootNavigator() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
+  const hasSociety = user?.society_apartment_id != null && user?.society_apartment_id !== '';
 
   if (loading) {
     return (
@@ -29,10 +31,12 @@ function RootNavigator() {
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {isAuthenticated ? (
-        <Stack.Screen name="Main" component={MainTabs} />
-      ) : (
+      {!isAuthenticated ? (
         <Stack.Screen name="Auth" component={AuthStack} />
+      ) : !hasSociety ? (
+        <Stack.Screen name="PendingAssignment" component={PendingAssignmentScreen} />
+      ) : (
+        <Stack.Screen name="Main" component={MainTabs} />
       )}
     </Stack.Navigator>
   );

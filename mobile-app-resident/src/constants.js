@@ -16,6 +16,7 @@ export const API_ENDPOINTS = {
   LOGOUT: '/auth/logout',
   REFRESH: '/auth/refresh',
   ME: '/auth/me',
+  REGISTER_RESIDENT: '/auth/register/resident',
   COMPLAINTS: '/complaints',
   COMPLAINT_BY_ID: (id) => `/complaints/${id}`,
   COMPLAINTS_WITH_ATTACHMENTS: '/complaints/with-attachments',
