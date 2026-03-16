@@ -1,4 +1,6 @@
-import { useState } from 'react';
+/* global require */
+import { useState, useEffect } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import {
   View,
   Text,
@@ -14,7 +16,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
+import { STORAGE_KEYS } from '../constants';
 import { colors } from '../theme';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value) {
+  return value.trim().length > 0 && EMAIL_REGEX.test(value.trim());
+}
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -23,6 +32,23 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { login } = useAuth();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [savedEmail, savedPassword] = await Promise.all([
+          SecureStore.getItemAsync(STORAGE_KEYS.LAST_EMAIL),
+          SecureStore.getItemAsync(STORAGE_KEYS.LAST_PASSWORD),
+        ]);
+        if (savedEmail != null) setEmail(savedEmail);
+        if (savedPassword != null) setPassword(savedPassword);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const emailValid = isValidEmail(email);
 
   const handleLogin = async () => {
     setError('');
@@ -51,18 +77,26 @@ export default function LoginScreen() {
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
             <View style={styles.card}>
               <Text style={styles.title}>Union Resident</Text>
+              <Text style={styles.tagline}>Your community, connected.</Text>
               <Text style={styles.subtitle}>Sign in to your account</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor={colors.textMuted}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                editable={!loading}
-              />
+              <View style={styles.emailWrapper}>
+                <TextInput
+                  style={[styles.input, emailValid && styles.inputWithTick]}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textMuted}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  editable={!loading}
+                />
+                {emailValid ? (
+                  <View style={styles.emailTick} pointerEvents="none">
+                    <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+                  </View>
+                ) : null}
+              </View>
               <View style={styles.passwordWrapper}>
                 <TextInput
                   style={styles.inputPassword}
@@ -108,26 +142,41 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   backgroundImage: { flex: 1 },
   container: { flex: 1 },
-  scroll: { flexGrow: 1, justifyContent: 'center' },
+  scroll: { flexGrow: 1, justifyContent: 'center', backgroundColor: 'transparent' },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
     borderRadius: 16,
     padding: 24,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   title: { fontSize: 24, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 4 },
+  tagline: { fontSize: 13, fontStyle: 'italic', color: colors.textMuted, textAlign: 'center', marginBottom: 8 },
   subtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginBottom: 24 },
   error: { color: colors.error, marginBottom: 12, textAlign: 'center' },
+  emailWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
   input: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: 10,
     padding: 14,
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 0,
     fontSize: 16,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  inputWithTick: {
+    paddingRight: 44,
+  },
+  emailTick: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   passwordWrapper: {
     position: 'relative',

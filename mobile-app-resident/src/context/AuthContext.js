@@ -68,6 +68,8 @@ export const AuthProvider = ({ children }) => {
         await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
       }
       await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(userData));
+      await SecureStore.setItemAsync(STORAGE_KEYS.LAST_EMAIL, credentials.email || '');
+      await SecureStore.setItemAsync(STORAGE_KEYS.LAST_PASSWORD, credentials.password || '');
       setUser(userData);
       setIsAuthenticated(true);
       return { success: true, user: userData };

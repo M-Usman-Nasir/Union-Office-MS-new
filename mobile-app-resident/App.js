@@ -1,16 +1,16 @@
-import React from 'react';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
 import AuthStack from './src/navigation/AuthStack';
 import MainTabs from './src/navigation/MainTabs';
 
-const SPLASH_IMAGE = require('./assets/images/1.png');
+const TAGLINE = 'Your community, connected.';
 
 const Stack = createNativeStackNavigator();
 
@@ -20,11 +20,7 @@ function RootNavigator() {
   if (loading) {
     return (
       <View style={styles.loading}>
-        <Image source={SPLASH_IMAGE} style={styles.loadingImage} resizeMode="contain" />
-        <View style={styles.loadingIconWrap}>
-          <Ionicons name="home" size={80} color={colors.primary} />
-        </View>
-        <Text style={styles.loadingTitle}>Union Resident</Text>
+        <Text style={styles.loadingTagline}>{TAGLINE}</Text>
         <ActivityIndicator size="large" color={colors.primary} style={styles.loadingSpinner} />
         <Text style={styles.loadingText}>Loading...</Text>
       </View>
@@ -43,6 +39,11 @@ function RootNavigator() {
 }
 
 export default function App() {
+  // Hide native splash as soon as app loads so only one screen shows (our loading view with tagline)
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -74,33 +75,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  loadingImage: {
-    width: 200,
-    height: 200,
-    marginBottom: 16,
-  },
-  loadingIconWrap: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  loadingTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 24,
+  loadingTagline: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    marginBottom: 32,
+    fontStyle: 'italic',
   },
   loadingSpinner: {
     marginBottom: 8,
   },
   loadingText: {
-    color: colors.textSecondary,
-    fontSize: 15,
+    color: colors.textMuted,
+    fontSize: 14,
   },
 });

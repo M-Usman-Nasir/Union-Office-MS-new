@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ function formatTime(str) {
   return d.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
 }
 
+// eslint-disable-next-line react/prop-types -- navigation is provided by React Navigation
 export default function MessagesScreen({ navigation }) {
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
@@ -39,10 +40,13 @@ export default function MessagesScreen({ navigation }) {
   const [sending, setSending] = useState(false);
   const listRef = useRef(null);
 
+  // eslint-disable-next-line react/prop-types -- navigation is from React Navigation
   useEffect(() => {
     if (selectedUserId && otherUser) {
+      const displayName = otherUser.name || 'Chat';
+      // eslint-disable-next-line react/prop-types -- navigation from React Navigation
       navigation.setOptions({
-        title: otherUser.name || 'Chat',
+        title: displayName,
         headerLeft: () => (
           <TouchableOpacity onPress={() => setSelectedUserId(null)} style={{ padding: 8, marginLeft: 8 }}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -50,7 +54,11 @@ export default function MessagesScreen({ navigation }) {
         ),
       });
     } else {
-      navigation.setOptions({ title: 'Messages', headerLeft: undefined });
+      // eslint-disable-next-line react/prop-types -- navigation from React Navigation
+      navigation.setOptions({
+        title: 'Messages',
+        headerLeft: undefined,
+      });
     }
   }, [selectedUserId, otherUser, navigation]);
 

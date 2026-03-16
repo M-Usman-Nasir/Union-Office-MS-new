@@ -43,32 +43,48 @@ const ResidentFinancialSummary = () => {
 
   const isVisible = settingsData?.financial_reports_visible !== false
 
-  // Fetch public summary - monthly
+  // Fetch public summary - monthly. Normalize so we always get { total_income, total_expenses, net_income }.
   const { data: monthlyData, isLoading: monthlyLoading, error: monthlyError } = useSWR(
     isVisible && societyId && reportType === 'monthly'
       ? ['/finance/public-summary', selectedMonth, selectedYear, societyId, 'monthly']
       : null,
-    () =>
-      financeApi
-        .getPublicSummary(selectedMonth, selectedYear, { society_id: societyId })
-        .then((res) => res.data)
+    async () => {
+      const res = await financeApi.getPublicSummary(selectedMonth, selectedYear, { society_id: societyId })
+      const body = res?.data
+      const data = body?.data ?? body
+      const summary = data?.summary ?? data
+      return summary && typeof summary === 'object' ? summary : data ?? body
+    }
   )
 
-  // Fetch public summary - yearly
+  // Fetch public summary - yearly. Normalize to { total_income, total_expenses, net_income, monthly_trend }.
   const { data: yearlyData, isLoading: yearlyLoading, error: yearlyError } = useSWR(
     isVisible && societyId && reportType === 'yearly'
       ? ['/finance/public-summary', selectedYear, societyId, 'yearly']
       : null,
-    () =>
-      financeApi
-        .getYearlyReport(selectedYear, { society_id: societyId })
-        .then((res) => res.data)
-        .catch(() => null)
+    async () => {
+      try {
+        const res = await financeApi.getYearlyReport(selectedYear, { society_id: societyId })
+        const body = res?.data
+        const data = body?.data ?? body
+        const yearly = data?.yearly ?? data
+        const yearlyObj = yearly && typeof yearly === 'object' ? yearly : {}
+        return {
+          total_income: yearlyObj.total_income ?? 0,
+          total_expenses: yearlyObj.total_expenses ?? 0,
+          net_income: yearlyObj.net_income ?? 0,
+          monthly_trend: data?.monthly ?? [],
+        }
+      } catch {
+        return null
+      }
+    }
   )
 
   const isLoading = monthlyLoading || yearlyLoading
   const error = monthlyError || yearlyError
-  const summary = reportType === 'monthly' ? monthlyData?.data : yearlyData?.data
+  // Fetchers return normalized shape: monthlyData = { total_income, total_expenses, net_income }, yearlyData = same + monthly_trend
+  const summary = reportType === 'monthly' ? monthlyData : yearlyData
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
@@ -190,7 +206,7 @@ const ResidentFinancialSummary = () => {
                         Total Income
                       </Typography>
                       <Typography variant="h5" color="success.main">
-                        {formatCurrency(summary.total_income)}
+                        {formatCurrency(summary?.total_income)}
                       </Typography>
                     </Box>
                     <TrendingUpIcon sx={{ fontSize: 40, color: 'success.main' }} />
@@ -208,7 +224,7 @@ const ResidentFinancialSummary = () => {
                         Total Expenses
                       </Typography>
                       <Typography variant="h5" color="error.main">
-                        {formatCurrency(summary.total_expenses)}
+                        {formatCurrency(summary?.total_expenses)}
                       </Typography>
                     </Box>
                     <TrendingDownIcon sx={{ fontSize: 40, color: 'error.main' }} />
@@ -226,7 +242,7 @@ const ResidentFinancialSummary = () => {
                         Net Income
                       </Typography>
                       <Typography variant="h5" color="primary.main">
-                        {formatCurrency(summary.net_income)}
+                        {formatCurrency(summary?.net_income)}
                       </Typography>
                     </Box>
                     <AccountBalanceIcon sx={{ fontSize: 40, color: 'primary.main' }} />
@@ -237,7 +253,7 @@ const ResidentFinancialSummary = () => {
           </Grid>
 
           {/* Charts */}
-          {summary.total_income !== undefined && summary.total_expenses !== undefined && (
+          {summary && summary.total_income !== undefined && summary.total_expenses !== undefined && (
             <Grid container spacing={3}>
               <Grid item xs={12}>
                 <Card>
@@ -257,7 +273,7 @@ const ResidentFinancialSummary = () => {
                   </CardContent>
                 </Card>
               </Grid>
-              {reportType === 'yearly' && summary.monthly_trend && summary.monthly_trend.length > 0 && (
+              {reportType === 'yearly' && summary?.monthly_trend?.length > 0 && (
                 <Grid item xs={12}>
                   <Card>
                     <CardContent>
@@ -265,7 +281,7 @@ const ResidentFinancialSummary = () => {
                         Monthly Trend
                       </Typography>
                       <LineChart
-                        data={summary.monthly_trend.map((item) => ({
+                        data={(summary?.monthly_trend || []).map((item) => ({
                           category: monthNames[item.month - 1] || `Month ${item.month}`,
                           value: item.net_income || 0,
                         }))}
@@ -281,7 +297,7 @@ const ResidentFinancialSummary = () => {
           )}
 
           {/* Empty State */}
-          {summary.total_income === undefined && summary.total_expenses === undefined && (
+          {(!summary || (summary.total_income === undefined && summary.total_expenses === undefined)) && (
             <Card>
               <CardContent>
                 <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>

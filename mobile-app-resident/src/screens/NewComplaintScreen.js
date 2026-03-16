@@ -24,6 +24,18 @@ const PRIORITIES = [
   { value: 'urgent', label: 'Urgent' },
 ];
 
+const SUGGESTED_COMPLAINT_TITLES = [
+  { title: 'Plumbing Issue', description: 'e.g. Leaks, clogged drains, no water supply, low pressure, broken taps or pipes.' },
+  { title: 'Electrical Problem', description: 'e.g. Power cuts, fuse trips, faulty switches, lighting issues, socket not working.' },
+  { title: 'Pest / Insect Issue', description: 'e.g. Cockroaches, ants, mosquitoes, rodents, or other pests in common areas or unit.' },
+  { title: 'Lift / Elevator Not Working', description: 'e.g. Lift stuck, not stopping at floors, door malfunction, or safety concerns.' },
+  { title: 'Parking or Common Area', description: 'e.g. Unauthorized parking, damaged common area, corridor or lobby maintenance.' },
+  { title: 'Noise or Nuisance', description: 'e.g. Loud music, construction noise, neighbour disturbance, or other nuisance.' },
+  { title: 'Security or Access', description: 'e.g. Gate not working, key/card issue, CCTV concern, or access control.' },
+  { title: 'Cleaning or Garbage', description: 'e.g. Garbage not collected, common area dirty, bin overflow, or hygiene issue.' },
+  { title: 'Other', description: 'Describe your complaint in detail below.' },
+];
+
 const MAX_ATTACHMENTS = 5;
 const MAX_FILE_SIZE_MB = 5;
 
@@ -118,15 +130,40 @@ export default function NewComplaintScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
+        <Text style={styles.suggestionLabel}>Suggested titles (tap to use)</Text>
+        <View style={styles.suggestionChipsRow}>
+          {SUGGESTED_COMPLAINT_TITLES.map((s) => (
+            <TouchableOpacity
+              key={s.title}
+              style={[styles.suggestionChip, title === s.title && styles.suggestionChipActive]}
+              onPress={() => {
+                setTitle(s.title);
+                setDescription(s.description);
+              }}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.suggestionChipText, title === s.title && styles.suggestionChipTextActive]} numberOfLines={1}>
+                {s.title}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Text style={styles.label}>Title *</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter complaint title"
+          placeholder="Or type your own title"
           placeholderTextColor={colors.textMuted}
           value={title}
           onChangeText={setTitle}
           editable={!loading}
         />
+        {SUGGESTED_COMPLAINT_TITLES.some((s) => s.title === title) && (
+          <Text style={styles.suggestionHint}>
+            {SUGGESTED_COMPLAINT_TITLES.find((s) => s.title === title)?.description}
+          </Text>
+        )}
 
         <Text style={styles.label}>Priority *</Text>
         <View style={styles.priorityRow}>
@@ -197,6 +234,38 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 16 },
   error: { color: colors.error, marginBottom: 12, fontSize: 14 },
+  suggestionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  suggestionChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  suggestionChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  suggestionChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  suggestionChipText: { fontSize: 13, fontWeight: '500', color: colors.text },
+  suggestionChipTextActive: { color: '#fff' },
+  suggestionHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: -8,
+    marginBottom: 16,
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',

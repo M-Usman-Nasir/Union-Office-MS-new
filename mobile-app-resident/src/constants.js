@@ -6,6 +6,8 @@ export const STORAGE_KEYS = {
   AUTH_TOKEN: 'authToken',
   REFRESH_TOKEN: 'refreshToken',
   USER: 'user',
+  LAST_EMAIL: 'lastEmail',
+  LAST_PASSWORD: 'lastPassword',
 };
 
 // Paths only; axios client uses baseURL from EXPO_PUBLIC_API_URL
@@ -20,7 +22,10 @@ export const API_ENDPOINTS = {
   COMPLAINT_PROGRESS: (id) => `/complaints/${id}/progress`,
   MAINTENANCE: '/maintenance',
   MAINTENANCE_BY_ID: (id) => `/maintenance/${id}`,
+  MAINTENANCE_SUBMIT_PAYMENT_PROOF: (id) => `/maintenance/${id}/submit-payment-proof`,
+  MAINTENANCE_PAYMENT_REQUESTS_MINE: '/maintenance/payment-requests/mine',
   FINANCE_PUBLIC_SUMMARY: '/finance/reports/public-summary',
+  FINANCE_REPORTS_YEARLY: '/finance/reports/yearly',
   ANNOUNCEMENTS: '/announcements',
   SETTINGS: (societyId) => `/settings/${societyId}`,
   SOCIETIES: '/societies',
