@@ -105,7 +105,6 @@ export const API_ENDPOINTS = {
   FLOOR_ADD_UNITS: (id) => `/properties/floors/${id}/units`,
   UNITS: '/properties/units',
   UNITS_IMPORT: '/properties/units/import',
-  UNITS_BULK_EMAILS: '/properties/units/bulk-emails',
   UNIT_BY_ID: (id) => `/properties/units/${id}`,
   
   // Unit claims (ownership/tenancy)
