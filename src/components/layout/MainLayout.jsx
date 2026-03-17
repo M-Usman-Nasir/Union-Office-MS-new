@@ -55,7 +55,7 @@ import superAdminAvatar from '@/assets/images/users/super_admin.webp'
 import toast from 'react-hot-toast'
 
 const POLL_INTERVAL_MS = 15000
-const sidebarLogo = '/icons/mob_Logo.png'
+const sidebarLogo = '/icons/logo-512.png'
 const drawerWidth = 240
 const drawerWidthCollapsed = 64
 
