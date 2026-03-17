@@ -66,4 +66,9 @@ export const propertyApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+
+  /** Bulk-set unit emails: { society_apartment_id, domain, unit_letter_group, dry_run?, unit_ids? } (unit_ids required on apply from UI) */
+  bulkSetUnitEmails: (data) => {
+    return api.post(API_ENDPOINTS.UNITS_BULK_EMAILS, data)
+  },
 }

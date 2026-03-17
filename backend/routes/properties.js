@@ -25,6 +25,7 @@ router.post('/floors/:id/units', requireRole('super_admin'), propertyController.
 router.get('/units', propertyController.getUnits);
 router.get('/units/:id', propertyController.getUnitById);
 router.post('/units/import', requireRole('super_admin'), uploadUnitsImport, propertyController.importUnits);
+router.post('/units/bulk-emails', requireRole('super_admin'), propertyController.bulkSetUnitEmails);
 router.post('/units', requireRole('super_admin'), propertyController.createUnit);
 router.put('/units/:id', requireRole('super_admin'), propertyController.updateUnit);
 router.delete('/units/:id', requireRole('super_admin'), propertyController.deleteUnit);

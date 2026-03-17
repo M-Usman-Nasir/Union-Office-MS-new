@@ -4,7 +4,7 @@
     "slug": "homeland-union-office-management",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.png",
+    "icon": "./assets/mob_Logo.png",
     "scheme": "unionresident",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -22,8 +22,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.png",
-        "backgroundColor": "#f1f5f9"
+        "foregroundImage": "./assets/mob_Logo.png",
+        "backgroundColor": "#000000"
       },
       "package": "com.unionoffice.resident",
       "permissions": [

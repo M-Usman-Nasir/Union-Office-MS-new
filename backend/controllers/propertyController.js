@@ -990,6 +990,195 @@ export const deleteUnit = async (req, res) => {
   }
 };
 
+const BULK_EMAIL_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
+/**
+ * Bulk-set unit emails for one apartment.
+ * Pick unit_letter_group A–E: only units whose unit_number starts with that letter (case-insensitive).
+ * Email: {letter}-{rest}_b{blockIndex}@{domain} (rest = unit after first char, alphanumeric).
+ * OTHER: units not starting with A–E → e-{full_sanitized_unit}_b...@domain
+ * Body: { society_apartment_id, domain, unit_letter_group, dry_run?, unit_ids? }
+ * When dry_run is false, pass unit_ids (non-empty) to update only those units; omit to update all in group.
+ */
+export const bulkSetUnitEmails = async (req, res) => {
+  try {
+    const societyId = parseInt(req.body?.society_apartment_id, 10);
+    const domainRaw = req.body?.domain;
+    const groupRaw = String(req.body?.unit_letter_group ?? '')
+      .trim()
+      .toUpperCase();
+    const dryRun = req.body?.dry_run === true || req.body?.dry_run === 'true';
+    const rawUnitIds = req.body?.unit_ids;
+
+    if (Number.isNaN(societyId) || societyId < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'society_apartment_id is required and must be a positive integer',
+      });
+    }
+
+    const apt = await query('SELECT id, name FROM apartments WHERE id = $1', [societyId]);
+    if (apt.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Apartment not found',
+      });
+    }
+
+    if (domainRaw == null || String(domainRaw).trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'domain is required (e.g. homeland.com)',
+      });
+    }
+
+    let domainClean = String(domainRaw).trim().toLowerCase().replace(/^@+/, '');
+    if (domainClean.includes('@') || /\s/.test(domainClean) || domainClean.length > 253) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid domain',
+      });
+    }
+
+    const isLetterGroup = BULK_EMAIL_LETTERS.includes(groupRaw);
+    if (!isLetterGroup && groupRaw !== 'OTHER') {
+      return res.status(400).json({
+        success: false,
+        message: 'unit_letter_group must be A, B, C, D, E, or OTHER',
+      });
+    }
+
+    const letterLower = isLetterGroup ? groupRaw.toLowerCase() : 'e';
+    const unitWhere = isLetterGroup
+      ? `trim(COALESCE(u.unit_number, '')) ~* '^${letterLower}'`
+      : `NOT (trim(COALESCE(u.unit_number, '')) ~* '^[abcde]')`;
+
+    const restSanitized = `regexp_replace(lower(trim(substring(trim(COALESCE(u.unit_number, '')) from 2))), '[^a-z0-9]', '', 'g')`;
+    const fullSanitized = `regexp_replace(lower(trim(COALESCE(u.unit_number, ''))), '[^a-z0-9]', '', 'g')`;
+
+    const emailLocal = isLetterGroup
+      ? `'${letterLower}' || '-' ||
+          CASE
+            WHEN length(${restSanitized}) > 0 THEN ${restSanitized}
+            ELSE 'u' || u.id::text
+          END
+          || '_b' || COALESCE(br.block_idx, 0)::text || '@' || $2::text`
+      : `'e' || '-' ||
+          CASE
+            WHEN length(${fullSanitized}) > 0 THEN ${fullSanitized}
+            ELSE 'u' || u.id::text
+          END
+          || '_b' || COALESCE(br.block_idx, 0)::text || '@' || $2::text`;
+
+    let idClause = '';
+    let updateParams = [societyId, domainClean];
+    if (!dryRun && rawUnitIds !== undefined && rawUnitIds !== null) {
+      if (!Array.isArray(rawUnitIds) || rawUnitIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'unit_ids must be a non-empty array of unit ids to update',
+        });
+      }
+      const seen = new Set();
+      const unitIds = [];
+      for (const x of rawUnitIds) {
+        const n = parseInt(x, 10);
+        if (!Number.isNaN(n) && n > 0 && !seen.has(n)) {
+          seen.add(n);
+          unitIds.push(n);
+        }
+      }
+      if (unitIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'unit_ids must contain valid positive integers',
+        });
+      }
+      if (unitIds.length > 10000) {
+        return res.status(400).json({
+          success: false,
+          message: 'unit_ids cannot exceed 10000 entries',
+        });
+      }
+      idClause = ' AND u.id = ANY($3::int[])';
+      updateParams = [societyId, domainClean, unitIds];
+    }
+
+    const previewSql = `
+      WITH block_ranks AS (
+        SELECT id AS block_id, ROW_NUMBER() OVER (ORDER BY id) AS block_idx
+        FROM blocks
+        WHERE society_apartment_id = $1
+      )
+      SELECT u.id,
+        u.unit_number,
+        u.block_id,
+        u.email AS current_email,
+        (${emailLocal}) AS generated_email
+      FROM units u
+      LEFT JOIN block_ranks br ON br.block_id = u.block_id
+      WHERE u.society_apartment_id = $1 AND (${unitWhere})
+      ORDER BY u.block_id NULLS LAST, u.unit_number
+    `;
+
+    if (dryRun) {
+      const preview = await query(previewSql, [societyId, domainClean]);
+      return res.json({
+        success: true,
+        message: 'Preview only — no changes saved',
+        data: {
+          apartment_name: apt.rows[0].name,
+          domain: domainClean,
+          unit_letter_group: groupRaw,
+          count: preview.rows.length,
+          preview: preview.rows,
+        },
+      });
+    }
+
+    const updateSql = `
+      WITH block_ranks AS (
+        SELECT id AS block_id, ROW_NUMBER() OVER (ORDER BY id) AS block_idx
+        FROM blocks
+        WHERE society_apartment_id = $1
+      ),
+      computed AS (
+        SELECT u.id,
+          (${emailLocal}) AS new_email
+        FROM units u
+        LEFT JOIN block_ranks br ON br.block_id = u.block_id
+        WHERE u.society_apartment_id = $1 AND (${unitWhere})${idClause}
+      )
+      UPDATE units u
+      SET email = c.new_email
+      FROM computed c
+      WHERE u.id = c.id
+      RETURNING u.id, u.unit_number, u.email
+    `;
+
+    const updated = await query(updateSql, updateParams);
+
+    res.json({
+      success: true,
+      message: `Updated email for ${updated.rows.length} unit(s) (${groupRaw})`,
+      data: {
+        apartment_name: apt.rows[0].name,
+        domain: domainClean,
+        unit_letter_group: groupRaw,
+        updated_count: updated.rows.length,
+        units: updated.rows,
+      },
+    });
+  } catch (error) {
+    console.error('Bulk set unit emails error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to bulk-set unit emails',
+      error: error.message,
+    });
+  }
+};
+
 /**
  * Import units from uploaded file
  * Request: multipart with "file". Optional body: society_apartment_id, block_id, floor_id to apply to rows missing them.

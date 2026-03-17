@@ -23,6 +23,8 @@ const DataTable = ({
   dense = false,
   getRowSx,
   noHorizontalScroll = false,
+  /** When horizontal scroll is allowed, minimum table width (px) to trigger scrollbar on narrow viewports */
+  minTableWidth = 600,
 }) => {
   const headerPy = dense ? 0.5 : 1.5
   const cellPy = dense ? 0.5 : 1.25
@@ -37,17 +39,20 @@ const DataTable = ({
   }
 
   const getCellSx = (column) => {
-    const base = { py: cellPy }
+    const base = { py: cellPy, verticalAlign: column.verticalAlign || 'middle' }
     if (cellPx !== undefined) base.px = cellPx
     if (column.minWidth) base.minWidth = column.minWidth
     if (column.width) base.width = column.width
+    if (column.maxWidth) base.maxWidth = column.maxWidth
+    if (column.cellSx) Object.assign(base, column.cellSx)
     return base
   }
   const getHeaderSx = (column) => {
-    const base = { fontWeight: 600, py: headerPy, px: 1 }
+    const base = { fontWeight: 600, py: headerPy, px: 1, whiteSpace: column.noWrapHeader ? 'nowrap' : undefined }
     if (headerPx !== undefined) base.px = headerPx
     if (column.minWidth) base.minWidth = column.minWidth
     if (column.width) base.width = column.width
+    if (column.headerSx) Object.assign(base, column.headerSx)
     return base
   }
 
@@ -63,7 +68,7 @@ const DataTable = ({
           sx={{
             tableLayout: 'auto',
             width: '100%',
-            ...(noHorizontalScroll ? {} : { minWidth: 600 }),
+            ...(noHorizontalScroll ? {} : { minWidth: minTableWidth }),
           }}
         >
           <TableHead>

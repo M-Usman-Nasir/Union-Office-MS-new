@@ -19,8 +19,16 @@ import {
   Breadcrumbs,
   Link,
   Checkbox,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -66,6 +74,12 @@ const Units = () => {
   const [deletingUnit, setDeletingUnit] = useState(false)
   const [selectedUnitIds, setSelectedUnitIds] = useState(() => new Set())
   const [bulkDeleteIds, setBulkDeleteIds] = useState(null)
+  const [openBulkEmailDialog, setOpenBulkEmailDialog] = useState(false)
+  const [bulkEmailDomain, setBulkEmailDomain] = useState('')
+  const [bulkEmailLetterGroup, setBulkEmailLetterGroup] = useState('A')
+  const [bulkEmailPreview, setBulkEmailPreview] = useState(null)
+  const [bulkEmailPreviewLoading, setBulkEmailPreviewLoading] = useState(false)
+  const [bulkEmailApplyLoading, setBulkEmailApplyLoading] = useState(false)
 
   useEffect(() => {
     if (societyIdFromUrl) setSocietyFilter(societyIdFromUrl)
@@ -89,6 +103,22 @@ const Units = () => {
     '/societies',
     () => apartmentApi.getAll({ limit: 100 }).then(res => res.data)
   )
+
+  const bulkEmailSocietyId = societyFilter ? Number(societyFilter) : NaN
+  const bulkEmailSocietyName =
+    (societyIdFromUrl && currentSocietyName) ||
+    societiesData?.data?.find((s) => String(s.id) === String(societyFilter))?.name ||
+    currentSocietyName ||
+    ''
+
+  const suggestedBulkEmailDomain = useMemo(() => {
+    if (!bulkEmailSocietyName) return ''
+    const slug = bulkEmailSocietyName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 48)
+    return slug ? `${slug}.com` : ''
+  }, [bulkEmailSocietyName])
 
   const { data: blocksData } = useSWR(
     societyFilter ? ['/blocks', societyFilter] : null,
@@ -193,6 +223,88 @@ const Units = () => {
   const handleCloseBulkDialog = () => {
     setOpenBulkDialog(false)
     setBulkCount(1)
+  }
+
+  const handleOpenBulkEmailDialog = () => {
+    setBulkEmailPreview(null)
+    setBulkEmailLetterGroup('A')
+    setBulkEmailDomain((d) => d.trim() || suggestedBulkEmailDomain || '')
+    setOpenBulkEmailDialog(true)
+  }
+
+  const handleCloseBulkEmailDialog = () => {
+    setOpenBulkEmailDialog(false)
+    setBulkEmailPreview(null)
+    setBulkEmailPreviewLoading(false)
+    setBulkEmailApplyLoading(false)
+  }
+
+  const handleBulkEmailPreview = async () => {
+    const domain = bulkEmailDomain.trim().toLowerCase().replace(/^@/, '')
+    if (!domain || Number.isNaN(bulkEmailSocietyId)) {
+      toast.error('Select an apartment and enter a domain (e.g. homeland.com)')
+      return
+    }
+    setBulkEmailPreviewLoading(true)
+    try {
+      const res = await propertyApi.bulkSetUnitEmails({
+        society_apartment_id: bulkEmailSocietyId,
+        domain,
+        unit_letter_group: bulkEmailLetterGroup,
+        dry_run: true,
+      })
+      const d = res.data?.data
+      const previewRows = d?.preview ?? []
+      setBulkEmailPreview({
+        count: previewRows.length,
+        rows: previewRows.map((r) => ({ ...r, _checked: true })),
+        domain: d?.domain,
+        unit_letter_group: d?.unit_letter_group,
+      })
+      toast.success(`Preview: ${d?.count ?? 0} unit(s)`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Preview failed')
+      setBulkEmailPreview(null)
+    } finally {
+      setBulkEmailPreviewLoading(false)
+    }
+  }
+
+  const handleBulkEmailApply = async () => {
+    const domain = bulkEmailDomain.trim().toLowerCase().replace(/^@/, '')
+    if (!domain || Number.isNaN(bulkEmailSocietyId)) {
+      toast.error('Select an apartment and enter a domain')
+      return
+    }
+    if (!bulkEmailPreview || bulkEmailPreview.count === 0) {
+      toast.error('Run preview first')
+      return
+    }
+    const ids = (bulkEmailPreview.rows || [])
+      .filter((r) => r._checked !== false)
+      .map((r) => r.id)
+    if (ids.length === 0) {
+      toast.error('Select at least one unit to update')
+      return
+    }
+    setBulkEmailApplyLoading(true)
+    try {
+      const res = await propertyApi.bulkSetUnitEmails({
+        society_apartment_id: bulkEmailSocietyId,
+        domain,
+        unit_letter_group: bulkEmailLetterGroup,
+        dry_run: false,
+        unit_ids: ids,
+      })
+      const n = res.data?.data?.updated_count ?? 0
+      toast.success(res.data?.message || `Updated ${n} unit(s)`)
+      mutate()
+      handleCloseBulkEmailDialog()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to apply emails')
+    } finally {
+      setBulkEmailApplyLoading(false)
+    }
   }
 
   const handleOpenImportDialog = () => {
@@ -441,6 +553,7 @@ const Units = () => {
       id: 'select',
       label: '',
       width: 48,
+      minWidth: 48,
       header:
         sortedUnits?.length > 0 ? (
           <Checkbox
@@ -461,11 +574,17 @@ const Units = () => {
         />
       ),
     },
-    { id: 'unit_number', label: 'Unit No. / Name' },
-    { id: 'block_name', label: 'Block', render: (row) => row.block_name || 'N/A' },
+    { id: 'unit_number', label: 'Unit', minWidth: 96, noWrapHeader: true },
+    {
+      id: 'block_name',
+      label: 'Block',
+      minWidth: 88,
+      render: (row) => row.block_name || 'N/A',
+    },
     {
       id: 'floor_number',
       label: 'Floor',
+      minWidth: 92,
       render: (row) =>
         floorFilter && currentFloorLabel
           ? currentFloorLabel
@@ -473,13 +592,40 @@ const Units = () => {
             ? (row.floor_number === 0 ? 'Ground floor' : `Floor ${row.floor_number}`)
             : 'N/A'),
     },
-    { id: 'owner_name', label: 'Owner', render: (row) => row.owner_name || '-' },
-    { id: 'resident_name', label: 'Resident', render: (row) => row.resident_name || '-' },
-    { id: 'contact_number', label: 'Contact', render: (row) => row.contact_number || '-' },
-    { id: 'email', label: 'Email', render: (row) => row.email || '-' },
+    {
+      id: 'owner_name',
+      label: 'Owner',
+      minWidth: 112,
+      render: (row) => row.owner_name || '—',
+    },
+    {
+      id: 'resident_name',
+      label: 'Resident',
+      minWidth: 112,
+      render: (row) => row.resident_name || '—',
+    },
+    {
+      id: 'contact_number',
+      label: 'Contact',
+      minWidth: 118,
+      render: (row) => row.contact_number || '—',
+    },
+    {
+      id: 'email',
+      label: 'Email',
+      minWidth: 220,
+      cellSx: {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontSize: '0.8125rem',
+        wordBreak: 'break-all',
+        lineHeight: 1.4,
+      },
+      render: (row) => row.email || '—',
+    },
     {
       id: 'is_occupied',
       label: 'Status',
+      minWidth: 102,
       render: (row) => (
         <Chip
           label={row.is_occupied ? 'Occupied' : 'Vacant'}
@@ -488,13 +634,34 @@ const Units = () => {
         />
       ),
     },
-    { id: 'k_electric_account', label: 'K-Electric', render: (row) => row.k_electric_account || '-' },
-    { id: 'gas_account', label: 'Gas', render: (row) => row.gas_account || '-' },
-    { id: 'water_account', label: 'Water', render: (row) => row.water_account || '-' },
-    { id: 'phone_tv_account', label: 'Phone/TV', render: (row) => row.phone_tv_account || '-' },
+    {
+      id: 'k_electric_account',
+      label: 'K-Electric',
+      minWidth: 104,
+      render: (row) => row.k_electric_account || '—',
+    },
+    {
+      id: 'gas_account',
+      label: 'Gas',
+      minWidth: 88,
+      render: (row) => row.gas_account || '—',
+    },
+    {
+      id: 'water_account',
+      label: 'Water',
+      minWidth: 88,
+      render: (row) => row.water_account || '—',
+    },
+    {
+      id: 'phone_tv_account',
+      label: 'Phone/TV',
+      minWidth: 96,
+      render: (row) => row.phone_tv_account || '—',
+    },
     {
       id: 'car_info',
       label: 'Car Info',
+      minWidth: 168,
       render: (row) => {
         if (row.car_make_model || row.license_plate || row.number_of_cars) {
           return `${row.car_make_model || 'N/A'} | ${row.license_plate || 'N/A'} | ${row.number_of_cars || 0} cars`
@@ -505,6 +672,7 @@ const Units = () => {
     {
       id: 'bills',
       label: 'Bills',
+      minWidth: 100,
       render: (row) => {
         const telBills = Array.isArray(row.telephone_bills) ? row.telephone_bills.length : 0
         const otherBills = Array.isArray(row.other_bills) ? row.other_bills.length : 0
@@ -518,6 +686,8 @@ const Units = () => {
       id: 'actions',
       label: 'Actions',
       align: 'right',
+      minWidth: 100,
+      width: 100,
       render: (row) => (
         <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
           <Tooltip title="Edit">
@@ -618,6 +788,19 @@ const Units = () => {
               Delete selected ({selectedUnitIds.size})
             </Button>
           )}
+          <Button
+            variant="outlined"
+            startIcon={<EmailOutlinedIcon />}
+            onClick={handleOpenBulkEmailDialog}
+            disabled={!societyFilter || Number.isNaN(bulkEmailSocietyId)}
+            title={
+              !societyFilter
+                ? 'Select an apartment first'
+                : 'Set unit emails for all units in this apartment (e.g. e-805_b2@homeland.com)'
+            }
+          >
+            Bulk unit emails
+          </Button>
           <Button
             variant="outlined"
             startIcon={<UploadFileIcon />}
@@ -727,7 +910,7 @@ const Units = () => {
         />
       </Box>
 
-      <Box sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden', m: 0 }}>
+      <Box sx={{ width: '100%', maxWidth: '100%', m: 0 }}>
         <DataTable
           columns={columns}
           data={sortedUnits}
@@ -735,7 +918,7 @@ const Units = () => {
           pagination={null}
           onPageChange={() => {}}
           onRowsPerPageChange={() => {}}
-          noHorizontalScroll
+          minTableWidth={1320}
         />
       </Box>
 
@@ -932,6 +1115,265 @@ const Units = () => {
             disabled={!floorFilter || bulkSubmitting}
           >
             {bulkSubmitting ? 'Adding…' : 'Add units'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={openBulkEmailDialog}
+        onClose={bulkEmailPreviewLoading || bulkEmailApplyLoading ? undefined : handleCloseBulkEmailDialog}
+        maxWidth="lg"
+        fullWidth
+        scroll="paper"
+      >
+        <DialogTitle>Bulk set unit emails</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Choose <strong>A–E</strong> to update only units whose unit number <strong>starts with that letter</strong>{' '}
+            (e.g. A805 → <code>a-805_b2@domain</code>). Run once per letter. Choose <strong>Other</strong> for units
+            that do <strong>not</strong> start with A–E (pattern <code>e-{'{unit}'}_b…@domain</code>). Block index
+            is by block order (b1, b2…). Does not change resident login emails.
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Apartment: <strong>{bulkEmailSocietyName || '—'}</strong>
+          </Typography>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Domain"
+                placeholder="homeland.com"
+                value={bulkEmailDomain}
+                onChange={(e) => setBulkEmailDomain(e.target.value)}
+                helperText="Full domain after @ (no @ prefix)"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="Unit group (one run per letter)"
+                value={bulkEmailLetterGroup}
+                onChange={(e) => {
+                  setBulkEmailLetterGroup(e.target.value)
+                  setBulkEmailPreview(null)
+                }}
+                helperText="A–E: only units starting with that letter. Other: numeric / F–Z / etc."
+              >
+                {['A', 'B', 'C', 'D', 'E'].map((L) => (
+                  <MenuItem key={L} value={L}>
+                    Units starting with {L} (e.g. {L}101 → {L.toLowerCase()}-101_b…@…)
+                  </MenuItem>
+                ))}
+                <MenuItem value="OTHER">Other (not A–E)</MenuItem>
+              </TextField>
+            </Grid>
+          </Grid>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={handleBulkEmailPreview}
+              disabled={bulkEmailPreviewLoading || !bulkEmailDomain.trim() || Number.isNaN(bulkEmailSocietyId)}
+            >
+              {bulkEmailPreviewLoading ? 'Loading preview…' : 'Preview'}
+            </Button>
+          </Box>
+          {bulkEmailPreview && bulkEmailPreview.rows?.length > 0 && (() => {
+            const rows = bulkEmailPreview.rows
+            const selectedCount = rows.filter((r) => r._checked !== false).length
+            const allChecked = rows.length > 0 && selectedCount === rows.length
+            const someChecked = selectedCount > 0 && selectedCount < rows.length
+            return (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                  <Typography variant="subtitle2">
+                    All units in this group ({rows.length}) — {selectedCount} selected to update
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button size="small" variant="outlined" onClick={() => {
+                      setBulkEmailPreview((prev) => prev && {
+                        ...prev,
+                        rows: prev.rows.map((r) => ({ ...r, _checked: true })),
+                      })
+                    }}
+                    >
+                      Check all
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => {
+                      setBulkEmailPreview((prev) => prev && {
+                        ...prev,
+                        rows: prev.rows.map((r) => ({ ...r, _checked: false })),
+                      })
+                    }}
+                    >
+                      Uncheck all
+                    </Button>
+                  </Box>
+                </Box>
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{
+                    maxHeight: 'min(70vh, 560px)',
+                    width: '100%',
+                    overflow: 'auto',
+                    borderRadius: 1,
+                    '& .MuiTableHead-root .MuiTableCell-root': {
+                      fontWeight: 600,
+                      fontSize: '0.8125rem',
+                      bgcolor: 'action.hover',
+                      borderBottom: '2px solid',
+                      borderColor: 'divider',
+                      whiteSpace: 'nowrap',
+                    },
+                  }}
+                >
+                  <Table
+                    size="small"
+                    stickyHeader
+                    sx={{
+                      minWidth: 900,
+                      tableLayout: 'auto',
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow>
+                        <TableCell
+                          padding="checkbox"
+                          sx={{
+                            width: 52,
+                            minWidth: 52,
+                            maxWidth: 52,
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 3,
+                            bgcolor: 'action.hover',
+                            boxShadow: (t) => `1px 0 0 ${t.palette.divider}`,
+                          }}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={allChecked}
+                            indeterminate={someChecked}
+                            onChange={() => {
+                              const check = !allChecked
+                              setBulkEmailPreview((prev) => prev && {
+                                ...prev,
+                                rows: prev.rows.map((r) => ({ ...r, _checked: check })),
+                              })
+                            }}
+                            inputProps={{ 'aria-label': 'Select all units for email update' }}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ minWidth: 88, width: 100 }}>Unit</TableCell>
+                        <TableCell sx={{ minWidth: 280 }}>Current email</TableCell>
+                        <TableCell sx={{ minWidth: 280 }}>New email</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {rows.map((row) => (
+                        <TableRow key={row.id} hover selected={row._checked !== false}>
+                          <TableCell
+                            padding="checkbox"
+                            sx={{
+                              position: 'sticky',
+                              left: 0,
+                              zIndex: 1,
+                              bgcolor: row._checked !== false ? 'action.selected' : 'background.paper',
+                              boxShadow: (t) => `1px 0 0 ${t.palette.divider}`,
+                              '.MuiTableRow:hover &': {
+                                bgcolor: row._checked !== false ? 'action.selected' : 'action.hover',
+                              },
+                            }}
+                          >
+                            <Checkbox
+                              size="small"
+                              checked={row._checked !== false}
+                              onChange={(e) => {
+                                const checked = e.target.checked
+                                setBulkEmailPreview((prev) => {
+                                  if (!prev?.rows) return prev
+                                  return {
+                                    ...prev,
+                                    rows: prev.rows.map((r) =>
+                                      r.id === row.id ? { ...r, _checked: checked } : r
+                                    ),
+                                  }
+                                })
+                              }}
+                              inputProps={{ 'aria-label': `Update email for unit ${row.unit_number ?? row.id}` }}
+                            />
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                              verticalAlign: 'top',
+                              color: 'text.primary',
+                            }}
+                          >
+                            {row.unit_number ?? row.id}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              verticalAlign: 'top',
+                              minWidth: 280,
+                              fontFamily: 'ui-monospace, monospace',
+                              fontSize: '0.8125rem',
+                              wordBreak: 'break-all',
+                              overflowWrap: 'anywhere',
+                              color: 'text.secondary',
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {row.current_email || '—'}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              verticalAlign: 'top',
+                              minWidth: 280,
+                              fontFamily: 'ui-monospace, monospace',
+                              fontSize: '0.8125rem',
+                              wordBreak: 'break-all',
+                              overflowWrap: 'anywhere',
+                              color: 'primary.main',
+                              fontWeight: 500,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {row.generated_email}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )
+          })()}
+          {bulkEmailPreview && bulkEmailPreview.count === 0 && (
+            <Typography color="text.secondary">No units in this apartment.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseBulkEmailDialog} disabled={bulkEmailApplyLoading}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleBulkEmailApply}
+            disabled={
+              bulkEmailApplyLoading ||
+              !bulkEmailPreview ||
+              bulkEmailPreview.count === 0 ||
+              bulkEmailPreviewLoading ||
+              !(bulkEmailPreview.rows || []).some((r) => r._checked !== false)
+            }
+          >
+            {bulkEmailApplyLoading
+              ? 'Applying…'
+              : `Apply to ${(bulkEmailPreview?.rows || []).filter((r) => r._checked !== false).length} selected — group ${bulkEmailLetterGroup}`}
           </Button>
         </DialogActions>
       </Dialog>
