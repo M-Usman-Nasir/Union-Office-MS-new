@@ -30,6 +30,7 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  Backdrop,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -179,6 +180,9 @@ const Leads = () => {
   const [featuresRow, setFeaturesRow] = useState(null)
   const [featuresForm, setFeaturesForm] = useState({})
   const [featuresLoading, setFeaturesLoading] = useState(false)
+
+  /** True while Add/Edit lead form is saving (blocks API can take long). */
+  const [leadFormSubmitting, setLeadFormSubmitting] = useState(false)
 
   const { data: createJobApartmentData } = useSWR(
     createJobRow?.society_apartment_id ? ['/apartment-detail-create-job', createJobRow.society_apartment_id] : null,
@@ -340,6 +344,7 @@ const Leads = () => {
   }
 
   const handleCloseDialog = () => {
+    if (leadFormSubmitting) return
     setOpenDialog(false)
     setEditingSociety(null)
   }
@@ -422,8 +427,11 @@ const Leads = () => {
   }
 
   const handleSubmit = async (values, { setSubmitting }) => {
+    let loadingToastId = null
+    setLeadFormSubmitting(true)
     try {
       if (editingSociety) {
+        loadingToastId = toast.loading('Saving lead…')
         const id = editingSociety.id
         await apartmentApi.update(id, {
           name: values.name,
@@ -444,7 +452,7 @@ const Leads = () => {
           priority: values.priority || null,
           notes: values.notes || null,
         })
-        toast.success('Lead updated successfully')
+        toast.success('Lead updated successfully', { id: loadingToastId })
         // Defer close and revalidate so dialog closes and list updates reliably
         setTimeout(() => {
           setOpenDialog(false)
@@ -454,6 +462,15 @@ const Leads = () => {
         return
       } else {
         const numBlocksForPayload = Array.isArray(values.blockNames) && values.blockNames.length > 0 ? values.blockNames.length : 0
+        const willSeedStructure =
+          numBlocksForPayload > 0 && (Number(values.total_floors) || 0) > 0
+        loadingToastId = toast.loading(
+          willSeedStructure
+            ? 'Creating apartment, then blocks, floors and units… This may take up to a minute.'
+            : numBlocksForPayload > 0
+              ? 'Creating apartment and blocks…'
+              : 'Creating lead…'
+        )
         const totalFloorsForPayload = Number(values.total_floors) || 0
         const totalUnitsForPayload =
           values.unitInputMode === 'per_floor' && numBlocksForPayload > 0
@@ -498,6 +515,13 @@ const Leads = () => {
           for (let i = 0; i < numBlocks; i++) {
             const name = (values.blockNames[i] || '').trim() || `Block ${i + 1}`
             const unitsForBlock = typeof blockUnits === 'function' ? blockUnits(i) : blockUnits
+            const step = i + 1
+            toast.loading(
+              totalFloors > 0
+                ? `Creating blocks & seeding floors/units… (${step}/${numBlocks} blocks)`
+                : `Creating blocks… (${step}/${numBlocks})`,
+              { id: loadingToastId }
+            )
             await propertyApi.createBlock({
               society_apartment_id: newId,
               name,
@@ -506,7 +530,7 @@ const Leads = () => {
             })
           }
         }
-        toast.success('Lead created successfully.')
+        toast.success('Lead created successfully.', { id: loadingToastId })
       }
       setTimeout(() => {
         setOpenDialog(false)
@@ -514,8 +538,10 @@ const Leads = () => {
         globalMutate(societiesKey)
       }, 0)
     } catch (error) {
+      if (loadingToastId) toast.dismiss(loadingToastId)
       toast.error(error.response?.data?.message || 'Operation failed')
     } finally {
+      setLeadFormSubmitting(false)
       setSubmitting(false)
     }
   }
@@ -807,6 +833,22 @@ const Leads = () => {
                   <ListItemIcon><DomainIcon fontSize="small" /></ListItemIcon>
                   <ListItemText>Units</ListItemText>
                 </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+                    const sid = actionMenu.row?.id
+                    closeActionMenu()
+                    if (!sid) return
+                    try {
+                      const r = await propertyApi.seedMissingFloorsForSociety(sid)
+                      toast.success(r?.data?.message || 'Floors/units updated.')
+                    } catch (e) {
+                      toast.error(e.response?.data?.message || 'Could not seed floors/units')
+                    }
+                  }}
+                >
+                  <ListItemIcon><TuneIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Repair missing floors/units</ListItemText>
+                </MenuItem>
                 <Divider />
                 {(() => {
                   const assignedAdmin = admins.find((a) => a.society_apartment_id === actionMenu.row.id)
@@ -1013,7 +1055,14 @@ const Leads = () => {
         }}
       />
 
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={openDialog}
+        onClose={() => {
+          if (!leadFormSubmitting) handleCloseDialog()
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         {editingSociety && apartmentDetailLoading ? (
           <>
             <DialogTitle>Edit Lead</DialogTitle>
@@ -1031,14 +1080,21 @@ const Leads = () => {
           onSubmit={handleSubmit}
           enableReinitialize={!editingSociety}
         >
-          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
+          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => {
+            const hasBlockStructure =
+              !editingSociety &&
+              Array.isArray(values.blockNames) &&
+              values.blockNames.length > 0 &&
+              (Number(values.total_floors) || 0) > 0
+            return (
+            <Box sx={{ position: 'relative' }}>
             <Form>
               <DialogTitle>
                 {editingSociety ? 'Edit Lead' : 'Add New Lead'}
               </DialogTitle>
               <DialogContent>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Blocks, floors and units are optional. You can add them here or later from Blocks / Floors / Units.
+                  Blocks, floors and units are optional. With blocks and total floors, each block gets Ground plus numbered floors (e.g. 5 floors → 0–4). Units are created on each floor when you enter totals or units per floor. Edit anytime from Floors / Units.
                 </Typography>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={12}>
@@ -1439,13 +1495,42 @@ const Leads = () => {
                 </Grid>
               </DialogContent>
               <DialogActions>
-                <Button onClick={handleCloseDialog}>Cancel</Button>
+                <Button onClick={handleCloseDialog} disabled={isSubmitting}>
+                  Cancel
+                </Button>
                 <Button type="submit" variant="contained" disabled={isSubmitting}>
-                  {editingSociety ? 'Update' : 'Create'}
+                  {isSubmitting ? (editingSociety ? 'Saving…' : 'Creating…') : editingSociety ? 'Update' : 'Create'}
                 </Button>
               </DialogActions>
             </Form>
-          )}
+            <Backdrop
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: (theme) => theme.zIndex.modal + 1,
+                borderRadius: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+              }}
+              open={isSubmitting}
+            >
+              <CircularProgress color="inherit" sx={{ color: 'common.white' }} size={48} />
+              <Typography color="common.white" variant="body1" align="center" sx={{ px: 2, maxWidth: 280 }}>
+                {editingSociety
+                  ? 'Saving changes…'
+                  : hasBlockStructure
+                    ? 'Creating blocks, floors and units. Please keep this window open.'
+                    : values.blockNames?.length > 0
+                      ? 'Creating blocks…'
+                      : 'Creating lead…'}
+              </Typography>
+            </Backdrop>
+            </Box>
+            )
+          }}
         </Formik>
         )}
       </Dialog>

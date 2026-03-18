@@ -15,6 +15,11 @@ export const propertyApi = {
     return api.post(API_ENDPOINTS.BLOCKS, data)
   },
 
+  /** Backfill floors/units for blocks that have total_floors but zero floor rows (legacy). */
+  seedMissingFloorsForSociety: (society_apartment_id) => {
+    return api.post(`${API_ENDPOINTS.BLOCKS}/seed-missing-floors`, { society_apartment_id })
+  },
+
   updateBlock: (id, data) => {
     return api.put(`${API_ENDPOINTS.BLOCKS}/${id}`, data)
   },

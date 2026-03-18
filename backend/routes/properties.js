@@ -12,6 +12,11 @@ router.use(authenticate);
 router.get('/blocks', propertyController.getBlocks);
 router.get('/blocks/:id/next-floor', propertyController.getBlockNextFloorNumber);
 router.post('/blocks', requireRole('super_admin'), propertyController.createBlock);
+router.post(
+  '/blocks/seed-missing-floors',
+  requireRole('super_admin'),
+  propertyController.seedMissingFloorsForSociety
+);
 router.put('/blocks/:id', requireRole('super_admin'), propertyController.updateBlock);
 
 // Floors routes

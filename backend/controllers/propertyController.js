@@ -73,6 +73,79 @@ export async function refreshApartmentTotals(society_apartment_id) {
   }
 }
 
+async function seedFloorsAndUnitsForBlock(blockId, societyApartmentId, totalFloors, totalUnitsForBlock) {
+  const tf = Math.max(0, parseInt(totalFloors, 10) || 0);
+  const tu = Math.max(0, parseInt(totalUnitsForBlock, 10) || 0);
+  if (tf < 1) return;
+  const bid = parseInt(blockId, 10);
+  const sid = parseInt(societyApartmentId, 10);
+  if (Number.isNaN(bid) || Number.isNaN(sid)) return;
+  for (let fn = 0; fn < tf; fn++) {
+    const base = Math.floor(tu / tf);
+    const rem = tu % tf;
+    const unitsOnFloor = base + (fn < rem ? 1 : 0);
+    const floorRes = await query(
+      `INSERT INTO floors (block_id, floor_number, total_units) VALUES ($1, $2, $3) RETURNING id`,
+      [bid, fn, unitsOnFloor]
+    );
+    const newFloorId = floorRes.rows[0].id;
+    if (unitsOnFloor > 0) {
+      for (let i = 1; i <= unitsOnFloor; i++) {
+        const ins = await query(
+          `INSERT INTO units (
+            society_apartment_id, block_id, floor_id, unit_number,
+            owner_name, resident_name, contact_number, email,
+            k_electric_account, gas_account, water_account, phone_tv_account,
+            car_make_model, license_plate, number_of_cars, is_occupied,
+            telephone_bills, other_bills
+          ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb) RETURNING id`,
+          [sid, bid, newFloorId, String(i)]
+        );
+        const uid = ins.rows[0]?.id;
+        if (uid) {
+          await createResidentUserForUnit({ unitId: uid, createdBy: null }).catch((e) =>
+            console.error('createResidentUserForUnit (seed):', e.message)
+          );
+        }
+      }
+    }
+  }
+  await refreshBlockTotals(bid);
+}
+
+export const seedMissingFloorsForSociety = async (req, res) => {
+  try {
+    const societyId = parseInt(req.body?.society_apartment_id ?? req.query?.society_apartment_id, 10);
+    if (Number.isNaN(societyId) || societyId < 1) {
+      return res.status(400).json({ success: false, message: 'society_apartment_id is required' });
+    }
+    const blocks = await query('SELECT * FROM blocks WHERE society_apartment_id = $1 ORDER BY id', [societyId]);
+    let seeded = 0;
+    const errors = [];
+    for (const b of blocks.rows) {
+      const fc = await query('SELECT COUNT(*)::int AS c FROM floors WHERE block_id = $1', [b.id]);
+      if ((fc.rows[0]?.c ?? 0) > 0) continue;
+      if ((parseInt(b.total_floors, 10) || 0) < 1) continue;
+      try {
+        await seedFloorsAndUnitsForBlock(b.id, b.society_apartment_id, b.total_floors, b.total_units);
+        seeded += 1;
+      } catch (err) {
+        console.error('seedMissingFloorsForSociety block', b.id, err);
+        errors.push({ block_id: b.id, message: err.message });
+      }
+    }
+    await refreshApartmentTotals(societyId);
+    res.json({
+      success: true,
+      message: seeded > 0 ? `Seeded floors/units for ${seeded} block(s).` : 'No blocks needed seeding.',
+      data: { blocks_seeded: seeded, errors },
+    });
+  } catch (error) {
+    console.error('seedMissingFloorsForSociety error:', error);
+    res.status(500).json({ success: false, message: 'Failed to seed structure', error: error.message });
+  }
+};
+
 // Blocks Controller
 export const getBlocks = async (req, res) => {
   try {
@@ -149,12 +222,20 @@ export const createBlock = async (req, res) => {
       [society_apartment_id, name, total_floors || 0, total_units || 0]
     );
 
+    const blockRow = result.rows[0];
+    await seedFloorsAndUnitsForBlock(
+      blockRow.id,
+      blockRow.society_apartment_id,
+      total_floors || 0,
+      total_units || 0
+    );
+
     await refreshApartmentTotals(society_apartment_id);
 
     res.status(201).json({
       success: true,
       message: 'Block created successfully',
-      data: result.rows[0],
+      data: blockRow,
     });
   } catch (error) {
     console.error('Create block error:', error);
