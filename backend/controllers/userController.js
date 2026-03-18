@@ -8,7 +8,7 @@ export const getAll = async (req, res) => {
     const { page = 1, limit = 10, role, search, unassigned_only, work_title } = req.query;
     const offset = (page - 1) * limit;
 
-    let sql = `SELECT u.id, u.email, u.name, u.role, u.society_apartment_id, u.unit_id, u.is_active, u.created_at, u.last_login, u.address, u.city, u.postal_code, u.work_employer, u.work_title, u.work_phone,
+    let sql = `SELECT u.id, u.email, u.name, u.role, u.society_apartment_id, u.unit_id, u.is_active, u.created_at, u.last_login, u.cnic, u.contact_number, u.emergency_contact, u.address, u.city, u.postal_code, u.work_employer, u.work_title, u.work_phone,
        e.department, e.designation, e.salary_rupees
        FROM users u
        LEFT JOIN employees e ON e.user_id = u.id
@@ -338,7 +338,7 @@ export const updatePassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(new_password, 10);
 
     const result = await query(
-      'UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
+      'UPDATE users SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
       [hashedPassword, id]
     );
 

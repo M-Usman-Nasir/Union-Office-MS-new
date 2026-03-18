@@ -6,6 +6,12 @@ export const authApi = {
   registerResident: (data) => client.post(API_ENDPOINTS.REGISTER_RESIDENT, data),
   logout: () => client.post(API_ENDPOINTS.LOGOUT),
   getMe: () => client.get(API_ENDPOINTS.ME),
+
+  changePasswordFirstLogin: ({ current_password, new_password }) =>
+    client.post(API_ENDPOINTS.CHANGE_PASSWORD_FIRST_LOGIN, {
+      current_password,
+      new_password,
+    }),
   refresh: (refreshToken) => client.post(API_ENDPOINTS.REFRESH, { refreshToken }),
 
   /**

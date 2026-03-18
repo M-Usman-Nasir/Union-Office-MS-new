@@ -1,10 +1,11 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { ROUTES } from '@/utils/constants'
+import { ROUTES, ROLES } from '@/utils/constants'
 import { Box, CircularProgress } from '@mui/material'
 
 export const ProtectedRoute = ({ children, requiredRole = null }) => {
   const { isAuthenticated, loading, user } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -16,6 +17,18 @@ export const ProtectedRoute = ({ children, requiredRole = null }) => {
 
   if (!isAuthenticated) {
     return <Navigate to={ROUTES.LOGIN} replace />
+  }
+
+  const onForceChange = location.pathname === ROUTES.FORCE_CHANGE_PASSWORD
+  if (
+    user?.role === ROLES.RESIDENT &&
+    user?.must_change_password &&
+    !onForceChange
+  ) {
+    return <Navigate to={ROUTES.FORCE_CHANGE_PASSWORD} replace />
+  }
+  if (onForceChange && user?.role === ROLES.RESIDENT && !user?.must_change_password) {
+    return <Navigate to={ROUTES.RESIDENT_DASHBOARD} replace />
   }
 
   if (requiredRole && user?.role !== requiredRole) {

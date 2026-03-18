@@ -1,4 +1,9 @@
 import { query } from '../config/database.js';
+import {
+  createResidentUserForUnit,
+  isPlaceholderResidentName,
+  recreatePlaceholderResidentForUnit,
+} from '../utils/unitResidentLogin.js';
 
 // Get all residents
 export const getAll = async (req, res) => {
@@ -165,11 +170,74 @@ export const getById = async (req, res) => {
   }
 };
 
-// Create resident
+async function applyUnitVehicleFieldsOnResident(unitId, body) {
+  const {
+    number_of_cars,
+    number_of_bikes,
+    car_make_model,
+    license_plate,
+    bike_make_model,
+    bike_license_plate,
+  } = body;
+  if (
+    !unitId ||
+    (number_of_cars === undefined &&
+      number_of_bikes === undefined &&
+      car_make_model === undefined &&
+      license_plate === undefined &&
+      bike_make_model === undefined &&
+      bike_license_plate === undefined)
+  ) {
+    return;
+  }
+  const unitUpdates = [];
+  const unitParams = [];
+  let paramCount = 0;
+  if (number_of_cars !== undefined) {
+    paramCount++;
+    unitUpdates.push(`number_of_cars = $${paramCount}::integer`);
+    unitParams.push(number_of_cars ?? 0);
+  }
+  if (number_of_bikes !== undefined) {
+    paramCount++;
+    unitUpdates.push(`number_of_bikes = $${paramCount}::integer`);
+    unitParams.push(number_of_bikes ?? 0);
+  }
+  if (car_make_model !== undefined) {
+    paramCount++;
+    unitUpdates.push(`car_make_model = $${paramCount}::varchar`);
+    unitParams.push(car_make_model || null);
+  }
+  if (license_plate !== undefined) {
+    paramCount++;
+    unitUpdates.push(`license_plate = $${paramCount}::varchar`);
+    unitParams.push(license_plate || null);
+  }
+  if (bike_make_model !== undefined) {
+    paramCount++;
+    unitUpdates.push(`bike_make_model = $${paramCount}::varchar`);
+    unitParams.push(bike_make_model || null);
+  }
+  if (bike_license_plate !== undefined) {
+    paramCount++;
+    unitUpdates.push(`bike_license_plate = $${paramCount}::varchar`);
+    unitParams.push(bike_license_plate || null);
+  }
+  if (unitUpdates.length > 0) {
+    paramCount++;
+    unitUpdates.push('updated_at = CURRENT_TIMESTAMP');
+    unitParams.push(unitId);
+    await query(
+      `UPDATE units SET ${unitUpdates.join(', ')} WHERE id = $${paramCount}`,
+      unitParams
+    ).catch((err) => console.warn('Unit vehicle update:', err.message));
+  }
+}
+
+// Create resident (hybrid: unit has placeholder login from unit creation; assign name/details here)
 export const create = async (req, res) => {
   try {
     const {
-      email,
       password,
       name,
       society_apartment_id,
@@ -186,102 +254,137 @@ export const create = async (req, res) => {
       bike_license_plate,
     } = req.body;
 
-    if (!email || !name || !society_apartment_id) {
+    if (!name?.trim() || !society_apartment_id) {
       return res.status(400).json({
         success: false,
-        message: 'Email, name, and society_apartment_id are required',
+        message: 'Name and society_apartment_id are required',
+      });
+    }
+    if (!unit_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'unit_id is required. Login email is generated from the unit.',
       });
     }
 
-    // Check if user already exists
-    const existing = await query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
-    if (existing.rows.length > 0) {
+    const unitRow = await query(
+      'SELECT id, society_apartment_id FROM units WHERE id = $1',
+      [unit_id]
+    );
+    if (!unitRow.rows.length) {
+      return res.status(400).json({ success: false, message: 'Unit not found' });
+    }
+    if (
+      req.user.role === 'union_admin' &&
+      Number(unitRow.rows[0].society_apartment_id) !== Number(req.user.society_apartment_id)
+    ) {
+      return res.status(403).json({ success: false, message: 'Unit is not in your society' });
+    }
+    if (Number(unitRow.rows[0].society_apartment_id) !== Number(society_apartment_id)) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists',
+        message: "society_apartment_id must match the unit's apartment",
       });
     }
 
-    // Hash password if provided
-    const bcrypt = await import('bcryptjs');
-    const hashedPassword = password ? await bcrypt.default.hash(password, 10) : null;
-
-    const result = await query(
-      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, move_in_date, created_by)
-       VALUES ($1, $2, $3, 'resident', $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, email, name, role, society_apartment_id, unit_id, created_at`,
-      [
-        email.toLowerCase(),
-        hashedPassword,
-        name,
-        society_apartment_id,
-        unit_id || null,
-        cnic || null,
-        contact_number || null,
-        emergency_contact || null,
-        move_in_date || null,
-        req.user.id,
-      ]
+    const existingRes = await query(
+      `SELECT id, name, email FROM users WHERE unit_id = $1 AND role = 'resident' LIMIT 1`,
+      [unit_id]
     );
 
-    // If unit_id is set and vehicle fields provided, update the unit
-    const unitId = result.rows[0]?.unit_id;
-    if (unitId && (
-      number_of_cars !== undefined ||
-      number_of_bikes !== undefined ||
-      car_make_model !== undefined ||
-      license_plate !== undefined ||
-      bike_make_model !== undefined ||
-      bike_license_plate !== undefined
-    )) {
-      const unitUpdates = [];
-      const unitParams = [];
-      let paramCount = 0;
-      if (number_of_cars !== undefined) {
-        paramCount++;
-        unitUpdates.push(`number_of_cars = $${paramCount}::integer`);
-        unitParams.push(number_of_cars ?? 0);
+    const bcrypt = await import('bcryptjs');
+    let resultRow;
+
+    if (existingRes.rows.length > 0) {
+      const er = existingRes.rows[0];
+      if (!isPlaceholderResidentName(er.name)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'This unit already has a resident. Edit the existing resident or remove them first.',
+        });
       }
-      if (number_of_bikes !== undefined) {
-        paramCount++;
-        unitUpdates.push(`number_of_bikes = $${paramCount}::integer`);
-        unitParams.push(number_of_bikes ?? 0);
-      }
-      if (car_make_model !== undefined) {
-        paramCount++;
-        unitUpdates.push(`car_make_model = $${paramCount}::varchar`);
-        unitParams.push(car_make_model || null);
-      }
-      if (license_plate !== undefined) {
-        paramCount++;
-        unitUpdates.push(`license_plate = $${paramCount}::varchar`);
-        unitParams.push(license_plate || null);
-      }
-      if (bike_make_model !== undefined) {
-        paramCount++;
-        unitUpdates.push(`bike_make_model = $${paramCount}::varchar`);
-        unitParams.push(bike_make_model || null);
-      }
-      if (bike_license_plate !== undefined) {
-        paramCount++;
-        unitUpdates.push(`bike_license_plate = $${paramCount}::varchar`);
-        unitParams.push(bike_license_plate || null);
-      }
-      if (unitUpdates.length > 0) {
-        paramCount++;
-        unitUpdates.push('updated_at = CURRENT_TIMESTAMP');
-        unitParams.push(unitId);
+      const pwd = password && String(password).trim().length >= 6 ? String(password).trim() : null;
+      if (pwd) {
+        const hashed = await bcrypt.default.hash(pwd, 10);
         await query(
-          `UPDATE units SET ${unitUpdates.join(', ')} WHERE id = $${paramCount}`,
-          unitParams
-        ).catch((err) => console.warn('Unit vehicle update after create:', err.message));
+          `UPDATE users SET name = $1, cnic = $2, contact_number = $3, emergency_contact = $4,
+           move_in_date = $5, password = $6, must_change_password = false, updated_at = CURRENT_TIMESTAMP,
+           created_by = COALESCE(created_by, $7)
+           WHERE id = $8`,
+          [
+            name.trim(),
+            cnic || null,
+            contact_number || null,
+            emergency_contact || null,
+            move_in_date || null,
+            hashed,
+            req.user.id,
+            er.id,
+          ]
+        );
+      } else {
+        await query(
+          `UPDATE users SET name = $1, cnic = $2, contact_number = $3, emergency_contact = $4,
+           move_in_date = $5, updated_at = CURRENT_TIMESTAMP, created_by = COALESCE(created_by, $6)
+           WHERE id = $7`,
+          [
+            name.trim(),
+            cnic || null,
+            contact_number || null,
+            emergency_contact || null,
+            move_in_date || null,
+            req.user.id,
+            er.id,
+          ]
+        );
       }
+      const sel = await query(
+        `SELECT id, email, name, role, society_apartment_id, unit_id, created_at FROM users WHERE id = $1`,
+        [er.id]
+      );
+      resultRow = sel.rows[0];
+    } else {
+      const created = await createResidentUserForUnit({
+        unitId: unit_id,
+        createdBy: req.user.id,
+        displayName: name.trim(),
+        mustChangePassword: true,
+      });
+      const newUserId = created.userId;
+      const pwd = password && String(password).trim().length >= 6 ? String(password).trim() : null;
+      if (pwd) {
+        const hashed = await bcrypt.default.hash(pwd, 10);
+        await query(
+          `UPDATE users SET password = $1, must_change_password = false, cnic = $2, contact_number = $3,
+           emergency_contact = $4, move_in_date = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`,
+          [hashed, cnic || null, contact_number || null, emergency_contact || null, move_in_date || null, newUserId]
+        );
+      } else {
+        await query(
+          `UPDATE users SET cnic = $1, contact_number = $2, emergency_contact = $3, move_in_date = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5`,
+          [cnic || null, contact_number || null, emergency_contact || null, move_in_date || null, newUserId]
+        );
+      }
+      const sel = await query(
+        `SELECT id, email, name, role, society_apartment_id, unit_id, created_at FROM users WHERE id = $1`,
+        [newUserId]
+      );
+      resultRow = sel.rows[0];
     }
+
+    await applyUnitVehicleFieldsOnResident(resultRow?.unit_id, req.body);
 
     res.status(201).json({
       success: true,
       message: 'Resident created successfully',
-      data: result.rows[0],
+      data: {
+        ...resultRow,
+        initial_password_hint:
+          password && String(password).trim().length >= 6
+            ? undefined
+            : 'Password1! (resident must change on first login unless you set a custom password)',
+      },
     });
   } catch (error) {
     console.error('Create resident error:', error);
@@ -523,13 +626,34 @@ export const remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await query('DELETE FROM users WHERE id = $1 AND role IN (\'resident\', \'union_admin\') RETURNING id', [id]);
+    const before = await query(
+      `SELECT unit_id, role FROM users WHERE id = $1 AND role = 'resident'`,
+      [id]
+    );
+    if (before.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resident not found',
+      });
+    }
+    const unitId = before.rows[0].unit_id;
+
+    const result = await query(
+      `DELETE FROM users WHERE id = $1 AND role = 'resident' RETURNING id`,
+      [id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Resident not found',
       });
+    }
+
+    if (unitId) {
+      await recreatePlaceholderResidentForUnit(unitId, req.user.id).catch((e) =>
+        console.error('recreatePlaceholderResidentForUnit:', e.message)
+      );
     }
 
     res.json({

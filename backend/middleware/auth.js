@@ -21,7 +21,9 @@ export const authenticate = async (req, res, next) => {
 
     // Get user from database
     const result = await query(
-      'SELECT id, email, name, role, society_apartment_id, unit_id FROM users WHERE id = $1 AND is_active = true',
+      `SELECT id, email, name, role, society_apartment_id, unit_id,
+              COALESCE(must_change_password, false) AS must_change_password
+       FROM users WHERE id = $1 AND is_active = true`,
       [decoded.userId]
     );
 
@@ -32,8 +34,24 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    // Attach user to request
     req.user = result.rows[0];
+
+    const path = (req.originalUrl || req.url || '').split('?')[0];
+    const method = (req.method || 'GET').toUpperCase();
+    const exempt =
+      (path.endsWith('/auth/me') && method === 'GET') ||
+      (path.endsWith('/auth/change-password-first-login') && method === 'POST') ||
+      (path.endsWith('/auth/logout') && method === 'POST') ||
+      (path.endsWith('/auth/refresh') && method === 'POST');
+
+    if (req.user.role === 'resident' && req.user.must_change_password && !exempt) {
+      return res.status(403).json({
+        success: false,
+        code: 'MUST_CHANGE_PASSWORD',
+        message: 'You must change your password before continuing.',
+      });
+    }
+
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -94,7 +112,9 @@ export const optionalAuth = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       const result = await query(
-        'SELECT id, email, name, role, society_apartment_id, unit_id FROM users WHERE id = $1 AND is_active = true',
+        `SELECT id, email, name, role, society_apartment_id, unit_id,
+                COALESCE(must_change_password, false) AS must_change_password
+         FROM users WHERE id = $1 AND is_active = true`,
         [decoded.userId]
       );
 

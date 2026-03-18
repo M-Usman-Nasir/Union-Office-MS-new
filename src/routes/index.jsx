@@ -5,6 +5,7 @@ import { ROLES, ROUTES } from '@/utils/constants'
 
 // Import pages
 import LoginPage from '@/pages/auth/LoginPage'
+import ForceChangePasswordPage from '@/pages/auth/ForceChangePasswordPage'
 import SuperAdminDashboard from '@/pages/super-admin/Dashboard'
 import Leads from '@/pages/super-admin/Leads'
 import Blocks from '@/pages/super-admin/Blocks'
@@ -51,6 +52,14 @@ export const AppRoutes = () => {
     <Routes>
       {/* Public Routes */}
       <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+      <Route
+        path={ROUTES.FORCE_CHANGE_PASSWORD}
+        element={
+          <ProtectedRoute>
+            <ForceChangePasswordPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/offline" element={<Offline />} />
       
       {/* Super Admin Routes */}

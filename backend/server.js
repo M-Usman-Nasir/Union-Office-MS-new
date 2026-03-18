@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
-import { testConnection, getTables } from './config/database.js';
+import { testConnection, getTables, ensureSchemaPatches } from './config/database.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -169,6 +169,8 @@ const startServer = async () => {
       console.error('❌ Failed to connect to database. Please check your configuration.');
       process.exit(1);
     }
+
+    await ensureSchemaPatches();
 
     // Get and display tables
     const tables = await getTables();

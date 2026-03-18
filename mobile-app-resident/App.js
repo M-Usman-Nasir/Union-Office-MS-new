@@ -10,6 +10,7 @@ import { colors } from './src/theme';
 import AuthStack from './src/navigation/AuthStack';
 import MainTabs from './src/navigation/MainTabs';
 import PendingAssignmentScreen from './src/screens/PendingAssignmentScreen';
+import ForceChangePasswordScreen from './src/screens/ForceChangePasswordScreen';
 
 const TAGLINE = 'Your community, connected.';
 
@@ -29,10 +30,14 @@ function RootNavigator() {
     );
   }
 
+  const mustChange = !!user?.must_change_password;
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!isAuthenticated ? (
         <Stack.Screen name="Auth" component={AuthStack} />
+      ) : mustChange ? (
+        <Stack.Screen name="ForceChangePassword" component={ForceChangePasswordScreen} />
       ) : !hasSociety ? (
         <Stack.Screen name="PendingAssignment" component={PendingAssignmentScreen} />
       ) : (

@@ -83,7 +83,9 @@ const LoginPage = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
-      if (user.role === ROLES.SUPER_ADMIN) {
+      if (user.must_change_password && user.role === ROLES.RESIDENT) {
+        navigate(ROUTES.FORCE_CHANGE_PASSWORD)
+      } else if (user.role === ROLES.SUPER_ADMIN) {
         navigate(ROUTES.SUPER_ADMIN_DASHBOARD)
       } else if (user.role === ROLES.ADMIN) {
         navigate(ROUTES.ADMIN_DASHBOARD)
@@ -103,10 +105,14 @@ const LoginPage = () => {
 
       if (result.success) {
         toast.success('Login successful!')
-        const user = result.user
-        if (user.role === ROLES.SUPER_ADMIN) {
+        const loggedIn = result.user
+        if (result.mustChangePassword && loggedIn.role === ROLES.RESIDENT) {
+          navigate(ROUTES.FORCE_CHANGE_PASSWORD)
+          return
+        }
+        if (loggedIn.role === ROLES.SUPER_ADMIN) {
           navigate(ROUTES.SUPER_ADMIN_DASHBOARD)
-        } else if (user.role === ROLES.ADMIN) {
+        } else if (loggedIn.role === ROLES.ADMIN) {
           navigate(ROUTES.ADMIN_DASHBOARD)
         } else {
           navigate(ROUTES.RESIDENT_DASHBOARD)

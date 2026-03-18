@@ -23,6 +23,11 @@ router.post('/floors/:id/units', requireRole('super_admin'), propertyController.
 
 // Units routes
 router.get('/units', propertyController.getUnits);
+router.get(
+  '/units/:id/login-email-preview',
+  requireRole('super_admin', 'union_admin'),
+  propertyController.getUnitLoginEmailPreview
+);
 router.get('/units/:id', propertyController.getUnitById);
 router.post('/units/import', requireRole('super_admin'), uploadUnitsImport, propertyController.importUnits);
 router.post('/units', requireRole('super_admin'), propertyController.createUnit);

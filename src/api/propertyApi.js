@@ -49,6 +49,10 @@ export const propertyApi = {
     return api.get(API_ENDPOINTS.UNIT_BY_ID(id))
   },
 
+  getUnitLoginEmailPreview: (id) => {
+    return api.get(API_ENDPOINTS.UNIT_LOGIN_EMAIL_PREVIEW(id))
+  },
+
   createUnit: (data) => {
     return api.post(API_ENDPOINTS.UNITS, data)
   },

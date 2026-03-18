@@ -39,6 +39,7 @@ export const API_ENDPOINTS = {
   REFRESH: '/auth/refresh',
   ME: '/auth/me',
   REGISTER: '/auth/register',
+  CHANGE_PASSWORD_FIRST_LOGIN: '/auth/change-password-first-login',
   
   // Apartments (societies)
   SOCIETIES: '/societies',
@@ -106,6 +107,7 @@ export const API_ENDPOINTS = {
   UNITS: '/properties/units',
   UNITS_IMPORT: '/properties/units/import',
   UNIT_BY_ID: (id) => `/properties/units/${id}`,
+  UNIT_LOGIN_EMAIL_PREVIEW: (id) => `/properties/units/${id}/login-email-preview`,
   
   // Unit claims (ownership/tenancy)
   UNIT_CLAIMS: '/unit-claims',
@@ -177,6 +179,7 @@ export const ROUTES = {
   // Auth
   LOGIN: '/login',
   LOGOUT: '/logout',
+  FORCE_CHANGE_PASSWORD: '/force-change-password',
   
   // Super Admin
   SUPER_ADMIN_DASHBOARD: '/super-admin/dashboard',

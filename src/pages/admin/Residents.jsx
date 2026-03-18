@@ -18,9 +18,8 @@ import {
   Menu,
   Chip,
   CircularProgress,
+  Alert,
 } from '@mui/material'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import ErrorIcon from '@mui/icons-material/Error'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import EditIcon from '@mui/icons-material/Edit'
@@ -33,7 +32,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import useSWR from 'swr'
 import { residentApi } from '@/api/residentApi'
-import { userApi } from '@/api/userApi'
 import { propertyApi } from '@/api/propertyApi'
 import { apartmentApi } from '@/api/apartmentApi'
 import DataTable from '@/components/common/DataTable'
@@ -43,11 +41,13 @@ import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 
-const getValidationSchema = (isEdit, apartmentCreatedAt) => Yup.object({
-  email: Yup.string().email('Invalid email').required('Email is required'),
-  password: isEdit 
-    ? Yup.string().min(6, 'Password must be at least 6 characters')
-    : Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
+const getValidationSchema = (isEdit, apartmentCreatedAt) => {
+  const passwordField = Yup.string()
+    .transform((v) => (v === '' || v === undefined ? undefined : v))
+    .optional()
+    .test('min-if-set', 'Password must be at least 6 characters', (v) => !v || String(v).length >= 6)
+
+  const schema = {
   name: Yup.string().required('Name is required'),
   society_apartment_id: Yup.number().required('Society is required'),
   contact_number: Yup.string(),
@@ -66,7 +66,13 @@ const getValidationSchema = (isEdit, apartmentCreatedAt) => Yup.object({
         return !moveIn.isBefore(created)
       }
     ),
-})
+  password: passwordField,
+  }
+  if (!isEdit) {
+    schema.unit_id = Yup.mixed().required('Select block, floor, and unit')
+  }
+  return Yup.object(schema)
+}
 
 const Residents = () => {
   const { user } = useAuth()
@@ -85,10 +91,10 @@ const Residents = () => {
   // Cascading Block → Floor → Unit: used for fetching floors/units in Add/Edit dialog
   const [formBlockId, setFormBlockId] = useState('')
   const [formFloorId, setFormFloorId] = useState('')
-  /** Email uniqueness: null | 'checking' | 'available' | 'taken' */
-  const [emailCheckStatus, setEmailCheckStatus] = useState(null)
   /** Toggle password visibility in Add New Resident dialog */
   const [showPassword, setShowPassword] = useState(false)
+  /** Login email preview for selected unit (add flow) */
+  const [unitLoginPreview, setUnitLoginPreview] = useState(null)
 
   const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
   const fetchParams = { page, limit, search, society_id: societyId }
@@ -156,8 +162,8 @@ const Residents = () => {
 
   const handleOpenDialog = (resident = null) => {
     setEditingResident(resident)
-    setEmailCheckStatus(null)
     setShowPassword(false)
+    setUnitLoginPreview(resident?.email || null)
     setFormBlockId('')
     setFormFloorId('')
     setOpenDialog(true)
@@ -166,7 +172,8 @@ const Residents = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false)
     setEditingResident(null)
-    setEmailCheckStatus(null)
+    setShowPassword(false)
+    setUnitLoginPreview(null)
     setFormBlockId('')
     setFormFloorId('')
   }
@@ -181,17 +188,13 @@ const Residents = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      if (!editingResident && emailCheckStatus === 'taken') {
-        toast.error('This email is already registered. Please use a different email.')
-        setSubmitting(false)
-        return
-      }
       // Prepare data for backend
       const submitData = { ...values }
-      
+
       // block_id and floor_id are only for cascading UI; backend expects only unit_id
       delete submitData.block_id
       delete submitData.floor_id
+      delete submitData.email
 
       // Ensure is_active is boolean for API
       submitData.is_active = submitData.is_active === true || submitData.is_active === 'true'
@@ -232,8 +235,11 @@ const Residents = () => {
         }
         // Remove role as backend hardcodes it to 'resident'
         delete submitData.role
+        if (!submitData.password) delete submitData.password
         await residentApi.create(submitData)
-        toast.success('Resident created successfully')
+        toast.success(
+          'Resident saved. They sign in with the unit login email and initial password Password1! (unless you set a custom password).'
+        )
       }
       mutate()
       handleCloseDialog()
@@ -608,84 +614,15 @@ const Residents = () => {
                       helperText={touched.name && errors.name}
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Email"
-                      name="email"
-                      type="email"
-                      value={values.email}
-                      onChange={(e) => {
-                        setEmailCheckStatus(null)
-                        handleChange(e)
-                      }}
-                      onBlur={async (e) => {
-                        handleBlur(e)
-                        const email = (values.email || '').trim()
-                        if (!email || !!editingResident) return
-                        const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-                        if (!validEmailRegex.test(email)) return
-                        setEmailCheckStatus('checking')
-                        try {
-                          const res = await userApi.checkEmail(email, editingResident?.id)
-                          setEmailCheckStatus(res?.data?.available ? 'available' : 'taken')
-                        } catch {
-                          setEmailCheckStatus(null)
-                        }
-                      }}
-                      error={(touched.email && !!errors.email) || emailCheckStatus === 'taken'}
-                      helperText={
-                        (touched.email && errors.email) ||
-                        (emailCheckStatus === 'taken' ? 'This email is already registered in the system.' : null)
-                      }
-                      disabled={!!editingResident}
-                      autoComplete="off"
-                      InputProps={{
-                        endAdornment:
-                          emailCheckStatus === 'checking' ? (
-                            <InputAdornment position="end">
-                              <CircularProgress size={22} />
-                            </InputAdornment>
-                          ) : emailCheckStatus === 'available' ? (
-                            <InputAdornment position="end">
-                              <CheckCircleIcon color="success" fontSize="small" titleAccess="Email is available" />
-                            </InputAdornment>
-                          ) : emailCheckStatus === 'taken' ? (
-                            <InputAdornment position="end">
-                              <ErrorIcon color="error" fontSize="small" titleAccess="Email already registered" />
-                            </InputAdornment>
-                          ) : null,
-                      }}
-                    />
-                  </Grid>
-                  {!editingResident && (
-                    <Grid item xs={12}>
+                  {editingResident && (
+                    <Grid item xs={12} sm={6}>
                       <TextField
                         fullWidth
-                        label="Password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        value={values.password}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        error={touched.password && !!errors.password}
-                        helperText={touched.password && errors.password}
-                        autoComplete="new-password"
-                        InputProps={{
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <IconButton
-                                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                onClick={() => setShowPassword((prev) => !prev)}
-                                onMouseDown={(e) => e.preventDefault()}
-                                edge="end"
-                                size="small"
-                              >
-                                {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                              </IconButton>
-                            </InputAdornment>
-                          ),
-                        }}
+                        label="Login email (from unit)"
+                        name="email_display"
+                        value={editingResident.email || ''}
+                        disabled
+                        helperText="Tied to unit; cannot be changed here"
                       />
                     </Grid>
                   )}
@@ -801,10 +738,12 @@ const Residents = () => {
                         handleChange(e)
                         setFieldValue('floor_id', '')
                         setFieldValue('unit_id', '')
+                        setUnitLoginPreview(null)
                         setFormBlockId(v)
                         setFormFloorId('')
                       }}
                       onBlur={handleBlur}
+                      disabled={!!editingResident}
                     >
                       <MenuItem value="">Select block</MenuItem>
                       {blocks.map((block) => (
@@ -825,10 +764,11 @@ const Residents = () => {
                         const v = e.target.value
                         handleChange(e)
                         setFieldValue('unit_id', '')
+                        setUnitLoginPreview(null)
                         setFormFloorId(v)
                       }}
                       onBlur={handleBlur}
-                      disabled={!values.block_id}
+                      disabled={!values.block_id || !!editingResident}
                     >
                       <MenuItem value="">Select floor</MenuItem>
                       {floors.map((floor) => (
@@ -845,9 +785,22 @@ const Residents = () => {
                       label="Unit (Flat)"
                       name="unit_id"
                       value={values.unit_id}
-                      onChange={handleChange}
+                      onChange={async (e) => {
+                        const uid = e.target.value
+                        handleChange(e)
+                        if (!editingResident && uid) {
+                          try {
+                            const res = await propertyApi.getUnitLoginEmailPreview(uid)
+                            setUnitLoginPreview(res.data?.data?.email || null)
+                          } catch {
+                            setUnitLoginPreview(null)
+                          }
+                        } else if (!uid) {
+                          setUnitLoginPreview(null)
+                        }
+                      }}
                       onBlur={handleBlur}
-                      disabled={!values.block_id}
+                      disabled={!values.block_id || !!editingResident}
                     >
                       <MenuItem value="">Select unit</MenuItem>
                       {dialogUnits.map((unit) => (
@@ -857,6 +810,53 @@ const Residents = () => {
                       ))}
                     </TextField>
                   </Grid>
+                  {!editingResident && values.unit_id && (
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        <strong>Login email:</strong>{' '}
+                        {unitLoginPreview || (
+                          <CircularProgress size={16} sx={{ verticalAlign: 'middle', ml: 0.5 }} />
+                        )}
+                        <br />
+                        <strong>Initial password:</strong> Password1! (resident must change on first login, unless
+                        you set a custom password below)
+                      </Alert>
+                    </Grid>
+                  )}
+                  {!editingResident && (
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Custom password (optional)"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={values.password}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={touched.password && !!errors.password}
+                        helperText={
+                          (touched.password && errors.password) ||
+                          'Leave blank to use Password1! — resident will change it on first login'
+                        }
+                        autoComplete="new-password"
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                onClick={() => setShowPassword((prev) => !prev)}
+                                onMouseDown={(e) => e.preventDefault()}
+                                edge="end"
+                                size="small"
+                              >
+                                {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                  )}
                   <Grid item xs={12} sm={4}>
                     <TextField
                       fullWidth

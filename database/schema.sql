@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
     emergency_contact VARCHAR(20),
     move_in_date DATE,
     is_active BOOLEAN DEFAULT true,
+    must_change_password BOOLEAN NOT NULL DEFAULT false,
     last_login TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

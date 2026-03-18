@@ -1,6 +1,10 @@
 import { query } from '../config/database.js';
 import fs from 'fs';
 import { parseUnitsImportFile } from '../utils/parseUnitsImport.js';
+import {
+  createResidentUserForUnit,
+  previewLoginEmailForUnitId,
+} from '../utils/unitResidentLogin.js';
 
 /**
  * Recompute and update a block's total_floors and total_units from actual
@@ -348,16 +352,23 @@ export const createFloor = async (req, res) => {
       const society_apartment_id = blockRow.rows[0]?.society_apartment_id;
       if (society_apartment_id) {
         for (let i = 1; i <= numUnits; i++) {
-          await query(
+          const ins = await query(
             `INSERT INTO units (
               society_apartment_id, block_id, floor_id, unit_number,
               owner_name, resident_name, contact_number, email,
               k_electric_account, gas_account, water_account, phone_tv_account,
               car_make_model, license_plate, number_of_cars, is_occupied,
               telephone_bills, other_bills
-            ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb)`,
+            ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb)
+            RETURNING id`,
             [society_apartment_id, block_id, newFloorId, String(i)]
           );
+          const uid = ins.rows[0]?.id;
+          if (uid) {
+            await createResidentUserForUnit({ unitId: uid, createdBy: null }).catch((e) =>
+              console.error('createResidentUserForUnit (floor):', e.message)
+            );
+          }
         }
       }
     }
@@ -535,7 +546,7 @@ export const addUnitsToFloor = async (req, res) => {
     }
 
     for (const unit_number of unitNumbers) {
-      await query(
+      const ins = await query(
         `INSERT INTO units (
           society_apartment_id, block_id, floor_id, unit_number,
           owner_name, resident_name, contact_number, email,
@@ -544,9 +555,16 @@ export const addUnitsToFloor = async (req, res) => {
           bike_make_model, bike_license_plate, number_of_bikes,
           is_occupied,
           telephone_bills, other_bills
-        ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb)`,
+        ) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, false, '[]'::jsonb, '[]'::jsonb)
+        RETURNING id`,
         [society_apartment_id, block_id, floor_id, unit_number]
       );
+      const uid = ins.rows[0]?.id;
+      if (uid) {
+        await createResidentUserForUnit({ unitId: uid, createdBy: null }).catch((e) =>
+          console.error('createResidentUserForUnit (addUnits):', e.message)
+        );
+      }
     }
 
     const newTotal = existingUnits.rows.length + unitNumbers.length;
@@ -623,6 +641,43 @@ export const getUnits = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch units',
+      error: error.message,
+    });
+  }
+};
+
+export const getUnitLoginEmailPreview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const scope = await query(
+      'SELECT society_apartment_id FROM units WHERE id = $1',
+      [id]
+    );
+    if (scope.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Unit not found' });
+    }
+    if (
+      req.user.role === 'union_admin' &&
+      Number(scope.rows[0].society_apartment_id) !== Number(req.user.society_apartment_id)
+    ) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    const email = await previewLoginEmailForUnitId(id);
+    if (!email) {
+      return res.status(404).json({ success: false, message: 'Unit not found' });
+    }
+    res.json({
+      success: true,
+      data: {
+        email,
+        initial_password: 'Password1!',
+      },
+    });
+  } catch (error) {
+    console.error('getUnitLoginEmailPreview:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to resolve login email',
       error: error.message,
     });
   }
@@ -733,6 +788,14 @@ export const createUnit = async (req, res) => {
         Array.isArray(other_bills) ? other_bills : (other_bills || []),
       ]
     );
+
+    const newUnitId = result.rows[0]?.id;
+    if (newUnitId) {
+      await createResidentUserForUnit({
+        unitId: newUnitId,
+        createdBy: req.user?.id ?? null,
+      }).catch((e) => console.error('createResidentUserForUnit (createUnit):', e.message));
+    }
 
     if (block_id) await refreshBlockTotals(block_id);
     await refreshApartmentTotals(society_apartment_id);
@@ -941,13 +1004,7 @@ export const deleteUnit = async (req, res) => {
       });
     }
 
-    const usersRef = await query('SELECT 1 FROM users WHERE unit_id = $1 LIMIT 1', [id]);
-    if (usersRef.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete unit: it is assigned to one or more users (residents). Remove or reassign them first.',
-      });
-    }
+    await query(`DELETE FROM users WHERE unit_id = $1 AND role = 'resident'`, [id]);
     const maintenanceRef = await query('SELECT 1 FROM maintenance WHERE unit_id = $1 LIMIT 1', [id]);
     if (maintenanceRef.rows.length > 0) {
       return res.status(400).json({
@@ -1098,6 +1155,7 @@ export const importUnits = async (req, res) => {
       const other_bills = Array.isArray(r.other_bills) ? r.other_bills : [];
 
       if (existing.rows.length > 0) {
+        const unitPk = existing.rows[0].id;
         await query(
           `UPDATE units SET
             society_apartment_id = $1, block_id = $2, owner_name = $3, resident_name = $4,
@@ -1112,12 +1170,21 @@ export const importUnits = async (req, res) => {
             k_electric_account, gas_account, water_account, phone_tv_account, car_make_model, license_plate,
             number_of_cars, bike_make_model, bike_license_plate, number_of_bikes, is_occupied,
             JSON.stringify(telephone_bills), JSON.stringify(other_bills),
-            existing.rows[0].id,
+            unitPk,
           ]
         );
+        const hasRes = await query(
+          `SELECT 1 FROM users WHERE unit_id = $1 AND role = 'resident' LIMIT 1`,
+          [unitPk]
+        );
+        if (hasRes.rows.length === 0) {
+          await createResidentUserForUnit({ unitId: unitPk, createdBy: req.user?.id ?? null }).catch(
+            (e) => console.error('createResidentUserForUnit (import update):', e.message)
+          );
+        }
         updated++;
       } else {
-        await query(
+        const ins = await query(
           `INSERT INTO units (
             society_apartment_id, block_id, floor_id, unit_number,
             owner_name, resident_name, contact_number, email,
@@ -1126,7 +1193,8 @@ export const importUnits = async (req, res) => {
             bike_make_model, bike_license_plate, number_of_bikes,
             is_occupied,
             telephone_bills, other_bills
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, '[]'::jsonb, '[]'::jsonb)`,
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, '[]'::jsonb, '[]'::jsonb)
+          RETURNING id`,
           [
             society_apartment_id, resolvedBlockId, floor_id, unit_number,
             owner_name, resident_name, contact_number, email,
@@ -1134,6 +1202,12 @@ export const importUnits = async (req, res) => {
             car_make_model, license_plate, number_of_cars, bike_make_model, bike_license_plate, number_of_bikes, is_occupied,
           ]
         );
+        const newId = ins.rows[0]?.id;
+        if (newId) {
+          await createResidentUserForUnit({ unitId: newId, createdBy: req.user?.id ?? null }).catch(
+            (e) => console.error('createResidentUserForUnit (import insert):', e.message)
+          );
+        }
         created++;
       }
       affectedBlockIds.add(resolvedBlockId);

@@ -25,7 +25,9 @@ export const AuthProvider = ({ children }) => {
         if (token) {
           // Verify token with backend
           const response = await authApi.getMe()
-          setUser(response.data.data)
+          const u = response.data.data
+          setUser(u)
+          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(u))
           setIsAuthenticated(true)
         }
       } catch (error) {
@@ -52,7 +54,11 @@ export const AuthProvider = ({ children }) => {
       setUser(userData)
       setIsAuthenticated(true)
       
-      return { success: true, user: userData }
+      return {
+        success: true,
+        user: userData,
+        mustChangePassword: !!userData?.must_change_password,
+      }
     } catch (error) {
       const message = error.response?.data?.message || 'Login failed'
       return { success: false, error: message }

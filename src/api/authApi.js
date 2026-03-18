@@ -42,4 +42,11 @@ export const authApi = {
   register: (userData) => {
     return api.post(API_ENDPOINTS.REGISTER, userData)
   },
+
+  changePasswordFirstLogin: ({ current_password, new_password }) => {
+    return api.post(API_ENDPOINTS.CHANGE_PASSWORD_FIRST_LOGIN, {
+      current_password,
+      new_password,
+    })
+  },
 }

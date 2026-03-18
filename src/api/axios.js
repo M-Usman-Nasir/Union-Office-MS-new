@@ -1,6 +1,6 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
-import { STORAGE_KEYS } from '@/utils/constants'
+import { STORAGE_KEYS, ROUTES } from '@/utils/constants'
 
 // Create axios instance
 const api = axios.create({
@@ -100,9 +100,11 @@ api.interceptors.response.use(
           toast.error(data.message || 'Bad request')
           break
         case 403:
-          // Silently ignore permission errors to avoid ugly global toasts,
-          // especially for resident users hitting admin-only endpoints.
-          // Individual pages can render their own friendly messages if needed.
+          if (data?.code === 'MUST_CHANGE_PASSWORD' && typeof window !== 'undefined') {
+            if (!window.location.pathname.includes('/force-change-password')) {
+              window.location.href = ROUTES.FORCE_CHANGE_PASSWORD
+            }
+          }
           break
         case 404:
           toast.error('Resource not found')

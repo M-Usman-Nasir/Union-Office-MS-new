@@ -102,6 +102,19 @@ export const testConnection = async () => {
   }
 };
 
+/** Ensures columns required by current API code exist (idempotent). */
+export const ensureSchemaPatches = async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+    `);
+    console.log('✅ Schema patch: users.must_change_password');
+  } catch (e) {
+    console.warn('⚠️  Schema patch (must_change_password) skipped:', e.message);
+  }
+};
+
 // Get all tables
 export const getTables = async () => {
   try {

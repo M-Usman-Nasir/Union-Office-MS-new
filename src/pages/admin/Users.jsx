@@ -221,11 +221,34 @@ const Users = () => {
     () => propertyApi.getUnits({ society_id: selectedSocietyId }).then(res => res.data)
   )
 
-  const handleOpenDialog = (user = null) => {
-    setEditingUser(user)
+  const handleOpenDialog = () => {
+    setEditingUser(null)
+    setSelectedSocietyId(null)
     setEmailCheckStatus(null)
     setShowPassword(false)
     setOpenDialog(true)
+  }
+
+  /** Load full user from API so edit form has all saved fields (list rows omit some columns). */
+  const handleOpenEditDialog = async (row) => {
+    setActionMenuAnchor(null)
+    setActionMenuRow(null)
+    setEmailCheckStatus(null)
+    setShowPassword(false)
+    const toastId = toast.loading('Loading user…')
+    try {
+      const res = await userApi.getById(row.id)
+      const full = res?.data?.data ?? res?.data
+      if (!full?.id) {
+        throw new Error('Invalid user response')
+      }
+      setEditingUser(full)
+      setSelectedSocietyId(full.society_apartment_id ?? null)
+      setOpenDialog(true)
+      toast.dismiss(toastId)
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to load user', { id: toastId })
+    }
   }
 
   const handleCloseDialog = () => {
@@ -258,6 +281,12 @@ const Users = () => {
       // Prepare data for backend
       const submitData = { ...values }
 
+      if (editingUser) {
+        delete submitData.password
+        // Avoid sending read-only join fields back as ambiguous updates
+        delete submitData.designation
+      }
+
       // Union admin employee form: do not send email/password (backend will use placeholders); omit work/address fields
       if (currentUser?.role === 'union_admin') {
         delete submitData.email
@@ -267,20 +296,44 @@ const Users = () => {
         submitData.address = null
         submitData.city = null
         submitData.postal_code = null
-        submitData.designation = submitData.work_title || null
       }
 
       // Clean up empty strings - convert to null for optional fields
-      const optionalFields = ['society_apartment_id', 'unit_id', 'cnic', 'contact_number', 'emergency_contact', 'address', 'city', 'postal_code', 'work_employer', 'work_title', 'work_phone']
-      optionalFields.forEach(field => {
+      const optionalFields = [
+        'society_apartment_id',
+        'unit_id',
+        'cnic',
+        'contact_number',
+        'emergency_contact',
+        'address',
+        'city',
+        'postal_code',
+        'work_employer',
+        'work_title',
+        'work_phone',
+        'department',
+      ]
+      optionalFields.forEach((field) => {
         if (submitData[field] === '' || submitData[field] === undefined) {
           submitData[field] = null
         }
-        // Convert string numbers to integers
         if (submitData[field] && (field === 'society_apartment_id' || field === 'unit_id')) {
-          submitData[field] = parseInt(submitData[field])
+          submitData[field] = parseInt(submitData[field], 10)
         }
       })
+      if (submitData.salary_rupees === '' || submitData.salary_rupees === undefined) {
+        submitData.salary_rupees = null
+      } else if (submitData.salary_rupees != null && submitData.salary_rupees !== '') {
+        const n = Number(submitData.salary_rupees)
+        submitData.salary_rupees = Number.isNaN(n) ? null : n
+      }
+
+      // Employees table uses designation; mirror work_title after cleanup
+      if (currentUser?.role === 'union_admin') {
+        submitData.designation = submitData.work_title || null
+      } else if (editingUser && submitData.role === 'staff') {
+        submitData.designation = submitData.work_title || null
+      }
 
       // For Union Admin creating users, auto-assign their society if not provided
       if (!editingUser && currentUser?.role === 'union_admin' && !submitData.society_apartment_id) {
@@ -633,24 +686,25 @@ const Users = () => {
         name: editingUser.name || '',
         role: currentUser?.role === 'union_admin' ? 'staff' : (editingUser.role || (currentUser?.role === 'super_admin' ? 'union_admin' : 'resident')),
         society_apartment_id: editingUser.society_apartment_id || (currentUser?.role === 'union_admin' ? currentUser.society_apartment_id : null),
-        unit_id: editingUser.unit_id || null,
-        cnic: editingUser.cnic || '',
-        contact_number: editingUser.contact_number || '',
-        emergency_contact: editingUser.emergency_contact || '',
-        address: editingUser.address || '',
-        city: editingUser.city || '',
-        postal_code: editingUser.postal_code || '',
-        work_employer: editingUser.work_employer || '',
-        work_title: editingUser.work_title || '',
-        work_phone: editingUser.work_phone || '',
-        department: editingUser.department || '',
+        unit_id: editingUser.unit_id != null ? editingUser.unit_id : null,
+        cnic: editingUser.cnic != null ? String(editingUser.cnic) : '',
+        contact_number: editingUser.contact_number != null ? String(editingUser.contact_number) : '',
+        emergency_contact: editingUser.emergency_contact != null ? String(editingUser.emergency_contact) : '',
+        address: editingUser.address != null ? String(editingUser.address) : '',
+        city: editingUser.city != null ? String(editingUser.city) : '',
+        postal_code: editingUser.postal_code != null ? String(editingUser.postal_code) : '',
+        work_employer: editingUser.work_employer != null ? String(editingUser.work_employer) : '',
+        work_title: (editingUser.work_title || editingUser.designation || '') != null ? String(editingUser.work_title || editingUser.designation || '') : '',
+        work_phone: editingUser.work_phone != null ? String(editingUser.work_phone) : '',
+        department: editingUser.department != null ? String(editingUser.department) : '',
         salary_rupees: editingUser.salary_rupees != null && editingUser.salary_rupees !== '' ? editingUser.salary_rupees : '',
-        is_active: editingUser.is_active !== undefined ? editingUser.is_active : true,
+        is_active: editingUser.is_active !== undefined ? Boolean(editingUser.is_active) : true,
       }
     : {
         email: '',
         password: '',
         name: '',
+        // Super Admin: new users default to Union Admin (can change to Resident/Staff)
         role: currentUser?.role === 'union_admin' ? 'staff' : (currentUser?.role === 'super_admin' ? 'union_admin' : 'resident'),
         society_apartment_id: currentUser?.role === 'union_admin' ? currentUser.society_apartment_id : null,
         unit_id: null,
@@ -677,7 +731,7 @@ const Users = () => {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
+          onClick={handleOpenDialog}
         >
           {currentUser?.role === 'union_admin' ? 'Add Employee' : 'Add User'}
         </Button>
@@ -755,9 +809,7 @@ const Users = () => {
           <>
             <MenuItem
               onClick={() => {
-                setActionMenuAnchor(null)
-                setActionMenuRow(null)
-                handleOpenDialog(actionMenuRow)
+                if (actionMenuRow) handleOpenEditDialog(actionMenuRow)
               }}
             >
               <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>

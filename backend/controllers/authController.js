@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
 import { deleteProfileImage, getImagePath } from '../config/multer.js';
 import { createOrUpdateSubscription } from './subscriptionController.js';
+import { RESIDENT_INITIAL_PASSWORD } from '../utils/unitResidentLogin.js';
 
 // Generate JWT tokens
 const generateTokens = (userId) => {
@@ -36,7 +37,9 @@ export const login = async (req, res) => {
 
     // Find user
     const result = await query(
-      'SELECT id, email, password, name, role, society_apartment_id, unit_id, is_active FROM users WHERE email = $1',
+      `SELECT id, email, password, name, role, society_apartment_id, unit_id, is_active,
+              COALESCE(must_change_password, false) AS must_change_password
+       FROM users WHERE email = $1`,
       [email.toLowerCase()]
     );
 
@@ -219,8 +222,8 @@ export const register = async (req, res) => {
 
     // Create user
     const result = await query(
-      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, created_by, address, city, postal_code, work_employer, work_title, work_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `INSERT INTO users (email, password, name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, created_by, address, city, postal_code, work_employer, work_title, work_phone, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, false)
        RETURNING id, email, name, role, society_apartment_id, unit_id, created_at`,
       [
         email.toLowerCase(),
@@ -312,8 +315,8 @@ export const registerResident = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await query(
-      `INSERT INTO users (email, password, name, role, is_active, society_apartment_id, unit_id, created_by)
-       VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL)`,
+      `INSERT INTO users (email, password, name, role, is_active, society_apartment_id, unit_id, created_by, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, false)`,
       [normalizedEmail, hashedPassword, name.trim(), 'resident', true]
     );
 
@@ -331,12 +334,104 @@ export const registerResident = async (req, res) => {
   }
 };
 
+/** First login after unit-based initial password */
+export const changePasswordFirstLogin = async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required',
+      });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters',
+      });
+    }
+    if (new_password === RESIDENT_INITIAL_PASSWORD) {
+      return res.status(400).json({
+        success: false,
+        message: 'Choose a different password than the initial default.',
+      });
+    }
+
+    const row = await query(
+      `SELECT id, password, COALESCE(must_change_password, false) AS must_change_password, role
+       FROM users WHERE id = $1 AND is_active = true`,
+      [req.user.id]
+    );
+    if (!row.rows.length) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    const u = row.rows[0];
+    if (!u.must_change_password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password change is not required for this account.',
+      });
+    }
+
+    const ok =
+      (await bcrypt.compare(current_password, u.password)) ||
+      current_password === u.password;
+    if (!ok) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+    }
+
+    const hashed = await bcrypt.hash(new_password, 10);
+    await query(
+      `UPDATE users SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [hashed, u.id]
+    );
+
+    const { accessToken, refreshToken } = generateTokens(u.id);
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    const fresh = await query(
+      `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number,
+              emergency_contact, profile_image, move_in_date, created_at, last_login,
+              false AS must_change_password
+       FROM users WHERE id = $1`,
+      [u.id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully',
+      data: {
+        user: fresh.rows[0],
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (error) {
+    console.error('changePasswordFirstLogin:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update password',
+      error: error.message,
+    });
+  }
+};
+
 // Get current user
 export const getMe = async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number, 
-              emergency_contact, profile_image, move_in_date, created_at, last_login
+      `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number,
+              emergency_contact, profile_image, move_in_date, created_at, last_login,
+              COALESCE(must_change_password, false) AS must_change_password
        FROM users WHERE id = $1`,
       [req.user.id]
     );
