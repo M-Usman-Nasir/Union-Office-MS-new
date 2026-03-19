@@ -9,28 +9,53 @@ import { colors } from '../theme';
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
 const headerStyles = StyleSheet.create({
-  complaintsHeader: {
-    backgroundColor: colors.surface,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
-    minHeight: 56,
+  /** Match DashboardScreen `dashboardHeaderFixed` (title + right icons only) */
+  appHeader: {
+    backgroundColor: colors.navy,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: 'rgba(255, 255, 255, 0.14)',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    overflow: 'hidden',
   },
-  headerBack: { padding: 8, marginRight: 4 },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
-  headerIcon: { marginRight: 8 },
-  complaintsHeaderTitle: { fontSize: 18, fontWeight: '600', color: colors.text, flex: 1 },
+  headerBack: { padding: 8, marginRight: 2 },
+  headerLeftRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  appHeaderTitle: { fontSize: 20, fontWeight: '700', color: colors.onNavy, flex: 1 },
+  headerRightIcons: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  headerIconBtn: { padding: 8 },
 });
+
+function HeaderRightActions({ navigation }) {
+  const tabNav = navigation?.getParent?.();
+  return (
+    <View style={headerStyles.headerRightIcons}>
+      <TouchableOpacity
+        style={headerStyles.headerIconBtn}
+        onPress={() => tabNav?.navigate?.('Home', { screen: 'Notifications' })}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="notifications-outline" size={26} color={colors.navyHeaderIconBell} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={headerStyles.headerIconBtn}
+        onPress={() => tabNav?.navigate?.('More', { screen: 'Messages' })}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="mail-outline" size={26} color={colors.navyHeaderIconMail} />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 function ComplaintsStackHeader({ navigation, options, back }) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, STATUS_BAR_HEIGHT, 28);
   const canGoBack = navigation.canGoBack?.() ?? !!back;
-  const iconName = options?.headerIconName || 'ellipse';
-  const iconColor = options?.headerIconColor || colors.primary;
 
   const renderBack =
     options?.headerLeft
@@ -42,20 +67,18 @@ function ComplaintsStackHeader({ navigation, options, back }) {
               style={headerStyles.headerBack}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
+              <Ionicons name="arrow-back" size={24} color={colors.onNavy} />
             </TouchableOpacity>
           )
         : null;
 
   return (
-    <View style={[headerStyles.complaintsHeader, { paddingTop: topInset }]}>
-      {renderBack ? renderBack({ navigation }) : null}
-      <View style={headerStyles.headerTitleRow}>
-        <View style={headerStyles.headerIcon}>
-          <Ionicons name={iconName} size={22} color={iconColor} />
-        </View>
-        <Text style={headerStyles.complaintsHeaderTitle} numberOfLines={1}>{options.title}</Text>
+    <View style={[headerStyles.appHeader, { paddingTop: topInset }]}>
+      <View style={headerStyles.headerLeftRow}>
+        {renderBack ? renderBack({ navigation }) : null}
+        <Text style={headerStyles.appHeaderTitle} numberOfLines={1}>{options.title}</Text>
       </View>
+      <HeaderRightActions navigation={navigation} />
     </View>
   );
 }
@@ -73,18 +96,16 @@ function RecentAnnouncementsHeader({ navigation, options, back }) {
   const topInset = Math.max(insets.top, STATUS_BAR_HEIGHT, 28);
   const canGoBack = navigation.canGoBack?.() ?? !!back;
   return (
-    <View style={[headerStyles.complaintsHeader, { paddingTop: topInset }]}>
-      {canGoBack ? (
-        <TouchableOpacity onPress={() => navigation.goBack()} style={headerStyles.headerBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-      ) : null}
-      <View style={headerStyles.headerTitleRow}>
-        <View style={headerStyles.headerIcon}>
-          <Ionicons name="megaphone-outline" size={22} color={colors.primary} />
-        </View>
-        <Text style={headerStyles.complaintsHeaderTitle} numberOfLines={1}>{options?.title ?? 'Recent Announcements'}</Text>
+    <View style={[headerStyles.appHeader, { paddingTop: topInset }]}>
+      <View style={headerStyles.headerLeftRow}>
+        {canGoBack ? (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={headerStyles.headerBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="arrow-back" size={24} color={colors.onNavy} />
+          </TouchableOpacity>
+        ) : null}
+        <Text style={headerStyles.appHeaderTitle} numberOfLines={1}>{options?.title ?? 'Recent Announcements'}</Text>
       </View>
+      <HeaderRightActions navigation={navigation} />
     </View>
   );
 }
@@ -136,9 +157,9 @@ function ComplaintsStackScreen() {
   };
   return (
     <ComplaintsStack.Navigator screenOptions={screenOpts}>
-      <ComplaintsStack.Screen name="ComplaintsList" component={ComplaintsScreen} options={{ title: 'Complaints', headerIconName: 'document-text-outline', headerIconColor: colors.primary }} />
-      <ComplaintsStack.Screen name="ComplaintDetail" component={ComplaintDetailScreen} options={{ title: 'Complaint', headerIconName: 'document-text', headerIconColor: colors.primary }} />
-      <ComplaintsStack.Screen name="NewComplaint" component={NewComplaintScreen} options={{ title: 'New Complaint', headerIconName: 'create-outline', headerIconColor: colors.primary }} />
+      <ComplaintsStack.Screen name="ComplaintsList" component={ComplaintsScreen} options={{ title: 'Complaints' }} />
+      <ComplaintsStack.Screen name="ComplaintDetail" component={ComplaintDetailScreen} options={{ title: 'Complaint' }} />
+      <ComplaintsStack.Screen name="NewComplaint" component={NewComplaintScreen} options={{ title: 'New Complaint' }} />
     </ComplaintsStack.Navigator>
   );
 }
@@ -155,8 +176,6 @@ function MoreStackScreen() {
         component={ProfileScreen}
         options={{
           title: 'Profile',
-          headerIconName: 'person-outline',
-          headerIconColor: colors.primary,
           headerLeft: ({ navigation }) => {
             const tabNav = navigation?.getParent?.();
             return (
@@ -165,17 +184,17 @@ function MoreStackScreen() {
                 style={headerStyles.headerBack}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="arrow-back" size={24} color={colors.text} />
+                <Ionicons name="arrow-back" size={24} color={colors.onNavy} />
               </TouchableOpacity>
             );
           },
         }}
       />
-      <MoreStack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages', headerIconName: 'mail-outline', headerIconColor: colors.primary }} />
-      <MoreStack.Screen name="UnionInfo" component={UnionInfoScreen} options={{ title: 'Union Info', headerIconName: 'business-outline', headerIconColor: colors.success }} />
-      <MoreStack.Screen name="UnionMembers" component={UnionMembersScreen} options={{ title: 'Union Members', headerIconName: 'people-outline', headerIconColor: colors.warning }} />
-      <MoreStack.Screen name="UnionMemberDetail" component={UnionMemberDetailScreen} options={{ title: 'Member', headerIconName: 'person', headerIconColor: colors.primary }} />
-      <MoreStack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile', headerIconName: 'create-outline', headerIconColor: colors.primary }} />
+      <MoreStack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
+      <MoreStack.Screen name="UnionInfo" component={UnionInfoScreen} options={{ title: 'Union Info' }} />
+      <MoreStack.Screen name="UnionMembers" component={UnionMembersScreen} options={{ title: 'Union Members' }} />
+      <MoreStack.Screen name="UnionMemberDetail" component={UnionMemberDetailScreen} options={{ title: 'Member' }} />
+      <MoreStack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
     </MoreStack.Navigator>
   );
 }
@@ -228,8 +247,6 @@ export default function MainTabs() {
         options={{
           title: 'Maintenance',
           header: TabHeader,
-          headerIconName: 'card-outline',
-          headerIconColor: colors.primary,
           headerShadowVisible: false,
         }}
       />
@@ -239,8 +256,6 @@ export default function MainTabs() {
         options={{
           title: 'Finance',
           header: TabHeader,
-          headerIconName: 'bar-chart-outline',
-          headerIconColor: colors.success,
           headerShadowVisible: false,
         }}
       />

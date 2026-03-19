@@ -20,6 +20,7 @@ import { maintenanceApi } from '../api/maintenance';
 import { announcementsApi } from '../api/announcements';
 import { settingsApi } from '../api/settings';
 import { defaultersApi } from '../api/defaulters';
+import { residentsApi } from '../api/residents';
 import { colors } from '../theme';
 
 const RECENT_COMPLAINTS_LIMIT = 3;
@@ -85,10 +86,11 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [complaints, setComplaints] = useState({ data: [], total: 0 });
   const [maintenance, setMaintenance] = useState({ data: [], total: 0 });
-  const [, setAnnouncements] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [residentExtended, setResidentExtended] = useState(null);
+  const [familyMembers, setFamilyMembers] = useState([]);
   const [defaulterVisible, setDefaulterVisible] = useState(false);
   const [defaulters, setDefaulters] = useState([]);
-  const [paymentRequests, setPaymentRequests] = useState([]);
   const [weather, setWeather] = useState(null);
   const [loading, setLoading] = useState(true);
   const carouselRef = useRef(null);
@@ -98,6 +100,8 @@ export default function DashboardScreen() {
   const welcomeOpacity = useRef(new Animated.Value(0)).current;
   const welcomeSlide = useRef(new Animated.Value(12)).current;
   const nameMarqueeAnim = useRef(new Animated.Value(0)).current;
+  /** Measured fixed top bar only (welcome card scrolls with content) */
+  const [dashboardHeaderHeight, setDashboardHeaderHeight] = useState(52);
 
   useEffect(() => {
     carouselIndexRef.current = carouselIndex;
@@ -131,21 +135,25 @@ export default function DashboardScreen() {
 
   const load = async () => {
     try {
-      const [complRes, maintRes, annRes, setRes, payReqRes] = await Promise.all([
+      const [complRes, maintRes, annRes, setRes, extRes, famRes] = await Promise.all([
         complaintsApi.getAll({ limit: 20, page: 1 }).catch(() => ({ data: {} })),
         maintenanceApi.getAll({ limit: 50, page: 1, unit_id: user?.unit_id }).catch(() => ({ data: {} })),
-        announcementsApi.getAll({ limit: 5, page: 1 }).catch(() => ({ data: {} })),
+        announcementsApi.getAll({ limit: 8, page: 1 }).catch(() => ({ data: {} })),
         user?.society_apartment_id ? settingsApi.getSettings(user.society_apartment_id).catch(() => null) : null,
-        user ? maintenanceApi.getMyPaymentRequests().then((r) => r.data).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        user?.id ? residentsApi.getById(user.id).catch(() => ({ data: {} })) : Promise.resolve({ data: {} }),
+        user?.id ? residentsApi.getFamilyMembers(user.id).catch(() => ({ data: {} })) : Promise.resolve({ data: {} }),
       ]);
       const complRaw = complRes.data?.data ?? complRes.data;
       setComplaints(Array.isArray(complRaw) ? { data: complRaw, total: complRaw.length } : { data: complRaw?.data || [], total: complRaw?.pagination?.total || 0 });
       const maintRaw = maintRes.data?.data ?? maintRes.data;
       setMaintenance(Array.isArray(maintRaw) ? { data: maintRaw, total: maintRaw.length } : { data: maintRaw?.data || [], total: maintRaw?.pagination?.total || 0 });
       const annRaw = annRes.data?.data ?? annRes.data;
-      setAnnouncements(Array.isArray(annRaw) ? annRaw : (annRaw?.data || []));
-      const payReqData = payReqRes?.data ?? payReqRes;
-      setPaymentRequests(Array.isArray(payReqData) ? payReqData : payReqData?.data || []);
+      const annList = Array.isArray(annRaw) ? annRaw : (annRaw?.data || []);
+      setAnnouncements(annList.slice(0, 6));
+      const ext = extRes.data?.data ?? extRes.data;
+      setResidentExtended(ext && typeof ext === 'object' ? ext : null);
+      const famRaw = famRes.data?.data ?? famRes.data;
+      setFamilyMembers(Array.isArray(famRaw) ? famRaw : []);
       const defaulterListVisible = setRes?.data?.defaulter_list_visible !== false;
       setDefaulterVisible(!!(user && defaulterListVisible));
       if (user && defaulterListVisible) {
@@ -224,22 +232,53 @@ export default function DashboardScreen() {
 
   const totalPending = defaulters.reduce((sum, d) => sum + (parseFloat(d.pending_amount) || 0), 0);
 
-  const complaintList = complaints.data || [];
-  const activeComplaintsCount = complaintList.filter(
-    (c) => !['resolved', 'closed'].includes((c.status || '').toLowerCase())
-  ).length;
-  const inProgressComplaintsCount = complaintList.filter((c) =>
-    (c.status || '').toLowerCase().includes('progress')
-  ).length;
   const maintenanceList = maintenance.data || [];
-  const maintenanceTotalCount = maintenance.total || maintenanceList.length;
-  const pendingApprovalCount = (paymentRequests || []).filter(
-    (pr) => (pr.status || '').toLowerCase() === 'pending'
-  ).length;
   const paidMaintenance = maintenanceList
     .filter((m) => (m.status || '').toLowerCase() === 'paid')
     .sort((a, b) => new Date(b.updated_at || b.paid_at || b.created_at || 0) - new Date(a.updated_at || a.paid_at || a.created_at || 0));
   const lastPaidMaintenance = paidMaintenance[0];
+
+  const ext = residentExtended;
+  const vehicleCount =
+    (parseInt(String(ext?.number_of_cars ?? 0), 10) || 0) +
+    (parseInt(String(ext?.number_of_bikes ?? 0), 10) || 0);
+  const familyCount = familyMembers.length;
+
+  const unpaidMaintenance = maintenanceList.filter(
+    (m) => !['paid', 'closed', 'cancelled'].includes((m.status || '').toLowerCase())
+  );
+  const sortedUnpaidByDue = [...unpaidMaintenance].sort(
+    (a, b) =>
+      new Date(a.due_date || a.created_at || 0) - new Date(b.due_date || b.created_at || 0)
+  );
+  const nextDueMaintenance = sortedUnpaidByDue[0];
+
+  const vehicleDetailLines = [];
+  if (ext?.car_make_model || ext?.license_plate) {
+    vehicleDetailLines.push(
+      [ext.car_make_model, ext.license_plate].filter(Boolean).join(' · ') || '—'
+    );
+  }
+  if (ext?.bike_make_model || ext?.bike_license_plate) {
+    vehicleDetailLines.push(
+      [ext.bike_make_model, ext.bike_license_plate].filter(Boolean).join(' · ') || '—'
+    );
+  }
+
+  const utilityTiles = [];
+  if (ext?.k_electric_account) {
+    utilityTiles.push({ key: 'ke', icon: 'flash-outline', label: 'Electric', value: String(ext.k_electric_account) });
+  }
+  if (ext?.gas_account) {
+    utilityTiles.push({ key: 'gas', icon: 'flame-outline', label: 'Gas', value: String(ext.gas_account) });
+  }
+  if (ext?.water_account) {
+    utilityTiles.push({ key: 'wtr', icon: 'water-outline', label: 'Water', value: String(ext.water_account) });
+  }
+  const phoneTv = ext?.phone_tv_account || ext?.telephone_bills;
+  if (phoneTv) {
+    utilityTiles.push({ key: 'tel', icon: 'call-outline', label: 'Phone / TV', value: String(phoneTv) });
+  }
 
   const nameOpacity = nameMarqueeAnim.interpolate({
     inputRange: [0, 1],
@@ -248,77 +287,166 @@ export default function DashboardScreen() {
 
   return (
     <SafeScreen style={styles.safe} edges={[]}>
-      {/* Stylish colorful background lines */}
-      <View style={styles.bgLinesContainer} pointerEvents="none">
-        {BG_LINES.map((line, i) => (
-          <View
-            key={i}
-            style={[
-              styles.bgLine,
-              {
-                backgroundColor: line.color,
-                width: line.width,
-                height: line.height,
-                top: SCREEN_HEIGHT * line.topPct,
-                ...(line.left !== undefined ? { left: line.left } : { right: line.right }),
-                transform: [{ rotate: line.angle }],
-              },
-            ]}
-          />
-        ))}
-      </View>
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <Text style={styles.topBarTitle}>Dashboard</Text>
+      <View style={styles.screenInner}>
+        {/* Stylish colorful background lines */}
+        <View style={styles.bgLinesContainer} pointerEvents="none">
+          {BG_LINES.map((line, i) => (
+            <View
+              key={i}
+              style={[
+                styles.bgLine,
+                {
+                  backgroundColor: line.color,
+                  width: line.width,
+                  height: line.height,
+                  top: SCREEN_HEIGHT * line.topPct,
+                  ...(line.left !== undefined ? { left: line.left } : { right: line.right }),
+                  transform: [{ rotate: line.angle }],
+                },
+              ]}
+            />
+          ))}
+        </View>
+
+        {/* Fixed top bar: title + actions (does not scroll) */}
+        <View
+          style={styles.dashboardHeaderFixed}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setDashboardHeaderHeight(Math.ceil(h));
+          }}
+        >
+          <Text style={styles.dashboardHeaderTitle}>Dashboard</Text>
+          <View style={styles.dashboardHeaderIcons}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => navigation.navigate('Notifications')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="notifications-outline" size={26} color={colors.navyHeaderIconBell} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => navigation.navigate('More', { screen: 'Messages' })}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="mail-outline" size={26} color={colors.navyHeaderIconMail} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: dashboardHeaderHeight + 6 },
+          ]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          showsVerticalScrollIndicator={false}
+        >
+        {/* Welcome card — same navy as header, scrolls away (not sticky) */}
+        <View style={styles.welcomeCardScroll}>
           <Animated.View style={{ opacity: welcomeOpacity, transform: [{ translateY: welcomeSlide }] }}>
-            <Text style={styles.topBarWelcome}>
+            <Text style={styles.welcomeCardGreeting}>
               Welcome,{' '}
-              <Animated.Text style={[styles.topBarWelcomeName, { opacity: nameOpacity }]}>
+              <Animated.Text style={[styles.welcomeCardName, { opacity: nameOpacity }]}>
                 {user?.name || user?.email}
               </Animated.Text>
             </Text>
           </Animated.View>
-          <View style={styles.topBarDetails}>
-            {(user?.unit_name || user?.unit_number) && (
-              <Text style={styles.topBarDetailText}>Unit: {user?.unit_name || user?.unit_number}</Text>
-            )}
-            {(user?.block_name || user?.block_number) && (
-              <>
-                {(user?.unit_name || user?.unit_number) && <Text style={styles.topBarDetailDot}> · </Text>}
-                <Text style={styles.topBarDetailText}>Block: {user?.block_name || user?.block_number}</Text>
-              </>
-            )}
-            <Text style={styles.topBarDetailText}>
-              {(user?.unit_name || user?.unit_number || user?.block_name || user?.block_number) ? ' · ' : ''}
-              {getTodayFormatted()}
-            </Text>
+          <View style={styles.welcomeCardLocationRows}>
+            <View style={styles.welcomeCardDetailColumn}>
+              {(user?.unit_number || user?.unit_name) ? (
+                <Text style={styles.welcomeCardDetailText}>
+                  Flat: {user?.unit_number || user?.unit_name}
+                </Text>
+              ) : null}
+              {user?.apartment_name ? (
+                <Text style={styles.welcomeCardDetailText} numberOfLines={2}>
+                  Apartment: {user.apartment_name}
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.welcomeCardMetaRow}>
+              {(user?.block_name || user?.block_number) && (
+                <Text style={styles.welcomeCardDetailMuted}>
+                  Block: {user?.block_name || user?.block_number}
+                </Text>
+              )}
+              <Text style={styles.welcomeCardDetailMuted}>
+                {(user?.block_name || user?.block_number) ? ' · ' : ''}
+                {getTodayFormatted()}
+              </Text>
+            </View>
           </View>
         </View>
-        <View style={styles.topBarIcons}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => navigation.navigate('More', { screen: 'Messages' })}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="mail-outline" size={26} color={colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => navigation.navigate('Notifications')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="notifications-outline" size={26} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        showsVerticalScrollIndicator={false}
-      >
+        {/* Top summary + payment (above weather) */}
+        <View style={styles.summaryRow}>
+          <TouchableOpacity
+            style={styles.summaryChip}
+            onPress={() => navigation.navigate('Finance')}
+            activeOpacity={0.85}
+            disabled={loading}
+          >
+            <Text style={styles.summaryChipLabel}>Due amount</Text>
+            <Text style={styles.summaryChipValue} numberOfLines={1}>
+              {loading
+                ? '…'
+                : !defaulterVisible
+                  ? '—'
+                  : totalPending > 0
+                    ? formatCurrency(totalPending)
+                    : formatCurrency(0)}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.summaryChip}>
+            <Text style={styles.summaryChipLabel}>Family</Text>
+            <Text style={styles.summaryChipValue}>{loading ? '…' : familyCount}</Text>
+          </View>
+          <View style={styles.summaryChip}>
+            <Text style={styles.summaryChipLabel}>Vehicles</Text>
+            <Text style={styles.summaryChipValue}>{loading ? '…' : vehicleCount}</Text>
+          </View>
+        </View>
+        {loading ? (
+          <View style={[styles.paymentStatusCard, styles.paymentStatusLoading]}>
+            <Text style={styles.muted}>Loading payment summary…</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.paymentStatusCard}
+            onPress={() => navigation.navigate('Finance')}
+            activeOpacity={0.9}
+          >
+            <View style={styles.paymentStatusRow}>
+              <Ionicons
+                name={totalPending > 0 ? 'alert-circle-outline' : 'checkmark-circle'}
+                size={26}
+                color={totalPending > 0 ? colors.warning : colors.success}
+              />
+              <Text
+                style={[
+                  styles.paymentStatusTitle,
+                  totalPending > 0 ? styles.paymentStatusTitleWarn : styles.paymentStatusTitleOk,
+                ]}
+              >
+                {totalPending > 0 ? 'Outstanding balance' : 'All payments up to date'}
+              </Text>
+            </View>
+            <Text style={styles.paymentStatusSub}>
+              {lastPaidMaintenance
+                ? `Last payment: ${formatDate(lastPaidMaintenance.updated_at || lastPaidMaintenance.paid_at)}`
+                : 'Last payment: —'}
+              {nextDueMaintenance?.due_date
+                ? ` · Next due: ${formatDate(nextDueMaintenance.due_date)}`
+                : nextDueMaintenance
+                  ? ' · Next due: see Maintenance'
+                  : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Live weather: Temp, Hum, Wind, UV */}
         <View style={styles.weatherSection}>
           <View style={styles.sectionHeader}>
@@ -398,115 +526,163 @@ export default function DashboardScreen() {
           <Text style={styles.muted}>Loading...</Text>
         ) : (
           <>
-            {/* Overview stat cards (6) — 2 per row */}
-            <View style={styles.overviewGrid}>
-              <View style={styles.overviewRow}>
-                <View style={styles.overviewCard}>
-                  <Ionicons name="wallet-outline" size={20} color={colors.primary} />
-                  <Text style={styles.overviewLabel}>Pending Dues</Text>
-                  <Text style={styles.overviewValue} numberOfLines={1}>
-                    {defaulterVisible && totalPending > 0 ? formatCurrency(totalPending) : defaulterVisible ? 'No outstanding' : '—'}
-                  </Text>
-                </View>
-                <View style={styles.overviewCard}>
-                  <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-                  <Text style={styles.overviewLabel}>Active Complaints</Text>
-                  <Text style={styles.overviewValue}>{activeComplaintsCount}</Text>
-                </View>
-              </View>
-              <View style={styles.overviewRow}>
-                <View style={styles.overviewCard}>
-                  <Ionicons name="time-outline" size={20} color={colors.primary} />
-                  <Text style={styles.overviewLabel}>In Progress</Text>
-                  <Text style={styles.overviewValue}>{inProgressComplaintsCount}</Text>
-                </View>
-                <View style={styles.overviewCard}>
-                  <Ionicons name="construct-outline" size={20} color={colors.primary} />
-                  <Text style={styles.overviewLabel}>Maintenance</Text>
-                  <Text style={styles.overviewValue}>{maintenanceTotalCount}</Text>
-                </View>
-              </View>
-              <View style={styles.overviewRow}>
-                <View style={styles.overviewCard}>
-                  <Ionicons name="hourglass-outline" size={20} color={colors.primary} />
-                  <Text style={styles.overviewLabel}>Pending Approval</Text>
-                  <Text style={styles.overviewValue}>{pendingApprovalCount}</Text>
-                </View>
-                <View style={styles.overviewCard}>
-                  <Ionicons name="checkmark-circle-outline" size={20} color={colors.primary} />
-                  <Text style={styles.overviewLabel}>Last Payment</Text>
-                  <Text style={styles.overviewValueSmall} numberOfLines={1}>
-                    {lastPaidMaintenance
-                      ? `${formatCurrency(lastPaidMaintenance.amount || lastPaidMaintenance.total)} · ${formatDate(lastPaidMaintenance.updated_at || lastPaidMaintenance.paid_at)}`
-                      : '—'}
+            {/* Important alerts */}
+            <Text style={styles.sectionHeadingCaps}>Important alerts</Text>
+            {nextDueMaintenance && (nextDueMaintenance.due_date || nextDueMaintenance.total_amount) ? (
+              <View style={styles.alertBanner}>
+                <Ionicons name="flash-outline" size={22} color={colors.alertTitle} style={styles.alertIcon} />
+                <View style={styles.alertBannerBody}>
+                  <Text style={styles.alertBannerTitle}>Maintenance reminder</Text>
+                  <Text style={styles.alertBannerText}>
+                    {nextDueMaintenance.due_date
+                      ? `Maintenance due on ${formatDate(nextDueMaintenance.due_date)}`
+                      : `Pending maintenance · ${formatCurrency(nextDueMaintenance.total_amount || nextDueMaintenance.amount)}`}
                   </Text>
                 </View>
               </View>
-            </View>
+            ) : null}
+            {announcements.length === 0 &&
+            !(nextDueMaintenance && (nextDueMaintenance.due_date || nextDueMaintenance.total_amount)) ? (
+              <Text style={styles.muted}>No alerts right now</Text>
+            ) : null}
+            {announcements.map((a) => (
+              <View key={a.id} style={styles.alertBanner}>
+                <Ionicons name="notifications-outline" size={22} color={colors.alertTitle} style={styles.alertIcon} />
+                <View style={styles.alertBannerBody}>
+                  <Text style={styles.alertBannerTitle}>{a.title || 'Announcement'}</Text>
+                  <Text style={styles.alertBannerText} numberOfLines={3}>
+                    {a.description || '—'}
+                  </Text>
+                </View>
+              </View>
+            ))}
 
-            {/* Payment history card */}
-            <View style={styles.section}>
+            {/* Quick actions */}
+            <Text style={styles.sectionHeadingCaps}>Quick actions</Text>
+            <View style={styles.quickActionsRow}>
               <TouchableOpacity
-                style={styles.card}
-                onPress={() => navigation.navigate('Finance')}
+                style={styles.quickActionCardMock}
+                onPress={() => navigation.navigate('Maintenance')}
                 activeOpacity={0.9}
               >
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="list-outline" size={20} color={colors.primary} />
-                  <Text style={styles.sectionTitle}>Payment history</Text>
-                </View>
-                <Text style={styles.muted}>View financial summary and payment history</Text>
+                <Ionicons name="card-outline" size={28} color={colors.primary} />
+                <Text style={styles.quickActionLabelMock}>Maintenance</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickActionCardMock}
+                onPress={() => navigation.navigate('Complaints', { screen: 'NewComplaint' })}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="warning-outline" size={28} color={colors.error} />
+                <Text style={styles.quickActionLabelMock}>Complaints</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Quick Actions */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="flash-outline" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
-              </View>
-              <View style={styles.quickActionsRow}>
+            <View style={styles.quickActionsRow}>
+              {defaulterVisible ? (
                 <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => navigation.navigate('Complaints', { screen: 'NewComplaint' })}
+                  style={styles.quickActionCardMock}
+                  onPress={() => navigation.navigate('Finance')}
                   activeOpacity={0.9}
                 >
-                  <Ionicons name="create-outline" size={24} color={colors.primary} />
-                  <Text style={styles.quickActionLabel}>Submit Complaint</Text>
+                  <Ionicons name="bar-chart-outline" size={28} color={colors.primary} />
+                  <Text style={styles.quickActionLabelMock}>Defaulters</Text>
                 </TouchableOpacity>
+              ) : (
                 <TouchableOpacity
-                  style={styles.quickActionCard}
+                  style={styles.quickActionCardMock}
                   onPress={() => navigation.navigate('Notifications')}
                   activeOpacity={0.9}
                 >
-                  <Ionicons name="megaphone-outline" size={24} color={colors.primary} />
-                  <Text style={styles.quickActionLabel}>Announcements</Text>
+                  <Ionicons name="megaphone-outline" size={28} color={colors.primary} />
+                  <Text style={styles.quickActionLabelMock}>Announcements</Text>
                 </TouchableOpacity>
-              </View>
-              <View style={styles.quickActionsRow}>
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => navigation.navigate('Maintenance')}
-                  activeOpacity={0.9}
-                >
-                  <Ionicons name="construct-outline" size={24} color={colors.primary} />
-                  <Text style={styles.quickActionLabel}>Maintenance</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickActionCard}
-                  onPress={() => navigation.navigate('More', { screen: 'UnionMembers' })}
-                  activeOpacity={0.9}
-                >
-                  <Ionicons name="people-outline" size={24} color={colors.primary} />
-                  <Text style={styles.quickActionLabel}>Union Members</Text>
-                </TouchableOpacity>
-              </View>
+              )}
+              <TouchableOpacity
+                style={styles.quickActionCardMock}
+                onPress={() => navigation.navigate('More', { screen: 'Profile' })}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="person-outline" size={28} color={colors.textMuted} />
+                <Text style={styles.quickActionLabelMock}>Profile</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* Your details at a glance */}
+            <Text style={styles.sectionHeadingCaps}>Your details at a glance</Text>
+            <View style={styles.detailGlanceCard}>
+              <View style={styles.detailGlanceHeader}>
+                <Ionicons name="phone-portrait-outline" size={20} color={colors.primary} />
+                <Text style={styles.detailGlanceTitle}>Contact information</Text>
+              </View>
+              <Text style={styles.detailGlanceLine}>Phone: {user?.contact_number || '—'}</Text>
+              <Text style={styles.detailGlanceLine}>Email: {user?.email || '—'}</Text>
+              <Text style={styles.detailGlanceLine}>CNIC: {user?.cnic || '—'}</Text>
+            </View>
+            <View style={styles.detailGlanceCard}>
+              <View style={styles.detailGlanceHeader}>
+                <Ionicons name="people-outline" size={20} color={colors.primary} />
+                <Text style={styles.detailGlanceTitle}>Family members ({familyCount})</Text>
+              </View>
+              {familyMembers.length === 0 ? (
+                <Text style={styles.detailGlanceMuted}>No family members on file</Text>
+              ) : (
+                familyMembers.map((fm) => (
+                  <Text key={fm.id} style={styles.detailGlanceBullet}>
+                    • {fm.name}{fm.relation ? ` (${fm.relation})` : ''}
+                  </Text>
+                ))
+              )}
+            </View>
+            <View style={styles.detailGlanceCard}>
+              <View style={styles.detailGlanceHeader}>
+                <Ionicons name="car-outline" size={20} color={colors.primary} />
+                <Text style={styles.detailGlanceTitle}>Vehicles ({vehicleCount})</Text>
+              </View>
+              {vehicleDetailLines.length === 0 ? (
+                <Text style={styles.detailGlanceMuted}>No vehicle details on file</Text>
+              ) : (
+                vehicleDetailLines.map((line, idx) => (
+                  <Text key={idx} style={styles.detailGlanceBullet}>• {line}</Text>
+                ))
+              )}
+            </View>
+            <View style={styles.detailGlanceCard}>
+              <View style={styles.detailGlanceHeader}>
+                <Ionicons name="clipboard-outline" size={20} color={colors.primary} />
+                <Text style={styles.detailGlanceTitle}>Utility accounts</Text>
+              </View>
+              {utilityTiles.length === 0 ? (
+                <Text style={styles.detailGlanceMuted}>No utility references on file</Text>
+              ) : (
+                <View style={styles.utilityGrid}>
+                  {utilityTiles.map((u) => (
+                    <View key={u.key} style={styles.utilityTile}>
+                      <Ionicons name={u.icon} size={18} color={colors.primary} />
+                      <Text style={styles.utilityTileLabel}>{u.label}</Text>
+                      <Text style={styles.utilityTileValue} numberOfLines={2}>{u.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.unionLinkCard}
+              onPress={() => navigation.navigate('More', { screen: 'UnionMembers' })}
+              activeOpacity={0.9}
+            >
+              <Ionicons name="people-outline" size={22} color={colors.primary} />
+              <View style={styles.unionLinkBody}>
+                <Text style={styles.unionLinkTitle}>Union members</Text>
+                <Text style={styles.unionLinkSub}>Committee and contact details</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
 
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Recent Complaints</Text>
+                <Text style={styles.sectionTitle}>Recent complaints</Text>
               </View>
               {(complaints.data || []).length === 0 ? (
                 <Text style={styles.muted}>No complaints</Text>
@@ -530,81 +706,85 @@ export default function DashboardScreen() {
                 </>
               )}
             </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="wallet-outline" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Dues</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.card}
-                onPress={() => navigation.navigate('Finance')}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.duesLabel}>{totalPending > 0 ? 'Total pending' : 'Status'}</Text>
-                <Text style={[styles.duesAmount, totalPending <= 0 && styles.duesAllClear]}>
-                  {totalPending > 0 ? formatCurrency(totalPending) : 'No pending dues'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="people-outline" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Union Members</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.card}
-                onPress={() => navigation.navigate('More', { screen: 'UnionMembers' })}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.cardTitle}>View union members</Text>
-                <Text style={styles.muted}>Committee and contact details</Text>
-              </TouchableOpacity>
-            </View>
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      </View>
     </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  screenInner: { flex: 1 },
   bgLinesContainer: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+    zIndex: 0,
   },
   bgLine: {
     position: 'absolute',
     borderRadius: 2,
   },
-  container: { flex: 1 },
-  content: { paddingBottom: 16 },
-  topBar: {
+  dashboardHeaderFixed: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 8,
-    paddingBottom: 12,
-    backgroundColor: colors.background,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    backgroundColor: colors.navy,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: 'rgba(255, 255, 255, 0.14)',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    overflow: 'hidden',
   },
-  topBarLeft: { flex: 1 },
-  topBarTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
-  topBarWelcome: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
-  topBarWelcomeName: { fontWeight: '600', color: colors.text },
-  topBarDetails: {
+  dashboardHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.onNavy,
+  },
+  dashboardHeaderIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  welcomeCardScroll: {
+    backgroundColor: colors.navy,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  welcomeCardGreeting: { fontSize: 15, color: colors.onNavyMuted },
+  welcomeCardName: { fontWeight: '600', color: colors.onNavy },
+  welcomeCardLocationRows: {
+    marginTop: 10,
+    gap: 6,
+  },
+  welcomeCardDetailColumn: { gap: 2 },
+  welcomeCardMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    marginTop: 8,
     gap: 4,
   },
-  topBarDetailText: { fontSize: 13, color: colors.textMuted },
-  topBarDetailDot: { fontSize: 13, color: colors.textMuted },
-  topBarIcons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  welcomeCardDetailText: { fontSize: 13, color: colors.onNavy },
+  welcomeCardDetailMuted: { fontSize: 13, color: colors.onNavySubtle },
+  container: { flex: 1, zIndex: 1 },
+  content: { paddingBottom: 16 },
   iconBtn: { padding: 8 },
   carouselWrap: { marginBottom: 8 },
   carouselContent: {
@@ -638,23 +818,68 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  overviewGrid: { marginBottom: 20 },
-  overviewRow: {
+  summaryRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 14,
   },
-  overviewCard: {
+  summaryChip: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.statChipBg,
     borderRadius: 12,
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.statChipBorder,
+    alignItems: 'center',
   },
-  overviewLabel: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
-  overviewValue: { fontSize: 16, fontWeight: '700', color: colors.text, marginTop: 2 },
-  overviewValueSmall: { fontSize: 12, fontWeight: '600', color: colors.text, marginTop: 2 },
+  summaryChipLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  summaryChipValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  paymentStatusCard: {
+    backgroundColor: colors.paymentCardBg,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.paymentCardBorder,
+  },
+  paymentStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  paymentStatusTitle: { fontSize: 16, fontWeight: '700', flex: 1 },
+  paymentStatusTitleOk: { color: colors.success },
+  paymentStatusTitleWarn: { color: colors.warning },
+  paymentStatusSub: {
+    fontSize: 12,
+    color: colors.primaryDark,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  paymentStatusLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  sectionHeadingCaps: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 0.6,
+    marginBottom: 10,
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
   weatherSection: { marginBottom: 20 },
   weatherRow: {
     flexDirection: 'row',
@@ -676,16 +901,84 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
   },
-  quickActionCard: {
+  quickActionCardMock: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 12,
-    padding: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.statChipBorder,
+  },
+  quickActionLabelMock: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  alertBanner: {
+    flexDirection: 'row',
+    backgroundColor: colors.alertCardBg,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.alertCardBorder,
+    alignItems: 'flex-start',
+  },
+  alertIcon: { marginRight: 10, marginTop: 2 },
+  alertBannerBody: { flex: 1 },
+  alertBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.alertTitle,
+    marginBottom: 4,
+  },
+  alertBannerText: { fontSize: 13, color: colors.text, lineHeight: 18 },
+  detailGlanceCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  quickActionLabel: { fontSize: 12, fontWeight: '600', color: colors.text, marginTop: 6 },
+  detailGlanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  detailGlanceTitle: { fontSize: 15, fontWeight: '600', color: colors.primaryDark },
+  detailGlanceLine: { fontSize: 13, color: colors.text, marginBottom: 4 },
+  detailGlanceBullet: { fontSize: 13, color: colors.text, marginBottom: 4 },
+  detailGlanceMuted: { fontSize: 13, color: colors.textMuted },
+  utilityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  utilityTile: {
+    width: (SCREEN_WIDTH - 40 - 28 - 8) / 2,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  utilityTileLabel: { fontSize: 11, color: colors.textMuted, marginTop: 4 },
+  utilityTileValue: { fontSize: 12, fontWeight: '600', color: colors.text, marginTop: 2 },
+  unionLinkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  unionLinkBody: { flex: 1 },
+  unionLinkTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
+  unionLinkSub: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: colors.text },

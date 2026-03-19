@@ -23,6 +23,39 @@ const generateTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
+/**
+ * User row for API responses with unit / block / apartment (society) labels for mobile & web.
+ */
+async function loadUserProfileWithLocation(userId) {
+  const result = await query(
+    `SELECT
+       u.id,
+       u.email,
+       u.name,
+       u.role,
+       u.society_apartment_id,
+       u.unit_id,
+       u.cnic,
+       u.contact_number,
+       u.emergency_contact,
+       u.profile_image,
+       u.move_in_date,
+       u.created_at,
+       u.last_login,
+       COALESCE(u.must_change_password, false) AS must_change_password,
+       un.unit_number,
+       b.name AS block_name,
+       ap.name AS apartment_name
+     FROM users u
+     LEFT JOIN units un ON u.unit_id = un.id
+     LEFT JOIN blocks b ON un.block_id = b.id
+     LEFT JOIN apartments ap ON ap.id = COALESCE(un.society_apartment_id, u.society_apartment_id)
+     WHERE u.id = $1`,
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
 // Login
 export const login = async (req, res) => {
   try {
@@ -126,11 +159,21 @@ export const login = async (req, res) => {
     // refreshToken is also returned so mobile clients can store it and send in body for /auth/refresh (cookies not reliable in RN).
     const { password: _, ...userWithoutPassword } = user;
 
+    let userForClient = userWithoutPassword;
+    try {
+      const enriched = await loadUserProfileWithLocation(user.id);
+      if (enriched) {
+        userForClient = { ...enriched, is_active: userWithoutPassword.is_active };
+      }
+    } catch (e) {
+      console.warn('Login: could not enrich user with location', e.message);
+    }
+
     res.json({
       success: true,
       message: 'Login successful',
       data: {
-        user: userWithoutPassword,
+        user: userForClient,
         accessToken,
         refreshToken,
       },
@@ -428,15 +471,9 @@ export const changePasswordFirstLogin = async (req, res) => {
 // Get current user
 export const getMe = async (req, res) => {
   try {
-    const result = await query(
-      `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number,
-              emergency_contact, profile_image, move_in_date, created_at, last_login,
-              COALESCE(must_change_password, false) AS must_change_password
-       FROM users WHERE id = $1`,
-      [req.user.id]
-    );
+    const row = await loadUserProfileWithLocation(req.user.id);
 
-    if (result.rows.length === 0) {
+    if (!row) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
@@ -445,7 +482,7 @@ export const getMe = async (req, res) => {
 
     res.json({
       success: true,
-      data: result.rows[0],
+      data: row,
     });
   } catch (error) {
     console.error('Get me error:', error);
