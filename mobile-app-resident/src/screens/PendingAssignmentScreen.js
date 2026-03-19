@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
+import { APP_LOGO } from '../constants';
 import { colors } from '../theme';
 
 export default function PendingAssignmentScreen() {
@@ -11,8 +12,8 @@ export default function PendingAssignmentScreen() {
   return (
     <SafeScreen style={styles.safe} edges={[]}>
       <View style={styles.container}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="business-outline" size={64} color={colors.primary} />
+        <View style={styles.logoWrap}>
+          <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="App logo" />
         </View>
         <Text style={styles.title}>You’re not assigned yet</Text>
         <Text style={styles.message}>
@@ -36,7 +37,8 @@ export default function PendingAssignmentScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  iconWrap: { marginBottom: 24 },
+  logoWrap: { marginBottom: 24, width: '100%', maxWidth: 280, alignItems: 'center' },
+  logo: { width: '100%', height: 72 },
   title: { fontSize: 22, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 16 },
   message: { fontSize: 16, color: colors.textSecondary, textAlign: 'center', marginBottom: 12, lineHeight: 24 },
   hint: { fontSize: 14, color: colors.textMuted, textAlign: 'center', marginBottom: 24, lineHeight: 22 },

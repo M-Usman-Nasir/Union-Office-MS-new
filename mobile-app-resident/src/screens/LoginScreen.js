@@ -1,4 +1,3 @@
-/* global require */
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import {
@@ -11,13 +10,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ImageBackground,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
-import { STORAGE_KEYS } from '../constants';
+import { APP_LOGO, STORAGE_KEYS } from '../constants';
 import { colors } from '../theme';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -67,18 +66,14 @@ export default function LoginScreen() {
 
   return (
     <SafeScreen style={styles.safe} edges={[]}>
-      <ImageBackground
-        source={require('../../assets/images/12.png')}
-        style={styles.backgroundImage}
-        resizeMode="cover"
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <KeyboardAvoidingView
-          style={styles.container}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-            <View style={styles.card}>
-              <Text style={styles.title}>Union Resident</Text>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.card}>
+            <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="App logo" />
+            <Text style={styles.title}>Union Resident</Text>
               <Text style={styles.tagline}>Your community, connected.</Text>
               <Text style={styles.subtitle}>Sign in to your account</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -140,25 +135,29 @@ export default function LoginScreen() {
                 <Text style={styles.signUpHint}>Don&apos;t have an account? </Text>
                 <Text style={styles.signUpLink}>Sign up</Text>
               </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </ImageBackground>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  backgroundImage: { flex: 1 },
   container: { flex: 1 },
-  scroll: { flexGrow: 1, justifyContent: 'center', backgroundColor: 'transparent' },
+  scroll: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  logo: {
+    width: '100%',
+    height: 72,
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
   card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderColor: colors.border,
   },
   title: { fontSize: 24, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 4 },
   tagline: { fontSize: 13, fontStyle: 'italic', color: colors.textMuted, textAlign: 'center', marginBottom: 8 },

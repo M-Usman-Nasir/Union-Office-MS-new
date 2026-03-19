@@ -87,16 +87,20 @@ export default function ComplaintsScreen() {
   return (
     <SafeScreen style={styles.safe} edges={[]}>
       <View style={styles.container}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => navigation.navigate('NewComplaint')}
-        >
-          <Text style={styles.fabText}>+ New Complaint</Text>
-        </TouchableOpacity>
+        <View style={styles.fabRow}>
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => navigation.navigate('NewComplaint')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.fabText}>+ New Complaint</Text>
+          </TouchableOpacity>
+        </View>
         <FlatList
           data={list}
           renderItem={renderItem}
           keyExtractor={(item) => String(item.id)}
+          style={styles.listFlex}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={<Text style={styles.empty}>No complaints yet</Text>}
@@ -109,8 +113,15 @@ export default function ComplaintsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1 },
+  fabRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 12,
+  },
+  listFlex: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { paddingBottom: 80 },
+  list: { flexGrow: 1, paddingBottom: 24 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -126,14 +137,10 @@ const styles = StyleSheet.create({
   date: { color: colors.textMuted, fontSize: 12 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 24 },
   fab: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
     backgroundColor: colors.primary,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
-    zIndex: 1,
   },
   fabText: { color: '#fff', fontWeight: '600' },
 });

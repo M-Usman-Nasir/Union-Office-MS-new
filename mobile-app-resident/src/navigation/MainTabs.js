@@ -1,4 +1,4 @@
-import React from 'react';
+import PropTypes from 'prop-types';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,8 +24,10 @@ const headerStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   headerBack: { padding: 8, marginRight: 2 },
+  /** Keep back control from collapsing when title + right icons compete for width */
+  headerBackWrap: { flexShrink: 0, justifyContent: 'center' },
   headerLeftRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
-  appHeaderTitle: { fontSize: 20, fontWeight: '700', color: colors.onNavy, flex: 1 },
+  appHeaderTitle: { fontSize: 20, fontWeight: '700', color: colors.onNavy, flex: 1, minWidth: 0 },
   headerRightIcons: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   headerIconBtn: { padding: 8 },
 });
@@ -51,57 +53,90 @@ function HeaderRightActions({ navigation }) {
     </View>
   );
 }
+HeaderRightActions.propTypes = {
+  navigation: PropTypes.object,
+};
 
 function ComplaintsStackHeader({ navigation, options, back }) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, STATUS_BAR_HEIGHT, 28);
-  const canGoBack = navigation.canGoBack?.() ?? !!back;
+  /** Native stack sets `back` when a previous route exists; `canGoBack()` alone can be wrong in nested setups */
+  const hasCustomLeft = typeof options?.headerLeft === 'function';
+  const showDefaultBack = !hasCustomLeft && (back != null || navigation.canGoBack?.() === true);
 
-  const renderBack =
-    options?.headerLeft
-      ? options.headerLeft
-      : canGoBack
-        ? () => (
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={headerStyles.headerBack}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name="arrow-back" size={24} color={colors.onNavy} />
-            </TouchableOpacity>
-          )
-        : null;
+  const leftEl = (() => {
+    if (hasCustomLeft) {
+      return options.headerLeft({
+        navigation,
+        canGoBack: back != null || navigation.canGoBack?.() === true,
+        tintColor: colors.onNavy,
+      });
+    }
+    if (showDefaultBack) {
+      return (
+        <View style={headerStyles.headerBackWrap} collapsable={false}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={headerStyles.headerBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.navyHeaderIconMail} />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return null;
+  })();
 
   return (
     <View style={[headerStyles.appHeader, { paddingTop: topInset }]}>
       <View style={headerStyles.headerLeftRow}>
-        {renderBack ? renderBack({ navigation }) : null}
+        {leftEl}
         <Text style={headerStyles.appHeaderTitle} numberOfLines={1}>{options.title}</Text>
       </View>
       <HeaderRightActions navigation={navigation} />
     </View>
   );
 }
+ComplaintsStackHeader.propTypes = {
+  navigation: PropTypes.object,
+  options: PropTypes.object,
+  back: PropTypes.shape({ title: PropTypes.string }),
+};
 
 // Single header for all tab screens so BottomTabView always uses the same component (avoids hook-order issues).
 // We always "show" header (headerShown: true) and use hideHeader to hide it, so the navigator never changes hook order.
 function TabHeader({ navigation, options, back }) {
-  const insets = useSafeAreaInsets();
   if (options?.headerShown === false || options?.hideHeader === true) return null;
   return <ComplaintsStackHeader navigation={navigation} options={options} back={back} />;
 }
+TabHeader.propTypes = {
+  navigation: PropTypes.object,
+  options: PropTypes.object,
+  back: PropTypes.shape({ title: PropTypes.string }),
+};
 
 function RecentAnnouncementsHeader({ navigation, options, back }) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, STATUS_BAR_HEIGHT, 28);
-  const canGoBack = navigation.canGoBack?.() ?? !!back;
+  const showBack = back != null || navigation.canGoBack?.() === true;
   return (
     <View style={[headerStyles.appHeader, { paddingTop: topInset }]}>
       <View style={headerStyles.headerLeftRow}>
-        {canGoBack ? (
-          <TouchableOpacity onPress={() => navigation.goBack()} style={headerStyles.headerBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="arrow-back" size={24} color={colors.onNavy} />
-          </TouchableOpacity>
+        {showBack ? (
+          <View style={headerStyles.headerBackWrap} collapsable={false}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={headerStyles.headerBack}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={24} color={colors.navyHeaderIconMail} />
+            </TouchableOpacity>
+          </View>
         ) : null}
         <Text style={headerStyles.appHeaderTitle} numberOfLines={1}>{options?.title ?? 'Recent Announcements'}</Text>
       </View>
@@ -109,6 +144,11 @@ function RecentAnnouncementsHeader({ navigation, options, back }) {
     </View>
   );
 }
+RecentAnnouncementsHeader.propTypes = {
+  navigation: PropTypes.object,
+  options: PropTypes.object,
+  back: PropTypes.shape({ title: PropTypes.string }),
+};
 
 import DashboardScreen from '../screens/DashboardScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -116,6 +156,7 @@ import ComplaintsScreen from '../screens/ComplaintsScreen';
 import ComplaintDetailScreen from '../screens/ComplaintDetailScreen';
 import NewComplaintScreen from '../screens/NewComplaintScreen';
 import MaintenanceScreen from '../screens/MaintenanceScreen';
+import DefaulterScreen from '../screens/DefaulterScreen';
 import FinancialSummaryScreen from '../screens/FinancialSummaryScreen';
 import UnionInfoScreen from '../screens/UnionInfoScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -132,7 +173,7 @@ const HomeStack = createNativeStackNavigator();
 function HomeStackScreen() {
   const headerStyle = { backgroundColor: colors.surface };
   return (
-    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+    <HomeStack.Navigator screenOptions={{ headerShown: false, headerStatusBarHeight: 0 }}>
       <HomeStack.Screen name="Dashboard" component={DashboardScreen} />
       <HomeStack.Screen
         name="Notifications"
@@ -144,6 +185,7 @@ function HomeStackScreen() {
           headerStyle,
           headerShadowVisible: false,
           headerTintColor: colors.text,
+          headerStatusBarHeight: 0,
         }}
       />
     </HomeStack.Navigator>
@@ -154,6 +196,7 @@ function ComplaintsStackScreen() {
   const screenOpts = {
     header: ComplaintsStackHeader,
     headerShadowVisible: false,
+    headerStatusBarHeight: 0,
   };
   return (
     <ComplaintsStack.Navigator screenOptions={screenOpts}>
@@ -168,6 +211,7 @@ function MoreStackScreen() {
   const screenOpts = {
     header: ComplaintsStackHeader,
     headerShadowVisible: false,
+    headerStatusBarHeight: 0,
   };
   return (
     <MoreStack.Navigator screenOptions={screenOpts}>
@@ -184,7 +228,7 @@ function MoreStackScreen() {
                 style={headerStyles.headerBack}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Ionicons name="arrow-back" size={24} color={colors.onNavy} />
+                <Ionicons name="arrow-back" size={24} color={colors.navyHeaderIconMail} />
               </TouchableOpacity>
             );
           },
@@ -201,21 +245,30 @@ function MoreStackScreen() {
 
 export default function MainTabs() {
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? (insets.top || 24) : insets.top;
   const headerStyle = { backgroundColor: colors.surface };
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         lazy: false, // Keep all tabs mounted so hook order in BottomTabView stays consistent (avoids Rules of Hooks error).
-        tabBarIcon: ({ focused, color }) => {
+        tabBarIcon: ({ focused }) => {
           const icons = {
             Home: focused ? 'home' : 'home-outline',
             Complaints: focused ? 'document-text' : 'document-text-outline',
             Maintenance: focused ? 'card' : 'card-outline',
+            Defaulter: focused ? 'warning' : 'warning-outline',
             Finance: focused ? 'bar-chart' : 'bar-chart-outline',
             More: focused ? 'person' : 'person-outline',
           };
-          return <Ionicons name={icons[route.name] || 'ellipse'} size={28} color={color} />;
+          const iconColors = {
+            Home: focused ? colors.primary : colors.textMuted,
+            Complaints: focused ? colors.primary : colors.textMuted,
+            Maintenance: focused ? colors.primary : colors.textMuted,
+            Defaulter: focused ? colors.warning : colors.textMuted,
+            Finance: focused ? colors.primary : colors.textMuted,
+            More: focused ? colors.primary : colors.textMuted,
+          };
+          const iconColor = iconColors[route.name] ?? (focused ? colors.primary : colors.textMuted);
+          return <Ionicons name={icons[route.name] || 'ellipse'} size={28} color={iconColor} />;
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
@@ -234,18 +287,27 @@ export default function MainTabs() {
           paddingVertical: 4,
         },
         headerStyle,
-        headerStatusBarHeight: statusBarHeight,
+        headerStatusBarHeight: 0,
         headerTintColor: colors.text,
         headerShadowVisible: false,
       })}
     >
-      <Tab.Screen name="Home" component={HomeStackScreen} options={{ title: 'Dashboard', headerShown: true, header: TabHeader, hideHeader: true }} />
-      <Tab.Screen name="Complaints" component={ComplaintsStackScreen} options={{ headerShown: true, header: TabHeader, hideHeader: true }} />
+      <Tab.Screen name="Home" component={HomeStackScreen} options={{ title: 'Home', headerShown: true, header: TabHeader, hideHeader: true }} />
       <Tab.Screen
         name="Maintenance"
         component={MaintenanceScreen}
         options={{
           title: 'Maintenance',
+          header: TabHeader,
+          headerShadowVisible: false,
+        }}
+      />
+      <Tab.Screen name="Complaints" component={ComplaintsStackScreen} options={{ headerShown: true, header: TabHeader, hideHeader: true }} />
+      <Tab.Screen
+        name="Defaulter"
+        component={DefaulterScreen}
+        options={{
+          title: 'Defaulter',
           header: TabHeader,
           headerShadowVisible: false,
         }}

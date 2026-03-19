@@ -3,10 +3,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
+import { APP_LOGO } from './src/constants';
 import AuthStack from './src/navigation/AuthStack';
 import MainTabs from './src/navigation/MainTabs';
 import PendingAssignmentScreen from './src/screens/PendingAssignmentScreen';
@@ -23,6 +24,7 @@ function RootNavigator() {
   if (loading) {
     return (
       <View style={styles.loading}>
+        <Image source={APP_LOGO} style={styles.loadingLogo} resizeMode="contain" accessibilityLabel="App logo" />
         <Text style={styles.loadingTagline}>{TAGLINE}</Text>
         <ActivityIndicator size="large" color={colors.primary} style={styles.loadingSpinner} />
         <Text style={styles.loadingText}>Loading...</Text>
@@ -83,6 +85,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
+    paddingHorizontal: 32,
+  },
+  loadingLogo: {
+    width: '100%',
+    maxWidth: 280,
+    height: 80,
+    marginBottom: 20,
   },
   loadingTagline: {
     fontSize: 16,

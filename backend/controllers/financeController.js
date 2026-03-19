@@ -419,6 +419,19 @@ export const getYearlyReport = async (req, res) => {
       });
     }
 
+    if (req.user?.role === 'resident') {
+      const settings = await query(
+        'SELECT financial_reports_visible FROM settings WHERE society_apartment_id = $1',
+        [societyId],
+      );
+      if (settings.rows.length === 0 || !settings.rows[0].financial_reports_visible) {
+        return res.status(403).json({
+          success: false,
+          message: 'Financial reports are not visible for this society',
+        });
+      }
+    }
+
     // Get monthly breakdown
     const monthlyBreakdown = await query(`
       SELECT 
@@ -521,7 +534,7 @@ export const getPublicSummary = async (req, res) => {
       });
     }
 
-    // Get summary (same as monthly report but without detailed breakdown)
+    // Get summary
     const report = await query(`
       SELECT 
         SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as total_income,
@@ -532,15 +545,45 @@ export const getPublicSummary = async (req, res) => {
       WHERE month = $1 AND year = $2 AND society_apartment_id = $3
     `, [month, year, societyId]);
 
+    const incomeBreakdown = await query(
+      `
+      SELECT 
+        income_type,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM finance
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'income'
+      GROUP BY income_type
+      ORDER BY total DESC
+    `,
+      [month, year, societyId],
+    );
+
+    const expenseBreakdown = await query(
+      `
+      SELECT 
+        expense_type,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM finance
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'expense'
+      GROUP BY expense_type
+      ORDER BY total DESC
+    `,
+      [month, year, societyId],
+    );
+
     res.json({
       success: true,
       data: {
         summary: report.rows[0] || {
           total_income: '0',
           total_expenses: '0',
-          net_income: '0'
-        }
-      }
+          net_income: '0',
+        },
+        incomeBreakdown: incomeBreakdown.rows,
+        expenseBreakdown: expenseBreakdown.rows,
+      },
     });
   } catch (error) {
     console.error('Get public summary error:', error);

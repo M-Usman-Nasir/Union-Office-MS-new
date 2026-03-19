@@ -10,7 +10,10 @@ import {
   Image,
   Dimensions,
   Animated,
+  Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SafeScreen from '../components/SafeScreen';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +24,7 @@ import { announcementsApi } from '../api/announcements';
 import { settingsApi } from '../api/settings';
 import { defaultersApi } from '../api/defaulters';
 import { residentsApi } from '../api/residents';
+import { APP_LOGO } from '../constants';
 import { colors } from '../theme';
 
 const RECENT_COMPLAINTS_LIMIT = 3;
@@ -43,12 +47,14 @@ const CAROUSEL_IMAGES = [
   require('../../assets/images/9.jpg'),
   require('../../assets/images/10.jpg'),
   require('../../assets/images/11.jpg'),
-  require('../../assets/images/12.png'),
+  APP_LOGO,
   require('../../assets/images/13.jpg'),
   require('../../assets/images/14.png'),
 ];
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CAROUSEL_ITEM_WIDTH = SCREEN_WIDTH * 0.85;
+/** Match MainTabs stack header so dashboard bar aligns under status bar the same way */
+const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
 // Decorative background line colors (stylish, low opacity)
 const BG_LINES = [
@@ -83,6 +89,8 @@ function getTodayFormatted() {
 export default function DashboardScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const safeInsets = useSafeAreaInsets();
+  const headerTopInset = Math.max(safeInsets.top, STATUS_BAR_HEIGHT, 28);
   const [refreshing, setRefreshing] = useState(false);
   const [complaints, setComplaints] = useState({ data: [], total: 0 });
   const [maintenance, setMaintenance] = useState({ data: [], total: 0 });
@@ -101,7 +109,7 @@ export default function DashboardScreen() {
   const welcomeSlide = useRef(new Animated.Value(12)).current;
   const nameMarqueeAnim = useRef(new Animated.Value(0)).current;
   /** Measured fixed top bar only (welcome card scrolls with content) */
-  const [dashboardHeaderHeight, setDashboardHeaderHeight] = useState(52);
+  const [dashboardHeaderHeight, setDashboardHeaderHeight] = useState(96);
 
   useEffect(() => {
     carouselIndexRef.current = carouselIndex;
@@ -286,7 +294,7 @@ export default function DashboardScreen() {
   });
 
   return (
-    <SafeScreen style={styles.safe} edges={[]}>
+    <SafeScreen style={styles.safe} edges={[]} noTopPadding>
       <View style={styles.screenInner}>
         {/* Stylish colorful background lines */}
         <View style={styles.bgLinesContainer} pointerEvents="none">
@@ -310,7 +318,7 @@ export default function DashboardScreen() {
 
         {/* Fixed top bar: title + actions (does not scroll) */}
         <View
-          style={styles.dashboardHeaderFixed}
+          style={[styles.dashboardHeaderFixed, { paddingTop: headerTopInset }]}
           onLayout={(e) => {
             const h = e.nativeEvent.layout.height;
             if (h > 0) setDashboardHeaderHeight(Math.ceil(h));

@@ -9,12 +9,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/auth';
-import { STORAGE_KEYS } from '../constants';
+import { APP_LOGO, STORAGE_KEYS } from '../constants';
 import { colors } from '../theme';
 
 export default function ForceChangePasswordScreen() {
@@ -68,6 +69,7 @@ export default function ForceChangePasswordScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Image source={APP_LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="App logo" />
           <Text style={styles.title}>Change your password</Text>
           <Text style={styles.hint}>
             Set a new password before using the app. Use your initial password as &quot;current&quot;.
@@ -121,6 +123,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   scroll: { padding: 24, paddingTop: 48 },
+  logo: { width: '100%', height: 64, marginBottom: 24, alignSelf: 'center', maxWidth: 260 },
   title: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 12 },
   hint: { fontSize: 14, color: colors.textSecondary, marginBottom: 20, lineHeight: 20 },
   error: { color: colors.error, marginBottom: 12 },

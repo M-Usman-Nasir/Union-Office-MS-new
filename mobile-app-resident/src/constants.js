@@ -1,3 +1,6 @@
+/** App branding — auth screens, headers, carousel, splash/icon paths in app.json should match this asset. */
+export const APP_LOGO = require('../assets/logo.jpeg');
+
 export const ROLES = {
   RESIDENT: 'resident',
 };
@@ -33,6 +36,7 @@ export const API_ENDPOINTS = {
   SOCIETIES: '/societies',
   SOCIETY_BY_ID: (id) => `/societies/${id}`,
   PROPERTIES_BLOCKS: '/properties/blocks',
+  PROPERTIES_FLOORS: '/properties/floors',
   PROPERTIES_UNITS: '/properties/units',
   DEFAULTERS: '/defaulters',
   MESSAGES_CONVERSATIONS: '/messages/conversations',
