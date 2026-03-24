@@ -12,14 +12,13 @@ import {
   DialogActions,
   Grid,
   MenuItem,
+  Menu,
   IconButton,
   Tooltip,
   Chip,
   Card,
   CardContent,
   Alert,
-  Tabs,
-  Tab,
 } from '@mui/material'
 import Autocomplete from '@mui/material/Autocomplete'
 import AddIcon from '@mui/icons-material/Add'
@@ -28,15 +27,20 @@ import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import FileDownloadIcon from '@mui/icons-material/FileDownload'
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { financeApi } from '@/api/financeApi'
 import { employeesApi } from '@/api/employeesApi'
+import { apartmentApi } from '@/api/apartmentApi'
 import DataTable from '@/components/common/DataTable'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
+import { jsPDF } from 'jspdf'
 import {
   INCOME_TYPES,
   INCOME_TYPE_LABELS,
@@ -45,7 +49,6 @@ import {
   FINANCE_STATUS_OPTIONS,
   getFinanceYearOptions,
 } from '@/utils/constants'
-import FinancialReports from '@/components/finance/FinancialReports'
 
 const validationSchema = Yup.object({
   transaction_type: Yup.string().oneOf(['income', 'expense']).required('Transaction type is required'),
@@ -66,29 +69,54 @@ const validationSchema = Yup.object({
 
 const Finance = () => {
   const { user } = useAuth()
+  const currentMonth = dayjs().month() + 1
+  const currentYear = dayjs().year()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth)
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isExportingCsv, setIsExportingCsv] = useState(false)
+  const [exportMenuAnchor, setExportMenuAnchor] = useState(null)
   const [openDialog, setOpenDialog] = useState(false)
   const [editingFinance, setEditingFinance] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
-  const [activeTab, setActiveTab] = useState(0)
 
   const { data, isLoading, error, mutate } = useSWR(
-    ['/finance', page, limit, search, societyId],
-    () => financeApi.getAll({ page, limit, search, society_id: societyId }).then(res => res.data).catch(err => {
-      console.error('Finance API error:', err)
-      toast.error(err.response?.data?.message || 'Failed to load finance data')
-      throw err
-    })
+    ['/finance', page, limit, search, societyId, selectedMonth, selectedYear],
+    () =>
+      financeApi
+        .getAll({
+          page,
+          limit,
+          search,
+          society_id: societyId,
+          month: selectedMonth || undefined,
+          year: selectedYear || undefined,
+        })
+        .then(res => res.data)
+        .catch(err => {
+          console.error('Finance API error:', err)
+          toast.error(err.response?.data?.message || 'Failed to load finance data')
+          throw err
+        })
   )
 
-  const { data: summary, mutate: mutateSummary } = useSWR(
+  const { mutate: mutateSummary } = useSWR(
     ['/finance/summary', societyId],
     () => financeApi.getSummary({ society_id: societyId }).then(res => res.data.data).catch(err => {
       console.error('Finance summary error:', err)
       return null
     })
+  )
+  const { data: monthlyReportData, isLoading: reportLoading, error: reportError } = useSWR(
+    societyId ? ['/finance/reports/monthly', selectedMonth, selectedYear, societyId] : null,
+    () => financeApi.getMonthlyReport(selectedMonth, selectedYear, { society_id: societyId }).then((res) => res.data)
+  )
+  const { data: apartmentData } = useSWR(
+    societyId ? ['/society', societyId] : null,
+    () => apartmentApi.getById(societyId).then((res) => res.data)
   )
 
   const { data: employeesData } = useSWR(
@@ -161,6 +189,17 @@ const Finance = () => {
   }
 
   const yearOptions = getFinanceYearOptions()
+  const filterYearOptions = yearOptions.filter((opt) => Number(opt.value) === currentYear)
+  const reportSummary = monthlyReportData?.data?.summary
+  const monthName = MONTH_OPTIONS.find((m) => Number(m.value) === Number(selectedMonth))?.label || dayjs().format('MMMM')
+  const totalIncome = Number(reportSummary?.total_income) || 0
+  const totalExpenses = Number(reportSummary?.total_expenses) || 0
+  const deficit = totalExpenses - totalIncome
+  const maxMetric = Math.max(totalIncome, totalExpenses, Math.abs(deficit), 1)
+  const expenseBreakdown = (monthlyReportData?.data?.expenseBreakdown || [])
+    .map((item) => ({ category: item.expense_type || 'Other', amount: Number(item.total) || 0 }))
+    .sort((a, b) => b.amount - a.amount)
+  const societyDisplayName = apartmentData?.data?.name || 'Homeland Apartments'
 
   const columns = [
     {
@@ -280,12 +319,273 @@ const Finance = () => {
         remarks: '',
       }
 
+  const handleExportFinanceReport = async () => {
+    try {
+      setIsExporting(true)
+
+      const [reportRes, txRes] = await Promise.all([
+        financeApi.getMonthlyReport(selectedMonth, selectedYear, { society_id: societyId }),
+        financeApi.getAll({
+          page: 1,
+          limit: 5000,
+          society_id: societyId,
+          month: selectedMonth,
+          year: selectedYear,
+        }),
+      ])
+
+      const summaryData = reportRes?.data?.data?.summary || {}
+      const breakdownData = reportRes?.data?.data?.expenseBreakdown || []
+      const transactions = txRes?.data?.data || []
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const left = 10
+      const right = pageWidth - 10
+      const bottom = pageHeight - 10
+      let y = 15
+
+      const clipText = (value, max = 20) => {
+        const text = String(value ?? '-')
+        return text.length > max ? `${text.slice(0, max - 1)}...` : text
+      }
+      const ensureSpace = (spaceNeeded = 8) => {
+        if (y + spaceNeeded > bottom) {
+          doc.addPage('a4', 'landscape')
+          y = 15
+        }
+      }
+      const drawRow = (cells, widths, rowHeight = 7) => {
+        ensureSpace(rowHeight + 1)
+        let x = left
+        cells.forEach((cell, idx) => {
+          doc.text(String(cell ?? '-'), x + 1, y + 5)
+          x += widths[idx]
+        })
+        y += rowHeight
+      }
+
+      doc.setFontSize(16)
+      doc.setFont(undefined, 'bold')
+      doc.text(societyDisplayName, pageWidth / 2, y, { align: 'center' })
+      y += 7
+      doc.setFontSize(12)
+      doc.text('Finance Report', pageWidth / 2, y, { align: 'center' })
+      y += 6
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(9)
+      doc.text(`Period: ${monthName} ${selectedYear}`, left, y)
+      doc.text(`Generated: ${dayjs().format('DD MMM YYYY HH:mm')}`, right, y, { align: 'right' })
+      y += 5
+      doc.line(left, y, right, y)
+      y += 7
+
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(11)
+      doc.text('Summary', left, y)
+      y += 6
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(9)
+      const summaryRows = [
+        ['Total Income', formatCurrency(Number(summaryData.total_income) || 0)],
+        ['Total Expenses', formatCurrency(Number(summaryData.total_expenses) || 0)],
+        ['Net Income', formatCurrency(Number(summaryData.net_income) || 0)],
+        ['Income Transactions', String(summaryData.income_count || 0)],
+        ['Expense Transactions', String(summaryData.expense_count || 0)],
+      ]
+      summaryRows.forEach(([label, value]) => {
+        ensureSpace(6)
+        doc.text(`${label}:`, left, y)
+        doc.text(value, left + 55, y)
+        y += 5
+      })
+      y += 3
+
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(11)
+      doc.text('Expense Breakdown', left, y)
+      y += 6
+      const breakdownWidths = [90, 45, 30]
+      doc.setFontSize(9)
+      drawRow(['Category', 'Amount', 'Count'], breakdownWidths)
+      doc.line(left, y - 1, left + breakdownWidths.reduce((sum, w) => sum + w, 0), y - 1)
+      doc.setFont(undefined, 'normal')
+      if (breakdownData.length) {
+        breakdownData.forEach((item) => {
+          drawRow(
+            [
+              clipText(item.expense_type || 'Other', 36),
+              clipText(formatCurrency(Number(item.total) || 0), 22),
+              String(item.count || 0),
+            ],
+            breakdownWidths
+          )
+        })
+      } else {
+        drawRow(['No expense breakdown data', '-', '-'], breakdownWidths)
+      }
+      y += 4
+
+      const transactionWidths = [20, 18, 52, 30, 32, 30, 20, 45]
+      const transactionHeader = ['Date', 'Type', 'Description', 'Amount', 'Category', 'Payment', 'Status', 'Remarks']
+      const drawTransactionHeader = () => {
+        doc.setFont(undefined, 'bold')
+        drawRow(transactionHeader, transactionWidths)
+        doc.line(left, y - 1, left + transactionWidths.reduce((sum, w) => sum + w, 0), y - 1)
+        doc.setFont(undefined, 'normal')
+      }
+
+      ensureSpace(12)
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(11)
+      doc.text('Transactions', left, y)
+      y += 6
+      doc.setFontSize(9)
+      drawTransactionHeader()
+
+      if (transactions.length) {
+        transactions.forEach((row) => {
+          if (y + 8 > bottom) {
+            doc.addPage('a4', 'landscape')
+            y = 15
+            drawTransactionHeader()
+          }
+          const category = row.transaction_type === 'income' ? row.income_type : row.expense_type
+          drawRow(
+            [
+              clipText(formatDate(row.transaction_date), 10),
+              clipText(row.transaction_type || '-', 8),
+              clipText(row.description || '-', 28),
+              clipText(formatCurrency(Number(row.amount) || 0), 16),
+              clipText(category || '-', 18),
+              clipText(row.payment_mode || '-', 14),
+              clipText(row.status || '-', 8),
+              clipText(row.remarks || '-', 24),
+            ],
+            transactionWidths
+          )
+        })
+      } else {
+        drawRow(['No transactions for this period', '-', '-', '-', '-', '-', '-', '-'], transactionWidths)
+      }
+
+      doc.save(`finance-report-${selectedYear}-${String(selectedMonth).padStart(2, '0')}.pdf`)
+      toast.success('Finance report exported as PDF')
+    } catch (err) {
+      console.error('Export finance report error:', err)
+      toast.error(err.response?.data?.message || 'Failed to export finance PDF report')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportFinanceCsv = async () => {
+    try {
+      setIsExportingCsv(true)
+
+      const [reportRes, txRes] = await Promise.all([
+        financeApi.getMonthlyReport(selectedMonth, selectedYear, { society_id: societyId }),
+        financeApi.getAll({
+          page: 1,
+          limit: 5000,
+          society_id: societyId,
+          month: selectedMonth,
+          year: selectedYear,
+        }),
+      ])
+
+      const summaryData = reportRes?.data?.data?.summary || {}
+      const breakdownData = reportRes?.data?.data?.expenseBreakdown || []
+      const transactions = txRes?.data?.data || []
+
+      const escapeCsv = (value) => {
+        const str = String(value ?? '')
+        return `"${str.replace(/"/g, '""')}"`
+      }
+
+      const lines = []
+      lines.push(escapeCsv(societyDisplayName))
+      lines.push('Finance Report')
+      lines.push(`Period,${escapeCsv(`${monthName} ${selectedYear}`)}`)
+      lines.push(`Generated On,${escapeCsv(dayjs().format('DD MMM YYYY HH:mm'))}`)
+      lines.push('')
+      lines.push('Summary')
+      lines.push('Metric,Value')
+      lines.push(`Total Income,${escapeCsv(formatCurrency(Number(summaryData.total_income) || 0))}`)
+      lines.push(`Total Expenses,${escapeCsv(formatCurrency(Number(summaryData.total_expenses) || 0))}`)
+      lines.push(`Net Income,${escapeCsv(formatCurrency(Number(summaryData.net_income) || 0))}`)
+      lines.push(`Income Transactions,${escapeCsv(summaryData.income_count || 0)}`)
+      lines.push(`Expense Transactions,${escapeCsv(summaryData.expense_count || 0)}`)
+      lines.push('')
+      lines.push('Expense Breakdown')
+      lines.push('Category,Amount,Count')
+      if (breakdownData.length) {
+        breakdownData.forEach((item) => {
+          lines.push(
+            [
+              escapeCsv(item.expense_type || 'Other'),
+              escapeCsv(formatCurrency(Number(item.total) || 0)),
+              escapeCsv(item.count || 0),
+            ].join(',')
+          )
+        })
+      } else {
+        lines.push('No expense breakdown data,,')
+      }
+      lines.push('')
+      lines.push('Transactions')
+      lines.push('Date,Type,Description,Amount,Category,Payment Mode,Status,Remarks')
+      if (transactions.length) {
+        transactions.forEach((row) => {
+          const category = row.transaction_type === 'income' ? row.income_type : row.expense_type
+          lines.push(
+            [
+              escapeCsv(formatDate(row.transaction_date)),
+              escapeCsv(row.transaction_type),
+              escapeCsv(row.description || ''),
+              escapeCsv(formatCurrency(row.amount)),
+              escapeCsv(category || ''),
+              escapeCsv(row.payment_mode || ''),
+              escapeCsv(row.status || ''),
+              escapeCsv(row.remarks || ''),
+            ].join(',')
+          )
+        })
+      } else {
+        lines.push('No transactions for this period,,,,,,,')
+      }
+
+      const csvContent = '\uFEFF' + lines.join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `finance-report-${selectedYear}-${String(selectedMonth).padStart(2, '0')}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      toast.success('Finance report exported as CSV')
+    } catch (err) {
+      console.error('Export finance CSV error:', err)
+      toast.error(err.response?.data?.message || 'Failed to export finance CSV report')
+    } finally {
+      setIsExportingCsv(false)
+    }
+  }
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" component="h1">
-          Finance Management
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Finance Management
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Complete Financial Overview - Income vs Expense Analysis
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -304,112 +604,282 @@ const Finance = () => {
         </Box>
       )}
 
-      {/* Summary Cards - backend returns income, expense, balance, income_count, expense_count */}
-      {summary && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="success.main">
-                  {formatCurrency(summary.income)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Income
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="error.main">
-                  {formatCurrency(summary.expense)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Expense
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="primary.main">
-                  {formatCurrency(summary.balance)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Balance
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6">
-                  {(summary.income_count || 0) + (summary.expense_count || 0)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Transactions
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+      {reportError && (
+        <Box sx={{ mb: 3 }}>
+          <Alert severity="error">
+            {reportError.response?.data?.message || 'Failed to load monthly report data.'}
+          </Alert>
+        </Box>
       )}
 
-      {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="All Transactions" />
-          <Tab label="Expenses" />
-          <Tab label="Income" />
-          <Tab label="Reports" />
-        </Tabs>
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ py: 2 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={4} md={2}>
+              <Typography variant="body2" color="text.secondary">
+                View Stats For:
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={4} md={3}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(Number(e.target.value))
+                  setPage(1)
+                }}
+              >
+                {MONTH_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label} {selectedYear}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={4} md={3}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+              >
+                {filterYearOptions.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent sx={{ py: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            {monthName} {selectedYear} - Maintenance Income vs Expenses
+          </Typography>
+        </CardContent>
+      </Card>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+                    Maintenance Collection (Income)
+                  </Typography>
+                  <Typography variant="h5" color="success.main" sx={{ mt: 1 }}>
+                    {formatCurrency(totalIncome)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Collected this month
+                  </Typography>
+                </Box>
+                <TrendingUpIcon color="success" fontSize="small" />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+                    Total Expenses
+                  </Typography>
+                  <Typography variant="h5" color="error.main" sx={{ mt: 1 }}>
+                    {formatCurrency(totalExpenses)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Operational cost this month
+                  </Typography>
+                </Box>
+                <TrendingDownIcon color="error" fontSize="small" />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+                    Monthly Deficit/Surplus
+                  </Typography>
+                  <Typography variant="h5" color={deficit > 0 ? 'error.main' : 'success.main'} sx={{ mt: 1 }}>
+                    {deficit > 0 ? '-' : ''}{formatCurrency(Math.abs(deficit))}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {deficit > 0 ? 'Amount to cover from reserves' : 'Current month surplus'}
+                  </Typography>
+                </Box>
+                <WarningAmberIcon color={deficit > 0 ? 'warning' : 'success'} fontSize="small" />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent sx={{ py: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Expense Breakdown - {monthName} {selectedYear}
+          </Typography>
+        </CardContent>
+      </Card>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {expenseBreakdown.length > 0 ? expenseBreakdown.slice(0, 4).map((item) => (
+          <Grid item xs={12} sm={6} md={3} key={item.category}>
+            <Card>
+              <CardContent>
+                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+                  {item.category}
+                </Typography>
+                <Typography variant="h5" color="primary.main" sx={{ mt: 1 }}>
+                  {formatCurrency(item.amount)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {totalExpenses ? `${Math.round((item.amount / totalExpenses) * 100)}% of expenses` : '0% of expenses'}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )) : (
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="body2" color="text.secondary">
+                  No expense data available for selected month.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+      </Grid>
+
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
+            Income vs Expenses Comparison - {monthName} {selectedYear}
+          </Typography>
+          <Grid container spacing={1}>
+            {[
+              { label: 'Income', amount: totalIncome, color: '#1d4ed8' },
+              { label: 'Expense', amount: totalExpenses, color: '#2563eb' },
+              { label: 'Deficit', amount: Math.abs(deficit), color: '#ef4444' },
+            ].map((metric) => (
+              <Grid item xs={12} md={4} key={metric.label}>
+                <Box sx={{ px: 0.5 }}>
+                  <Box
+                    sx={{
+                      height: 12,
+                      borderRadius: 1,
+                      bgcolor: `${metric.color}22`,
+                      overflow: 'hidden',
+                      mb: 0.75,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${Math.max((metric.amount / maxMetric) * 100, 8)}%`,
+                        height: '100%',
+                        bgcolor: metric.color,
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {metric.label}
+                  </Typography>
+                  <Typography variant="body2">
+                    {formatCurrency(metric.amount)}
+                  </Typography>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        </CardContent>
+      </Card>
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">Transactions</Typography>
+        <Box sx={{ display: 'inline-flex' }}>
+          <Button
+            variant="contained"
+            startIcon={<FileDownloadIcon />}
+            endIcon={<KeyboardArrowDownIcon />}
+            disabled={isExportingCsv || isExporting || !societyId}
+            onClick={(e) => setExportMenuAnchor(e.currentTarget)}
+          >
+            {isExportingCsv || isExporting ? 'Exporting...' : 'Export report'}
+          </Button>
+          <Menu
+            anchorEl={exportMenuAnchor}
+            open={Boolean(exportMenuAnchor)}
+            onClose={() => setExportMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <MenuItem
+              disabled={isExportingCsv || isExporting}
+              onClick={() => {
+                setExportMenuAnchor(null)
+                handleExportFinanceCsv()
+              }}
+            >
+              Download as CSV
+            </MenuItem>
+            <MenuItem
+              disabled={isExporting || isExportingCsv}
+              onClick={() => {
+                setExportMenuAnchor(null)
+                handleExportFinanceReport()
+              }}
+            >
+              Download as PDF
+            </MenuItem>
+          </Menu>
+        </Box>
       </Box>
 
-      {/* Tab Content */}
-      {activeTab === 3 ? (
-        // Reports Tab
-        <FinancialReports reportType="monthly" />
-      ) : (
-        // Transactions Tabs (All, Expenses, Income)
-        <>
-          <Box sx={{ mb: 3 }}>
-            <TextField
-              fullWidth
-              placeholder="Search finance records..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search finance records..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
 
-          <DataTable
-            columns={columns}
-            data={
-              activeTab === 0
-                ? data?.data || []
-                : activeTab === 1
-                ? (data?.data || []).filter((item) => item.transaction_type === 'expense')
-                : (data?.data || []).filter((item) => item.transaction_type === 'income')
-            }
-            loading={isLoading}
-            pagination={data?.pagination}
-            onPageChange={setPage}
-            onRowsPerPageChange={(newLimit) => {
-              setLimit(newLimit)
-              setPage(1)
-            }}
-          />
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        data={data?.data || []}
+        loading={isLoading || reportLoading}
+        pagination={data?.pagination}
+        onPageChange={setPage}
+        onRowsPerPageChange={(newLimit) => {
+          setLimit(newLimit)
+          setPage(1)
+        }}
+      />
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <Formik

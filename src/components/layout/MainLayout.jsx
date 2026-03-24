@@ -496,6 +496,9 @@ const MainLayout = ({ children }) => {
         sx={{
           width: { sm: `calc(100% - ${effectiveDrawerWidth}px)` },
           ml: { sm: `${effectiveDrawerWidth}px` },
+          background: 'linear-gradient(90deg, #0c9acc 0%, #1187c8 42%, #1c6fc0 100%)',
+          color: '#fff',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
           boxShadow: (t) => (t.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(99, 102, 241, 0.08)'),
           transition: 'box-shadow 0.3s ease',
         }}
@@ -538,9 +541,10 @@ const MainLayout = ({ children }) => {
               mr: 1,
               '& .MuiOutlinedInput-root': {
                 color: 'inherit',
-                backgroundColor: (t) => (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.2)'),
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
+                backgroundColor: '#0a5d8b',
+                borderRadius: 1,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
                 '&.Mui-focused fieldset': { borderColor: 'rgba(255,255,255,0.8)' },
               },
               '& .MuiInputBase-input::placeholder': { color: 'inherit', opacity: 0.7 },

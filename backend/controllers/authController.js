@@ -468,6 +468,71 @@ export const changePasswordFirstLogin = async (req, res) => {
   }
 };
 
+/** Authenticated user password change */
+export const changePassword = async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required',
+      });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters',
+      });
+    }
+
+    const row = await query(
+      `SELECT id, password FROM users WHERE id = $1 AND is_active = true`,
+      [req.user.id]
+    );
+    if (!row.rows.length) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    const u = row.rows[0];
+
+    const ok =
+      (await bcrypt.compare(current_password, u.password)) ||
+      current_password === u.password;
+    if (!ok) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+    }
+
+    const sameAsOld = await bcrypt.compare(new_password, u.password);
+    if (sameAsOld) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from current password',
+      });
+    }
+
+    const hashed = await bcrypt.hash(new_password, 10);
+    await query(
+      `UPDATE users SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [hashed, u.id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully',
+    });
+  } catch (error) {
+    console.error('changePassword:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update password',
+      error: error.message,
+    });
+  }
+};
+
 // Get current user
 export const getMe = async (req, res) => {
   try {

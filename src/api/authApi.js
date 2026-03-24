@@ -49,4 +49,11 @@ export const authApi = {
       new_password,
     })
   },
+
+  changePassword: ({ current_password, new_password }) => {
+    return api.post(API_ENDPOINTS.CHANGE_PASSWORD, {
+      current_password,
+      new_password,
+    })
+  },
 }

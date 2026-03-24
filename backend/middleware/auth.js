@@ -41,6 +41,7 @@ export const authenticate = async (req, res, next) => {
     const exempt =
       (path.endsWith('/auth/me') && method === 'GET') ||
       (path.endsWith('/auth/change-password-first-login') && method === 'POST') ||
+      (path.endsWith('/auth/change-password') && method === 'POST') ||
       (path.endsWith('/auth/logout') && method === 'POST') ||
       (path.endsWith('/auth/refresh') && method === 'POST');
 

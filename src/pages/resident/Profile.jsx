@@ -53,6 +53,18 @@ const validationSchema = Yup.object({
   contact_number: Yup.string(),
   emergency_contact: Yup.string(),
   cnic: Yup.string(),
+  current_password: Yup.string().when('new_password', {
+    is: (value) => !!value,
+    then: (schema) => schema.required('Current password is required to set a new password'),
+    otherwise: (schema) => schema,
+  }),
+  new_password: Yup.string()
+    .min(6, 'New password must be at least 6 characters')
+    .test('password-change-pair', 'Enter current password to change password', function (value) {
+      if (!value) return true
+      return !!this.parent.current_password
+    }),
+  confirm_new_password: Yup.string().oneOf([Yup.ref('new_password'), ''], 'Confirm password does not match'),
 })
 
 const ResidentProfile = () => {
@@ -180,7 +192,14 @@ const ResidentProfile = () => {
         }
       }
 
-      toast.success('Profile updated successfully')
+      if (values.new_password) {
+        await authApi.changePassword({
+          current_password: values.current_password,
+          new_password: values.new_password,
+        })
+      }
+
+      toast.success(values.new_password ? 'Profile and password updated successfully' : 'Profile updated successfully')
       setSelectedFile(null)
       await mutate()
       await mutateAuth()
@@ -266,6 +285,9 @@ const ResidentProfile = () => {
               contact_number: profileData?.contact_number || '',
               emergency_contact: profileData?.emergency_contact || '',
               cnic: profileData?.cnic || '',
+              current_password: '',
+              new_password: '',
+              confirm_new_password: '',
               k_electric_account: profileData?.k_electric_account || '',
               gas_account: profileData?.gas_account || '',
               water_account: profileData?.water_account || '',
@@ -386,6 +408,59 @@ const ResidentProfile = () => {
                       value={values.contact_number}
                       onChange={handleChange}
                       onBlur={handleBlur}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, mt: 0.5 }}>
+                      <PersonIcon sx={{ mr: 0.5, fontSize: 18, color: 'primary.main' }} />
+                      <Typography variant="subtitle1" fontWeight={600}>Change Password</Typography>
+                    </Box>
+                    <Divider sx={{ mb: 1 }} />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="password"
+                      label="Current Password"
+                      name="current_password"
+                      value={values.current_password}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.current_password && !!errors.current_password}
+                      helperText={touched.current_password && errors.current_password}
+                      autoComplete="current-password"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="password"
+                      label="New Password"
+                      name="new_password"
+                      value={values.new_password}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.new_password && !!errors.new_password}
+                      helperText={touched.new_password && errors.new_password}
+                      autoComplete="new-password"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="password"
+                      label="Confirm New Password"
+                      name="confirm_new_password"
+                      value={values.confirm_new_password}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.confirm_new_password && !!errors.confirm_new_password}
+                      helperText={touched.confirm_new_password && errors.confirm_new_password}
+                      autoComplete="new-password"
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>

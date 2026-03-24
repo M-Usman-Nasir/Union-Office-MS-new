@@ -8,13 +8,6 @@ import {
   Card,
   CardContent,
   CircularProgress,
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   IconButton,
   Button,
   Paper,
@@ -22,7 +15,6 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
 } from '@mui/material'
 import dayjs from 'dayjs'
 import { useAuth } from '@/contexts/AuthContext'
@@ -38,19 +30,16 @@ import { propertyApi } from '@/api/propertyApi'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import WarningIcon from '@mui/icons-material/Warning'
 import AnnouncementIcon from '@mui/icons-material/Campaign'
-import PaymentIcon from '@mui/icons-material/Payment'
 import PendingActionsIcon from '@mui/icons-material/PendingActions'
 import PercentIcon from '@mui/icons-material/Percent'
 import ReportIcon from '@mui/icons-material/Report'
-import ScheduleIcon from '@mui/icons-material/Schedule'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import HomeIcon from '@mui/icons-material/Home'
-import FinanceChart from '@/components/charts/FinanceChart'
-import PieChart from '@/components/charts/PieChart'
-import BarChart from '@/components/charts/BarChart'
+import FileDownloadIcon from '@mui/icons-material/FileDownload'
+import toast from 'react-hot-toast'
 import { ROUTES } from '@/utils/constants'
 
 const MONTHS = [
@@ -64,6 +53,7 @@ const AdminDashboard = () => {
   const [announcementsOpen, setAnnouncementsOpen] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(() => dayjs().month() + 1)
   const [selectedYear, setSelectedYear] = useState(() => dayjs().year())
+  const [isExporting, setIsExporting] = useState(false)
 
   const societyId = user?.society_apartment_id
 
@@ -81,6 +71,10 @@ const AdminDashboard = () => {
       year: selectedYear,
       society_id: societyId,
     }).then(res => res.data.data)
+  )
+  const { data: monthlyReport } = useSWR(
+    societyId ? ['/finance/reports/monthly', selectedMonth, selectedYear, societyId] : null,
+    () => financeApi.getMonthlyReport(selectedMonth, selectedYear, { society_id: societyId }).then((res) => res.data?.data)
   )
 
   // Complaints list for summary counts (total, pending, solved)
@@ -117,16 +111,6 @@ const AdminDashboard = () => {
     () => residentApi.getAll({ limit: 1, page: 1 }).then(res => res.data)
   )
 
-  const { data: complaintsData, isLoading: complaintsLoading } = useSWR(
-    societyId ? ['/complaints/recent', societyId] : null,
-    () => complaintApi.getAll({ society_id: societyId, limit: 5, page: 1 }).then(res => res.data)
-  )
-
-  const { data: maintenanceData, isLoading: maintenanceLoading } = useSWR(
-    societyId ? ['/maintenance/recent', societyId] : null,
-    () => maintenanceApi.getAll({ society_id: societyId, limit: 5, page: 1 }).then(res => res.data)
-  )
-
   const { data: announcementsData, isLoading: announcementsLoading } = useSWR(
     '/announcements/recent',
     () => announcementApi.getAll({ limit: 5, page: 1 }).then(res => res.data)
@@ -138,44 +122,7 @@ const AdminDashboard = () => {
   )
   const apartmentName = apartmentData?.data?.name
 
-  const { data: financeData } = useSWR(
-    '/finance/all',
-    () => financeApi.getAll({ limit: 30, page: 1, society_id: user?.society_apartment_id }).then(res => res.data)
-  )
-
   const isLoading = financeLoading || defaulterLoading || residentsLoading
-
-  // Prepare chart data
-  const complaintStatusData = complaintsData?.data
-    ? [
-        { label: 'Pending', value: complaintsData.data.filter(c => c.status === 'pending').length },
-        { label: 'In Progress', value: complaintsData.data.filter(c => c.status === 'in_progress').length },
-        { label: 'Resolved', value: complaintsData.data.filter(c => c.status === 'resolved').length },
-        { label: 'Closed', value: complaintsData.data.filter(c => c.status === 'closed').length },
-      ].filter(item => item.value > 0)
-    : []
-
-  const maintenanceStatusData = maintenanceData?.data
-    ? [
-        { label: 'Paid', value: maintenanceData.data.filter(m => m.status === 'paid').length },
-        { label: 'Pending', value: maintenanceData.data.filter(m => m.status === 'pending').length },
-        { label: 'Partially Paid', value: maintenanceData.data.filter(m => m.status === 'partially_paid').length },
-      ].filter(item => item.value > 0)
-    : []
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'paid':
-      case 'resolved':
-        return 'success'
-      case 'pending':
-        return 'warning'
-      case 'in_progress':
-        return 'info'
-      default:
-        return 'default'
-    }
-  }
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
@@ -219,7 +166,6 @@ const AdminDashboard = () => {
 
   const monthlyIncome = monthlyFinance?.income ?? 0
   const monthlyExpense = monthlyFinance?.expense ?? 0
-  const monthlyBalance = monthlyFinance?.balance ?? 0
 
   // Show overview cards and charts only when there is at least some data
   const hasAnySummaryData =
@@ -230,9 +176,86 @@ const AdminDashboard = () => {
     pendingPaymentsMonth > 0 ||
     (monthlyIncome > 0 || monthlyExpense > 0)
 
-  const hasDefaulterChartData =
-    defaulterStats &&
-    ((defaulterStats.active_count || 0) + (defaulterStats.resolved_count || 0) + (defaulterStats.escalated_count || 0) > 0)
+  const monthlyExpenseBreakdown = (monthlyReport?.expenseBreakdown || [])
+    .map((item) => ({
+      label: item.expense_type || 'Other',
+      amount: Number(item.total) || 0,
+    }))
+    .sort((a, b) => b.amount - a.amount)
+  const reserveBalance = Number(apartmentData?.data?.reserve_balance || 0)
+  const monthlyDeficit = Math.max(monthlyExpense - monthlyIncome, 0)
+  const selectedMonthName = MONTHS[(selectedMonth || 1) - 1] || MONTHS[0]
+
+  const handleExportDashboardReport = () => {
+    try {
+      setIsExporting(true)
+
+      const escapeCsv = (value) => {
+        const str = String(value ?? '')
+        return `"${str.replace(/"/g, '""')}"`
+      }
+
+      const lines = []
+      lines.push('Dashboard Report')
+      lines.push(`Period,${escapeCsv(`${selectedMonthName} ${selectedYear}`)}`)
+      lines.push(`Society,${escapeCsv(apartmentName || 'N/A')}`)
+      lines.push('')
+      lines.push('Maintenance Collection')
+      lines.push('Metric,Value')
+      lines.push(`Collected This Month,${escapeCsv(formatCurrency(paymentsReceivedMonth))}`)
+      lines.push(`Pending Collection This Month,${escapeCsv(formatCurrency(pendingPaymentsMonth))}`)
+      lines.push(`Defaulters Rate,${escapeCsv(`${defaultersRate}%`)}`)
+      lines.push(`No of Defaulters,${escapeCsv(defaultersCount)}`)
+      lines.push('')
+      lines.push('Expenses by Type')
+      lines.push('Category,Amount')
+      if (monthlyExpenseBreakdown.length > 0) {
+        monthlyExpenseBreakdown.slice(0, 4).forEach((item) => {
+          lines.push(`${escapeCsv(item.label)},${escapeCsv(formatCurrency(item.amount))}`)
+        })
+      } else {
+        lines.push('No data,0')
+      }
+      lines.push('')
+      lines.push('Monthly Financial Summary')
+      lines.push('Metric,Value')
+      lines.push(`Total Income,${escapeCsv(formatCurrency(monthlyIncome))}`)
+      lines.push(`Total Expense,${escapeCsv(formatCurrency(monthlyExpense))}`)
+      lines.push(`Monthly Deficit,${escapeCsv(formatCurrency(monthlyDeficit))}`)
+      lines.push(`Reserve Balance,${escapeCsv(formatCurrency(reserveBalance))}`)
+      lines.push('')
+      lines.push('Complaints')
+      lines.push('Metric,Value')
+      lines.push(`Total Complaints,${escapeCsv(totalComplaints)}`)
+      lines.push(`Pending Complaints,${escapeCsv(pendingComplaints)}`)
+      lines.push(`Solved Complaints,${escapeCsv(solvedComplaints)}`)
+      lines.push(`Resolve Rate,${escapeCsv(`${resolveRate}%`)}`)
+      lines.push('')
+      lines.push('Apartment Summary')
+      lines.push('Metric,Value')
+      lines.push(`Total Flats,${escapeCsv(totalFlats)}`)
+      lines.push(`Occupied Flats,${escapeCsv(occupiedFlats)}`)
+      lines.push(`Defaulters,${escapeCsv(defaultersCount)}`)
+      lines.push(`Defaulters Amount,${escapeCsv(formatCurrency(defaultersAmount))}`)
+
+      const csvContent = '\uFEFF' + lines.join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `dashboard-report-${selectedYear}-${String(selectedMonth).padStart(2, '0')}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success('Dashboard report exported successfully')
+    } catch (error) {
+      console.error('Export dashboard report error:', error)
+      toast.error('Failed to export dashboard report')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -362,625 +385,126 @@ const AdminDashboard = () => {
             </Paper>
           ) : (
             <>
-              {/* Month/Year selector and monthly summary cards */}
-              <Box sx={{ mb: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel id="dashboard-month-label">Month</InputLabel>
-                    <Select
-                  labelId="dashboard-month-label"
-                  value={selectedMonth}
-                  label="Month"
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">View Stats For:</Typography>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <Select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))}>
+                    {MONTHS.map((name, i) => (
+                      <MenuItem key={i} value={i + 1}>{name} {selectedYear}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 110 }}>
+                  <Select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}>
+                    <MenuItem value={dayjs().year()}>{dayjs().year()}</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.25, px: 2, mb: 1.5 }}>
+                <Typography variant="subtitle1" fontWeight="bold">
+                  Maintenance Collection (Expected: Rs 712,000 fixed per month)
+                </Typography>
+              </Paper>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">COLLECTED THIS MONTH</Typography><Typography variant="h6">{monthlyFinanceLoading ? '—' : formatCurrency(paymentsReceivedMonth)}</Typography><Typography variant="caption" color="success.main">Total collected</Typography></Box><CheckCircleIcon sx={{ fontSize: 18, color: 'success.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">PENDING COLLECTION THIS MONTH</Typography><Typography variant="h6">{monthlyFinanceLoading ? '—' : formatCurrency(pendingPaymentsMonth)}</Typography><Typography variant="caption" color="warning.main">Still pending</Typography></Box><PendingActionsIcon sx={{ fontSize: 18, color: 'warning.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">DEFAULTERS RATE</Typography><Typography variant="h6">{defaultersRate}%</Typography><Typography variant="caption" color="success.main">Collection efficiency</Typography></Box><PercentIcon sx={{ fontSize: 18, color: 'text.secondary' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">NO OF DEFAULTERS</Typography><Typography variant="h6">{defaultersCount}</Typography><Typography variant="caption" color="text.secondary">Pending payment units</Typography></Box><WarningIcon sx={{ fontSize: 18, color: 'warning.main' }} /></Box></CardContent></Card>
+                </Grid>
+              </Grid>
+
+              <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.25, px: 2, mb: 1.5 }}>
+                <Typography variant="subtitle1" fontWeight="bold">Expenses by Type (This Month)</Typography>
+              </Paper>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                {(monthlyExpenseBreakdown.length ? monthlyExpenseBreakdown.slice(0, 4) : [{ label: 'N/A', amount: 0 }]).map((item, idx) => (
+                  <Grid item xs={12} sm={6} md={3} key={`${item.label}-${idx}`}>
+                    <Card variant="outlined">
+                      <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                        <Typography variant="caption" color="text.secondary">{String(item.label).toUpperCase()}</Typography>
+                        <Typography variant="h6">{formatCurrency(item.amount)}</Typography>
+                        <Typography variant="caption" color="success.main">
+                          {monthlyExpense > 0 ? `${Math.round((item.amount / monthlyExpense) * 100)}% of total expenses` : '0% of total expenses'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+
+              <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.25, px: 2, mb: 1.5 }}>
+                <Typography variant="subtitle1" fontWeight="bold">Monthly Financial Summary</Typography>
+              </Paper>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">TOTAL INCOME (THIS MONTH)</Typography><Typography variant="h6">{monthlyFinanceLoading ? '—' : formatCurrency(monthlyIncome)}</Typography><Typography variant="caption" color="success.main">Maintenance collected</Typography></Box><TrendingUpIcon sx={{ fontSize: 18, color: 'success.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">TOTAL EXPENSE (THIS MONTH)</Typography><Typography variant="h6">{monthlyFinanceLoading ? '—' : formatCurrency(monthlyExpense)}</Typography><Typography variant="caption" color="success.main">All operational costs</Typography></Box><TrendingDownIcon sx={{ fontSize: 18, color: 'error.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">MONTHLY DEFICIT</Typography><Typography variant="h6">-{formatCurrency(monthlyDeficit)}</Typography><Typography variant="caption" color="success.main">Shortfall this month</Typography></Box><WarningIcon sx={{ fontSize: 18, color: 'warning.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">RESERVE BALANCE</Typography><Typography variant="h6">{formatCurrency(reserveBalance)}</Typography><Typography variant="caption" color="success.main">Available funds</Typography></Box><AccountBalanceIcon sx={{ fontSize: 18, color: 'success.main' }} /></Box></CardContent></Card>
+                </Grid>
+              </Grid>
+
+              <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.25, px: 2, mb: 1.5 }}>
+                <Typography variant="subtitle1" fontWeight="bold">Complaints</Typography>
+              </Paper>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">TOTAL COMPLAINTS</Typography><Typography variant="h6">{totalComplaints}</Typography></Box><ReportIcon sx={{ fontSize: 18, color: 'text.secondary' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">PENDING COMPLAINTS</Typography><Typography variant="h6">{pendingComplaints}</Typography></Box><PendingActionsIcon sx={{ fontSize: 18, color: 'warning.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">SOLVED COMPLAINTS</Typography><Typography variant="h6">{solvedComplaints}</Typography></Box><CheckCircleIcon sx={{ fontSize: 18, color: 'success.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">RESOLVE RATE</Typography><Typography variant="h6">{resolveRate}%</Typography></Box><PercentIcon sx={{ fontSize: 18, color: 'text.secondary' }} /></Box></CardContent></Card>
+                </Grid>
+              </Grid>
+
+              <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.25, px: 2, mb: 1.5 }}>
+                <Typography variant="subtitle1" fontWeight="bold">{apartmentName ? `${apartmentName} Summary` : 'Apartment Summary'}</Typography>
+              </Paper>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">TOTAL FLATS</Typography><Typography variant="h6">{totalFlats}</Typography></Box><ApartmentIcon sx={{ fontSize: 18, color: 'text.secondary' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">OCCUPIED FLATS</Typography><Typography variant="h6">{occupiedFlats}</Typography></Box><HomeIcon sx={{ fontSize: 18, color: 'success.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">DEFAULTERS</Typography><Typography variant="h6">{defaultersCount}</Typography></Box><WarningIcon sx={{ fontSize: 18, color: 'warning.main' }} /></Box></CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Box display="flex" justifyContent="space-between"><Box><Typography variant="caption" color="text.secondary">DEFAULTERS AMOUNT</Typography><Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography></Box><AccountBalanceIcon sx={{ fontSize: 18, color: 'warning.main' }} /></Box></CardContent></Card>
+                </Grid>
+              </Grid>
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  startIcon={<FileDownloadIcon />}
+                  onClick={handleExportDashboardReport}
+                  disabled={isExporting}
                 >
-                  {MONTHS.map((name, i) => (
-                    <MenuItem key={i} value={i + 1}>{name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 100 }}>
-                <InputLabel id="dashboard-year-label">Year</InputLabel>
-                <Select
-                  labelId="dashboard-year-label"
-                  value={selectedYear}
-                  label="Year"
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                >
-                  {Array.from({ length: 5 }, (_, i) => dayjs().year() - 2 + i).map((y) => (
-                    <MenuItem key={y} value={y}>{y}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-
-            {/* Section A: Monthly summary cards (3 rows x 4) */}
-            <Grid container spacing={2} sx={{ mb: 4 }}>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Payments Received</Typography>
-                        <Typography variant="h6">
-                          {monthlyFinanceLoading ? '—' : formatCurrency(paymentsReceivedMonth)}
-                        </Typography>
-                      </Box>
-                      <PaymentIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Pending Payments</Typography>
-                        <Typography variant="h6">
-                          {monthlyFinanceLoading ? '—' : formatCurrency(pendingPaymentsMonth)}
-                        </Typography>
-                      </Box>
-                      <PendingActionsIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Defaulters Rate</Typography>
-                        <Typography variant="h6">{defaultersRate}%</Typography>
-                      </Box>
-                      <PercentIcon sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>No of Defaulters</Typography>
-                        <Typography variant="h6">{defaultersCount}</Typography>
-                      </Box>
-                      <WarningIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Complaints</Typography>
-                        <Typography variant="h6">{totalComplaints}</Typography>
-                      </Box>
-                      <ReportIcon sx={{ fontSize: 20, color: 'info.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Pending Complaints</Typography>
-                        <Typography variant="h6">{pendingComplaints}</Typography>
-                      </Box>
-                      <ScheduleIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Solved Complaints</Typography>
-                        <Typography variant="h6">{solvedComplaints}</Typography>
-                      </Box>
-                      <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Resolve Rate</Typography>
-                        <Typography variant="h6">{resolveRate}%</Typography>
-                      </Box>
-                      <PercentIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Income</Typography>
-                        <Typography variant="h6">
-                          {monthlyFinanceLoading ? '—' : formatCurrency(monthlyIncome)}
-                        </Typography>
-                      </Box>
-                      <TrendingUpIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Expense</Typography>
-                        <Typography variant="h6">
-                          {monthlyFinanceLoading ? '—' : formatCurrency(monthlyExpense)}
-                        </Typography>
-                      </Box>
-                      <TrendingDownIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Net Balance</Typography>
-                        <Typography variant="h6">
-                          {monthlyFinanceLoading ? '—' : formatCurrency(monthlyBalance)}
-                        </Typography>
-                      </Box>
-                      <AccountBalanceIcon sx={{ fontSize: 20, color: 'primary.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined">
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Remaining Dues</Typography>
-                        <Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography>
-                      </Box>
-                      <WarningIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-
-            {/* Section B: Apartment summary (heading from admin's society) */}
-            <Paper variant="outlined" sx={{ bgcolor: 'action.hover', py: 1.5, px: 2, mb: 2 }}>
-              <Typography variant="h6" fontWeight="bold" align="center">
-                {apartmentName ? `${apartmentName} Summary` : 'Apartment Summary'}
-              </Typography>
-            </Paper>
-            <Grid container spacing={2} sx={{ mb: 4 }}>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Flats</Typography>
-                        <Typography variant="h6">{totalFlats}</Typography>
-                      </Box>
-                      <ApartmentIcon sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Occupied Flats</Typography>
-                        <Typography variant="h6">{occupiedFlats}</Typography>
-                      </Box>
-                      <HomeIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Defaulters</Typography>
-                        <Typography variant="h6">{defaultersCount}</Typography>
-                      </Box>
-                      <WarningIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Defaulters Amount</Typography>
-                        <Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography>
-                      </Box>
-                      <AccountBalanceIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Complaints</Typography>
-                        <Typography variant="h6">{totalComplaints}</Typography>
-                      </Box>
-                      <ReportIcon sx={{ fontSize: 20, color: 'info.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Pending Complaints</Typography>
-                        <Typography variant="h6">{pendingComplaints}</Typography>
-                      </Box>
-                      <ScheduleIcon sx={{ fontSize: 20, color: 'warning.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Solved Complaints</Typography>
-                        <Typography variant="h6">{solvedComplaints}</Typography>
-                      </Box>
-                      <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Resolve Rate</Typography>
-                        <Typography variant="h6">{resolveRate}%</Typography>
-                      </Box>
-                      <PercentIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Income</Typography>
-                        <Typography variant="h6">{formatCurrency(monthlyIncome)}</Typography>
-                      </Box>
-                      <TrendingUpIcon sx={{ fontSize: 20, color: 'success.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Total Expense</Typography>
-                        <Typography variant="h6">{formatCurrency(monthlyExpense)}</Typography>
-                      </Box>
-                      <TrendingDownIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Net Balance</Typography>
-                        <Typography variant="h6">{formatCurrency(monthlyBalance)}</Typography>
-                      </Box>
-                      <AccountBalanceIcon sx={{ fontSize: 20, color: 'primary.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                      <Box flex={1} minWidth={0}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>Remaining Dues</Typography>
-                        <Typography variant="h6">{formatCurrency(defaultersAmount)}</Typography>
-                      </Box>
-                      <WarningIcon sx={{ fontSize: 20, color: 'error.main', flexShrink: 0 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </Box>
-
-          {/* Charts Section */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            {/* Finance Chart */}
-            <Grid item xs={12} md={8}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Finance Overview
-                  </Typography>
-                  {financeData === undefined ? (
-                    <Box display="flex" justifyContent="center" p={4}>
-                      <CircularProgress />
-                    </Box>
-                  ) : (financeData?.data?.length > 0 ? (
-                    <FinanceChart data={financeData.data} />
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
-                      No finance data available
-                    </Typography>
-                  ))}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Complaint Status Chart */}
-            <Grid item xs={12} md={4}>
-              <Card>
-                <CardContent>
-                  {complaintStatusData.length > 0 ? (
-                    <PieChart data={complaintStatusData} title="Complaints by Status" />
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
-                      No complaint data available
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Maintenance Status Chart */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  {maintenanceStatusData.length > 0 ? (
-                    <PieChart data={maintenanceStatusData} title="Maintenance by Status" />
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
-                      No maintenance data available
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Defaulter Chart */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  {hasDefaulterChartData ? (
-                    <BarChart
-                      data={[
-                        { category: 'Active', value: defaulterStats.active_count || 0 },
-                        { category: 'Resolved', value: defaulterStats.resolved_count || 0 },
-                        { category: 'Escalated', value: defaulterStats.escalated_count || 0 },
-                      ]}
-                      title="Defaulters by Status"
-                      xLabel="Status"
-                      yLabel="Count"
-                    />
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
-                      No defaulter data available
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+                  {isExporting ? 'Exporting...' : 'Export Dashboard Report'}
+                </Button>
+              </Box>
             </>
           )}
-
-          {/* Recent Data Tables */}
-          <Grid container spacing={3}>
-            {/* Recent Complaints */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Recent Complaints
-                  </Typography>
-                  {complaintsLoading ? (
-                    <Box display="flex" justifyContent="center" p={2}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : (!complaintsData?.data || complaintsData.data.length === 0) && occupiedFlats === 0 ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                      No residents yet. Complaints will appear here once you add residents and they submit issues.
-                    </Typography>
-                  ) : (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Description</TableCell>
-                            <TableCell>Status</TableCell>
-                            <TableCell>Priority</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {complaintsData?.data?.slice(0, 5).map((complaint) => (
-                            <TableRow key={complaint.id}>
-                              <TableCell>
-                                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                                  {complaint.description}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={complaint.status}
-                                  color={getStatusColor(complaint.status)}
-                                  size="small"
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Chip label={complaint.priority} size="small" variant="outlined" />
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {(!complaintsData?.data || complaintsData.data.length === 0) && (
-                            <TableRow>
-                              <TableCell colSpan={3} align="center">
-                                <Typography variant="body2" color="text.secondary">
-                                  No complaints found
-                                </Typography>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Recent Maintenance */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Recent Maintenance
-                  </Typography>
-                  {maintenanceLoading ? (
-                    <Box display="flex" justifyContent="center" p={2}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : (!maintenanceData?.data || maintenanceData.data.length === 0) && occupiedFlats === 0 ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                      No residents yet. Maintenance records will appear here once you add residents.
-                    </Typography>
-                  ) : (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Month/Year</TableCell>
-                            <TableCell>Total Amount</TableCell>
-                            <TableCell>Amount Paid</TableCell>
-                            <TableCell>Status</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {maintenanceData?.data?.slice(0, 5).map((maintenance) => (
-                            <TableRow key={maintenance.id}>
-                              <TableCell>{maintenance.month}/{maintenance.year}</TableCell>
-                              <TableCell>{formatCurrency(maintenance.total_amount)}</TableCell>
-                              <TableCell>{formatCurrency(maintenance.amount_paid || 0)}</TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={maintenance.status}
-                                  color={getStatusColor(maintenance.status)}
-                                  size="small"
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {(!maintenanceData?.data || maintenanceData.data.length === 0) && (
-                            <TableRow>
-                              <TableCell colSpan={4} align="center">
-                                <Typography variant="body2" color="text.secondary">
-                                  No maintenance records found
-                                </Typography>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Recent Announcements */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Recent Announcements
-                  </Typography>
-                  {announcementsLoading ? (
-                    <Box display="flex" justifyContent="center" p={2}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : (
-                    <Grid container spacing={2}>
-                      {announcementsData?.data?.slice(0, 3).map((announcement) => (
-                        <Grid item xs={12} md={4} key={announcement.id}>
-                          <Card variant="outlined">
-                            <CardContent>
-                              <Box display="flex" justifyContent="space-between" alignItems="start" mb={1}>
-                                <Typography variant="subtitle1" fontWeight="bold">
-                                  {announcement.title}
-                                </Typography>
-                                {announcement.type && (
-                                  <Chip
-                                    label={announcement.type}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                )}
-                              </Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {announcement.description}
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                      ))}
-                      {(!announcementsData?.data || announcementsData.data.length === 0) && (
-                        <Grid item xs={12}>
-                          <Typography variant="body2" color="text.secondary" align="center">
-                            No announcements found
-                          </Typography>
-                        </Grid>
-                      )}
-                    </Grid>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
         </>
       )}
     </Container>

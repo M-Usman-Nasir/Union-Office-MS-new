@@ -10,8 +10,12 @@ async function createFinanceIncomeFromMaintenance({ societyId, addedBy, amount, 
     return;
   }
   const monthLabel = MONTH_NAMES[Number(month) - 1] || String(month);
+  const recordedDate = new Date(transactionDate);
+  const recordedMonth = recordedDate.getMonth() + 1;
+  const recordedYear = recordedDate.getFullYear();
+  const recordedMonthLabel = MONTH_NAMES[recordedMonth - 1] || String(recordedMonth);
   const unitStr = unitNumber != null ? `Unit ${unitNumber}` : 'Unit';
-  const description = `Maintenance payment – ${unitStr}, ${monthLabel} ${year}`;
+  const description = `Maintenance payment – ${unitStr}, dues ${monthLabel} ${year}, recorded ${recordedMonthLabel} ${recordedYear}`;
   await query(
     `INSERT INTO finance (society_apartment_id, added_by, transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, maintenance_id)
      VALUES ($1, $2, $3, 'income', NULL, 'maintenance', $4, $5, NULL, NULL, $6, $7, 'paid', $8)`,
@@ -440,12 +444,13 @@ export const recordPayment = async (req, res) => {
       const unitRes = await query('SELECT unit_number FROM units WHERE id = $1', [maintenance.unit_id]);
       const unitNumber = unitRes.rows[0]?.unit_number ?? null;
       const transactionDate = paymentDate || new Date().toISOString().split('T')[0];
+      const recordedDate = new Date(transactionDate);
       await createFinanceIncomeFromMaintenance({
         societyId,
         addedBy: req.user?.id,
         amount: paymentAmount,
-        month: maintenance.month,
-        year: maintenance.year,
+        month: recordedDate.getMonth() + 1,
+        year: recordedDate.getFullYear(),
         unitNumber,
         transactionDate,
         maintenanceId: parseInt(id),
@@ -762,12 +767,13 @@ export const approvePaymentRequest = async (req, res) => {
     if (dueAmount > 0) {
       try {
         const transactionDate = new Date().toISOString().split('T')[0];
+        const recordedDate = new Date(transactionDate);
         await createFinanceIncomeFromMaintenance({
           societyId,
           addedBy: reviewerId,
           amount: dueAmount,
-          month: row.month,
-          year: row.year,
+          month: recordedDate.getMonth() + 1,
+          year: recordedDate.getFullYear(),
           unitNumber: row.unit_number ?? null,
           transactionDate,
           maintenanceId: row.maintenance_id,

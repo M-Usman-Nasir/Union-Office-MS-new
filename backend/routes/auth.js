@@ -13,6 +13,7 @@ router.post('/register/resident', authController.registerResident);
 
 // Protected routes
 router.post('/change-password-first-login', authenticate, authController.changePasswordFirstLogin);
+router.post('/change-password', authenticate, authController.changePassword);
 router.get('/me', authenticate, authController.getMe);
 router.put('/me', authenticate, uploadProfileImage, authController.updateMe);
 router.post('/register', authenticate, requireRole('super_admin', 'union_admin'), authController.register);

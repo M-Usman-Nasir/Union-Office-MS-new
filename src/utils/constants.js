@@ -40,6 +40,7 @@ export const API_ENDPOINTS = {
   ME: '/auth/me',
   REGISTER: '/auth/register',
   CHANGE_PASSWORD_FIRST_LOGIN: '/auth/change-password-first-login',
+  CHANGE_PASSWORD: '/auth/change-password',
   
   // Apartments (societies)
   SOCIETIES: '/societies',

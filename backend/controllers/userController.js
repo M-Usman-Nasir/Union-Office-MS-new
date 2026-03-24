@@ -326,7 +326,7 @@ export const update = async (req, res) => {
 export const updatePassword = async (req, res) => {
   try {
     const { id } = req.params;
-    const { new_password } = req.body;
+    const { new_password, force_change_password } = req.body;
 
     if (!new_password || new_password.length < 6) {
       return res.status(400).json({
@@ -335,11 +335,17 @@ export const updatePassword = async (req, res) => {
       });
     }
 
+    const shouldForceChange = force_change_password === true || force_change_password === 'true';
     const hashedPassword = await bcrypt.hash(new_password, 10);
 
     const result = await query(
-      'UPDATE users SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
-      [hashedPassword, id]
+      `UPDATE users
+       SET password = $1,
+           must_change_password = CASE WHEN role = 'resident' AND $2::boolean = true THEN true ELSE false END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING id, role, must_change_password`,
+      [hashedPassword, shouldForceChange, id]
     );
 
     if (result.rows.length === 0) {
@@ -351,7 +357,10 @@ export const updatePassword = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Password updated successfully',
+      message:
+        result.rows[0].role === 'resident' && result.rows[0].must_change_password
+          ? 'Password reset successfully. Resident must change password on next login.'
+          : 'Password updated successfully',
     });
   } catch (error) {
     console.error('Update password error:', error);

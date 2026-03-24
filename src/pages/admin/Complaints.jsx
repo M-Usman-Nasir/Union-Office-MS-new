@@ -12,6 +12,7 @@ import {
   DialogActions,
   Grid,
   MenuItem,
+  Menu,
   IconButton,
   Tooltip,
   Chip,
@@ -25,6 +26,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import UpdateIcon from '@mui/icons-material/Update'
 import AddIcon from '@mui/icons-material/Add'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { complaintApi } from '@/api/complaintApi'
@@ -52,6 +54,8 @@ const Complaints = () => {
   const [openProgressDialog, setOpenProgressDialog] = useState(false)
   const [openAddDialog, setOpenAddDialog] = useState(false)
   const [selectedComplaint, setSelectedComplaint] = useState(null)
+  const [actionsAnchorEl, setActionsAnchorEl] = useState(null)
+  const [actionsComplaint, setActionsComplaint] = useState(null)
   const [escalateDialog, setEscalateDialog] = useState({ open: false, complaint: null, reason: '' })
   const [escalating, setEscalating] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
@@ -136,6 +140,26 @@ const Complaints = () => {
   const handleCloseProgressDialog = () => {
     setOpenProgressDialog(false)
     setSelectedComplaint(null)
+  }
+
+  const handleOpenActionsMenu = (event, complaint) => {
+    setActionsAnchorEl(event.currentTarget)
+    setActionsComplaint(complaint)
+  }
+
+  const handleCloseActionsMenu = () => {
+    setActionsAnchorEl(null)
+    setActionsComplaint(null)
+  }
+
+  const runActionFromMenu = (action) => {
+    if (!actionsComplaint) return
+    if (action === 'view') handleOpenViewDialog(actionsComplaint)
+    if (action === 'assign') handleOpenAssignDialog(actionsComplaint)
+    if (action === 'progress') handleOpenProgressDialog(actionsComplaint)
+    if (action === 'escalate') openEscalateDialog(actionsComplaint)
+    if (action === 'delete') handleDelete(actionsComplaint.id)
+    handleCloseActionsMenu()
   }
 
   const openEscalateDialog = (complaint) => {
@@ -243,41 +267,97 @@ const Complaints = () => {
   }
 
   const columns = [
-    { id: 'created_at', label: 'Date', render: (row) => formatDate(row.created_at) },
-    { id: 'id', label: 'Complaint ID', render: (row) => row.id ?? '—' },
-    { id: 'submitted_by_name', label: 'Resident Name', render: (row) => row.submitted_by_name || '—' },
-    { id: 'unit_number', label: 'Unit No.', render: (row) => row.unit_number || '—' },
-    { id: 'type', label: 'Type', render: (row) => row.type || '—' },
+    {
+      id: 'created_at',
+      label: 'Date',
+      minWidth: 145,
+      noWrapHeader: true,
+      render: (row) => (
+        <Typography variant="body2" sx={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+          {formatDate(row.created_at)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'id',
+      label: 'Complaint ID',
+      minWidth: 110,
+      noWrapHeader: true,
+      render: (row) => (
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+          {row.id ?? '—'}
+        </Typography>
+      ),
+    },
+    {
+      id: 'submitted_by_name',
+      label: 'Resident Name',
+      minWidth: 140,
+      render: (row) => row.submitted_by_name || '—',
+    },
+    {
+      id: 'unit_number',
+      label: 'Unit',
+      minWidth: 80,
+      noWrapHeader: true,
+      render: (row) => row.unit_number || '—',
+    },
+    { id: 'type', label: 'Type', minWidth: 100, render: (row) => row.type || '—' },
     { id: 'remarks', label: 'Remarks', render: (row) => (
-      <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+      <Typography variant="body2" noWrap sx={{ maxWidth: 180, fontSize: '0.8rem' }}>
         {row.remarks || '—'}
       </Typography>
     )},
-    { id: 'title', label: 'Title' },
+    {
+      id: 'title',
+      label: 'Title',
+      minWidth: 160,
+      render: (row) => (
+        <Typography variant="body2" noWrap sx={{ maxWidth: 220, fontWeight: 500 }}>
+          {row.title || '—'}
+        </Typography>
+      ),
+    },
     { id: 'description', label: 'Description', render: (row) => (
-      <Typography variant="body2" noWrap sx={{ maxWidth: 300 }}>
+      <Typography variant="body2" noWrap sx={{ maxWidth: 260, fontSize: '0.8rem' }}>
         {row.description}
       </Typography>
     )},
     {
       id: 'status',
       label: 'Status',
+      minWidth: 120,
+      noWrapHeader: true,
       render: (row) => (
-        <Chip label={row.status} color={getStatusColor(row.status)} size="small" />
+        <Chip
+          label={String(row.status || '').replace('_', ' ')}
+          color={getStatusColor(row.status)}
+          size="small"
+          sx={{ textTransform: 'capitalize', minWidth: 100 }}
+        />
       ),
     },
     {
       id: 'priority',
       label: 'Priority',
+      minWidth: 90,
       render: (row) => (
-        <Chip label={row.priority} color={getPriorityColor(row.priority)} size="small" variant="outlined" />
+        <Chip
+          label={row.priority}
+          color={getPriorityColor(row.priority)}
+          size="small"
+          variant="outlined"
+          sx={{ textTransform: 'capitalize', minWidth: 78 }}
+        />
       ),
     },
     {
       id: 'assigned_to_name',
       label: 'Assigned To',
+      minWidth: 130,
+      noWrapHeader: true,
       render: (row) => (
-        <Typography variant="body2">
+        <Typography variant="body2" noWrap sx={{ maxWidth: 140 }}>
           {row.assigned_to_name || 'Unassigned'}
         </Typography>
       ),
@@ -286,33 +366,17 @@ const Complaints = () => {
       id: 'actions',
       label: 'Actions',
       align: 'right',
+      minWidth: 96,
+      noWrapHeader: true,
       render: (row) => (
-        <Box>
-          <Tooltip title="View">
-            <IconButton size="small" onClick={() => handleOpenViewDialog(row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Assign Staff">
-            <IconButton size="small" onClick={() => handleOpenAssignDialog(row)} color="primary">
-              <PersonAddIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Update Progress">
-            <IconButton size="small" onClick={() => handleOpenProgressDialog(row)} color="secondary">
-              <UpdateIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          {!row.escalated_at && (
-            <Tooltip title="Escalate to platform">
-              <IconButton size="small" onClick={() => openEscalateDialog(row)} sx={{ color: 'warning.main' }}>
-                <ReportProblemOutlinedIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
-              <DeleteIcon fontSize="small" />
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <Tooltip title="Actions">
+            <IconButton
+              size="small"
+              onClick={(event) => handleOpenActionsMenu(event, row)}
+              sx={{ border: '1px solid', borderColor: 'divider' }}
+            >
+              <MoreVertIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
@@ -321,19 +385,19 @@ const Complaints = () => {
   ]
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1">
+    <Container maxWidth="lg" sx={{ py: 2 }}>
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h5" component="h1">
           Complaints Management
         </Typography>
       </Box>
 
       {/* Statistics Cards */}
       {stats?.data != null && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid container spacing={1.5} sx={{ mb: 2 }}>
           <Grid item xs={12} sm={4}>
             <Card>
-              <CardContent>
+              <CardContent sx={{ py: 1.25, px: 1.75, '&:last-child': { pb: 1.25 } }}>
                 <Typography variant="h6" color="warning.main">
                   {stats.data.pending ?? 0}
                 </Typography>
@@ -345,7 +409,7 @@ const Complaints = () => {
           </Grid>
           <Grid item xs={12} sm={4}>
             <Card>
-              <CardContent>
+              <CardContent sx={{ py: 1.25, px: 1.75, '&:last-child': { pb: 1.25 } }}>
                 <Typography variant="h6" color="success.main">
                   {stats.data.resolved ?? 0}
                 </Typography>
@@ -357,7 +421,7 @@ const Complaints = () => {
           </Grid>
           <Grid item xs={12} sm={4}>
             <Card>
-              <CardContent>
+              <CardContent sx={{ py: 1.25, px: 1.75, '&:last-child': { pb: 1.25 } }}>
                 <Typography variant="h6">
                   {stats.data.total ?? 0}
                 </Typography>
@@ -370,17 +434,27 @@ const Complaints = () => {
         </Grid>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box
+        sx={{
+          mb: 2,
+          display: 'flex',
+          gap: 1,
+          flexWrap: { xs: 'wrap', md: 'nowrap' },
+          alignItems: 'center',
+        }}
+      >
         <Button
           variant="contained"
           color="primary"
           startIcon={<AddIcon />}
           onClick={() => setOpenAddDialog(true)}
+          size="small"
         >
           Add complaint
         </Button>
         <TextField
-          fullWidth
+          size="small"
+          sx={{ flex: 1, minWidth: { xs: '100%', md: 320 } }}
           placeholder="Search complaints..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -394,10 +468,11 @@ const Complaints = () => {
         />
         <TextField
           select
+          size="small"
           label="Status Filter"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          sx={{ minWidth: 150 }}
+          sx={{ minWidth: 170, flexShrink: 0 }}
         >
           <MenuItem value="">All</MenuItem>
           {statusOptions.map((status) => (
@@ -412,7 +487,9 @@ const Complaints = () => {
         columns={columns}
         data={data?.data || []}
         loading={isLoading}
+        dense
         pagination={data?.pagination}
+        minTableWidth={1400}
         onPageChange={setPage}
         onRowsPerPageChange={(newLimit) => {
           setLimit(newLimit)
@@ -754,6 +831,35 @@ const Complaints = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={actionsAnchorEl}
+        open={Boolean(actionsAnchorEl)}
+        onClose={handleCloseActionsMenu}
+      >
+        <MenuItem onClick={() => runActionFromMenu('view')}>
+          <VisibilityIcon fontSize="small" sx={{ mr: 1 }} />
+          View
+        </MenuItem>
+        <MenuItem onClick={() => runActionFromMenu('assign')}>
+          <PersonAddIcon fontSize="small" sx={{ mr: 1 }} />
+          Assign Staff
+        </MenuItem>
+        <MenuItem onClick={() => runActionFromMenu('progress')}>
+          <UpdateIcon fontSize="small" sx={{ mr: 1 }} />
+          Update Progress
+        </MenuItem>
+        {!actionsComplaint?.escalated_at && (
+          <MenuItem onClick={() => runActionFromMenu('escalate')}>
+            <ReportProblemOutlinedIcon fontSize="small" sx={{ mr: 1, color: 'warning.main' }} />
+            Escalate to platform
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => runActionFromMenu('delete')} sx={{ color: 'error.main' }}>
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          Delete
+        </MenuItem>
+      </Menu>
     </Container>
   )
 }
