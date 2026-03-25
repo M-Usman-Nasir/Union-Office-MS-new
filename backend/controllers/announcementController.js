@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import * as activity from '../services/activityService.js';
 
 // Get all announcements
 export const getAll = async (req, res) => {
@@ -17,7 +18,7 @@ export const getAll = async (req, res) => {
       LEFT JOIN apartments s ON a.society_apartment_id = s.id
       LEFT JOIN blocks b ON a.block_id = b.id
       LEFT JOIN users u ON a.created_by = u.id
-      WHERE 1=1
+      WHERE 1=1 AND a.deleted_at IS NULL
     `;
     const params = [];
     let paramCount = 0;
@@ -64,7 +65,7 @@ export const getAll = async (req, res) => {
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM announcements WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM announcements WHERE deleted_at IS NULL';
     const countParams = [];
     let countParamCount = 0;
 
@@ -129,7 +130,7 @@ export const getById = async (req, res) => {
        LEFT JOIN apartments s ON a.society_apartment_id = s.id
        LEFT JOIN blocks b ON a.block_id = b.id
        LEFT JOIN users u ON a.created_by = u.id
-       WHERE a.id = $1`,
+       WHERE a.id = $1 AND a.deleted_at IS NULL`,
       [id]
     );
 
@@ -190,6 +191,13 @@ export const create = async (req, res) => {
       message: 'Announcement created successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'announcement.create',
+      resourceType: 'announcement',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: { audience: audience || 'all' },
+    });
   } catch (error) {
     console.error('Create announcement error:', error);
     res.status(500).json({
@@ -206,7 +214,7 @@ export const update = async (req, res) => {
     const { id } = req.params;
     const { title, description, type, audience, language, visible_to_all, is_active, announcement_date, scheduled_publish_at } = req.body;
 
-    const existing = await query('SELECT id FROM announcements WHERE id = $1', [id]);
+    const existing = await query('SELECT id FROM announcements WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -236,6 +244,13 @@ export const update = async (req, res) => {
       message: 'Announcement updated successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'announcement.update',
+      resourceType: 'announcement',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}) },
+    });
   } catch (error) {
     console.error('Update announcement error:', error);
     res.status(500).json({
@@ -251,7 +266,13 @@ export const remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await query('DELETE FROM announcements WHERE id = $1 RETURNING id', [id]);
+    const result = await query(
+      `UPDATE announcements
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id`,
+      [id, req.user?.id || null]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -263,6 +284,12 @@ export const remove = async (req, res) => {
     res.json({
       success: true,
       message: 'Announcement deleted successfully',
+    });
+    await activity.track(req, {
+      eventType: 'announcement.delete',
+      resourceType: 'announcement',
+      resourceId: id,
+      details: {},
     });
   } catch (error) {
     console.error('Delete announcement error:', error);

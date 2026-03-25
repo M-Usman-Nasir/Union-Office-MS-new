@@ -10,6 +10,12 @@ router.use(authenticate);
 // Get defaulter statistics
 router.get('/statistics', defaulterController.getStatistics);
 
+// Get previous-year defaulters summary (admin only)
+router.get('/previous-years', requireRole('super_admin', 'union_admin'), defaulterController.getPreviousYearDefaulters);
+
+// Export previous-year defaulters as CSV (admin only)
+router.get('/previous-years/export', requireRole('super_admin', 'union_admin'), defaulterController.exportPreviousYearDefaultersCsv);
+
 // Export defaulters as CSV (admin only)
 router.get('/export', requireRole('super_admin', 'union_admin'), defaulterController.exportDefaulters);
 

@@ -23,7 +23,7 @@ export const authenticate = async (req, res, next) => {
     const result = await query(
       `SELECT id, email, name, role, society_apartment_id, unit_id,
               COALESCE(must_change_password, false) AS must_change_password
-       FROM users WHERE id = $1 AND is_active = true`,
+       FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
       [decoded.userId]
     );
 
@@ -115,7 +115,7 @@ export const optionalAuth = async (req, res, next) => {
       const result = await query(
         `SELECT id, email, name, role, society_apartment_id, unit_id,
                 COALESCE(must_change_password, false) AS must_change_password
-         FROM users WHERE id = $1 AND is_active = true`,
+         FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
         [decoded.userId]
       );
 

@@ -144,6 +144,14 @@ const StaffComplaints = () => {
         />
       ),
     },
+    {
+      id: 'feedback',
+      label: 'Feedback',
+      render: (row) => {
+        if (!row.feedback_rating) return '—'
+        return `${row.feedback_rating}/5`
+      },
+    },
     { id: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at) },
     {
       id: 'actions',
@@ -276,6 +284,16 @@ const StaffComplaints = () => {
                   Created At
                 </Typography>
                 <Typography variant="body1">{formatDate(selectedComplaint.created_at)}</Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Resident Feedback
+                </Typography>
+                <Typography variant="body1">
+                  {selectedComplaint.feedback_rating
+                    ? `${selectedComplaint.feedback_rating}/5${selectedComplaint.feedback_comment ? ` - ${selectedComplaint.feedback_comment}` : ''}`
+                    : 'No feedback submitted'}
+                </Typography>
               </Grid>
             </Grid>
           )}

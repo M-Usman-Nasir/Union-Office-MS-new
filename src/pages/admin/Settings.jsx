@@ -20,6 +20,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import { useAuth } from '@/contexts/AuthContext'
 import useSWR from 'swr'
 import { settingsApi } from '@/api/settingsApi'
+import { authApi } from '@/api/authApi'
 import toast from 'react-hot-toast'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
@@ -31,6 +32,8 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState(0)
   const [savingConfig, setSavingConfig] = useState(false)
   const [reminderDaysInput, setReminderDaysInput] = useState(0)
+  const [testEmailTo, setTestEmailTo] = useState(user?.email || '')
+  const [sendingTestEmail, setSendingTestEmail] = useState(false)
 
   // Fetch settings
   const { data: settingsData, isLoading, mutate } = useSWR(
@@ -114,6 +117,19 @@ const Settings = () => {
     } finally {
       setSavingConfig(false)
       formikHelpers.setSubmitting(false)
+    }
+  }
+
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true)
+    try {
+      const recipient = (testEmailTo || '').trim()
+      const res = await authApi.sendTestEmail(recipient || undefined)
+      toast.success(res?.data?.message || 'Test email sent')
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to send test email')
+    } finally {
+      setSendingTestEmail(false)
     }
   }
 
@@ -226,6 +242,32 @@ const Settings = () => {
                       }}
                       helperText="0 = off. When &gt; 0, residents get email and push reminders for pending/overdue dues (daily job)."
                     />
+                  </Box>
+
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle1" gutterBottom>
+                    SMTP verification
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    Send a test email to verify SMTP configuration.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', maxWidth: 520 }}>
+                    <TextField
+                      size="small"
+                      label="Recipient email"
+                      type="email"
+                      value={testEmailTo}
+                      onChange={(e) => setTestEmailTo(e.target.value)}
+                      placeholder="team@myunionoffice.co"
+                      sx={{ minWidth: 280, flex: 1 }}
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={handleSendTestEmail}
+                      disabled={sendingTestEmail}
+                    >
+                      {sendingTestEmail ? 'Sending...' : 'Send Test Email'}
+                    </Button>
                   </Box>
                 </Box>
               </CardContent>

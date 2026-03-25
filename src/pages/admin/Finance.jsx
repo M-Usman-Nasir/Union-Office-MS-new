@@ -19,6 +19,8 @@ import {
   Card,
   CardContent,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material'
 import Autocomplete from '@mui/material/Autocomplete'
 import AddIcon from '@mui/icons-material/Add'
@@ -79,6 +81,7 @@ const Finance = () => {
   const [isExporting, setIsExporting] = useState(false)
   const [isExportingCsv, setIsExportingCsv] = useState(false)
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null)
+  const [activeTab, setActiveTab] = useState(0) // 0=All, 1=Income, 2=Expense
   const [openDialog, setOpenDialog] = useState(false)
   const [editingFinance, setEditingFinance] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
@@ -850,6 +853,17 @@ const Finance = () => {
         </Box>
       </Box>
 
+      <Box sx={{ mb: 2 }}>
+        <Tabs value={activeTab} onChange={(_, newValue) => {
+          setActiveTab(newValue)
+          setPage(1)
+        }}>
+          <Tab label="All" />
+          <Tab label="Income" />
+          <Tab label="Expense" />
+        </Tabs>
+      </Box>
+
       <Box sx={{ mb: 3 }}>
         <TextField
           fullWidth
@@ -871,7 +885,13 @@ const Finance = () => {
 
       <DataTable
         columns={columns}
-        data={data?.data || []}
+        data={
+          activeTab === 0
+            ? data?.data || []
+            : activeTab === 1
+              ? (data?.data || []).filter((item) => item.transaction_type === 'income')
+              : (data?.data || []).filter((item) => item.transaction_type === 'expense')
+        }
         loading={isLoading || reportLoading}
         pagination={data?.pagination}
         onPageChange={setPage}

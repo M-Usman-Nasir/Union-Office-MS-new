@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import fs from 'fs';
 import { parseUnitsImportFile } from '../utils/parseUnitsImport.js';
+import * as activity from '../services/activityService.js';
 import {
   createResidentUserForUnit,
   previewLoginEmailForUnitId,
@@ -22,7 +23,7 @@ export async function refreshBlockTotals(block_id) {
       [bid]
     );
     const unitsCount = await query(
-      'SELECT COUNT(*)::int AS c FROM units WHERE block_id = $1',
+      'SELECT COUNT(*)::int AS c FROM units WHERE block_id = $1 AND deleted_at IS NULL',
       [bid]
     );
 
@@ -140,6 +141,13 @@ export const seedMissingFloorsForSociety = async (req, res) => {
       message: seeded > 0 ? `Seeded floors/units for ${seeded} block(s).` : 'No blocks needed seeding.',
       data: { blocks_seeded: seeded, errors },
     });
+    await activity.track(req, {
+      eventType: 'property.block.seed',
+      resourceType: 'apartment',
+      resourceId: societyId,
+      societyId,
+      details: { blocks_seeded: seeded },
+    });
   } catch (error) {
     console.error('seedMissingFloorsForSociety error:', error);
     res.status(500).json({ success: false, message: 'Failed to seed structure', error: error.message });
@@ -237,6 +245,13 @@ export const createBlock = async (req, res) => {
       message: 'Block created successfully',
       data: blockRow,
     });
+    await activity.track(req, {
+      eventType: 'property.block.create',
+      resourceType: 'block',
+      resourceId: blockRow.id,
+      societyId: blockRow.society_apartment_id,
+      details: {},
+    });
   } catch (error) {
     console.error('Create block error:', error);
     res.status(500).json({
@@ -286,6 +301,13 @@ export const updateBlock = async (req, res) => {
       success: true,
       message: 'Block updated successfully',
       data: result.rows[0],
+    });
+    await activity.track(req, {
+      eventType: 'property.block.update',
+      resourceType: 'block',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}) },
     });
   } catch (error) {
     console.error('Update block error:', error);
@@ -344,7 +366,7 @@ export const getFloors = async (req, res) => {
 
     const result = await query(
       `SELECT f.*, b.name as block_name, b.society_apartment_id,
-              (SELECT COUNT(*)::int FROM units u WHERE u.floor_id = f.id) AS units_count
+              (SELECT COUNT(*)::int FROM units u WHERE u.floor_id = f.id AND u.deleted_at IS NULL) AS units_count
        FROM floors f
        LEFT JOIN blocks b ON f.block_id = b.id
        WHERE f.block_id = $1
@@ -465,6 +487,12 @@ export const createFloor = async (req, res) => {
       message: 'Floor created successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'property.floor.create',
+      resourceType: 'floor',
+      resourceId: result.rows[0]?.id,
+      details: { block_id },
+    });
   } catch (error) {
     console.error('Create floor error:', error);
     res.status(500).json({
@@ -526,6 +554,12 @@ export const updateFloor = async (req, res) => {
       message: 'Floor updated successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'property.floor.update',
+      resourceType: 'floor',
+      resourceId: id,
+      details: { fields: Object.keys(req.body || {}) },
+    });
   } catch (error) {
     console.error('Update floor error:', error);
     res.status(500).json({
@@ -540,7 +574,7 @@ export const deleteFloor = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const unitsCount = await query('SELECT COUNT(*) as c FROM units WHERE floor_id = $1', [id]);
+    const unitsCount = await query('SELECT COUNT(*) as c FROM units WHERE floor_id = $1 AND deleted_at IS NULL', [id]);
     if (parseInt(unitsCount.rows[0]?.c || '0', 10) > 0) {
       return res.status(400).json({
         success: false,
@@ -569,6 +603,13 @@ export const deleteFloor = async (req, res) => {
     res.json({
       success: true,
       message: 'Floor deleted successfully',
+    });
+    await activity.track(req, {
+      eventType: 'property.floor.delete',
+      resourceType: 'floor',
+      resourceId: id,
+      societyId: society_apartment_id,
+      details: {},
     });
   } catch (error) {
     console.error('Delete floor error:', error);
@@ -611,7 +652,7 @@ export const addUnitsToFloor = async (req, res) => {
     const { block_id, society_apartment_id } = floorRow.rows[0];
 
     const existingUnits = await query(
-      'SELECT unit_number FROM units WHERE floor_id = $1 ORDER BY unit_number',
+      'SELECT unit_number FROM units WHERE floor_id = $1 AND deleted_at IS NULL ORDER BY unit_number',
       [floor_id]
     );
     const existingNumbers = new Set((existingUnits.rows || []).map((r) => r.unit_number));
@@ -659,6 +700,13 @@ export const addUnitsToFloor = async (req, res) => {
       message: `${numToAdd} unit(s) added to floor`,
       data: { added: numToAdd },
     });
+    await activity.track(req, {
+      eventType: 'property.floor.add_units',
+      resourceType: 'floor',
+      resourceId: floor_id,
+      societyId: society_apartment_id,
+      details: { added: numToAdd },
+    });
   } catch (error) {
     console.error('Add units to floor error:', error);
     res.status(500).json({
@@ -680,7 +728,7 @@ export const getUnits = async (req, res) => {
       LEFT JOIN floors f ON u.floor_id = f.id
       LEFT JOIN blocks b ON u.block_id = b.id
       LEFT JOIN apartments s ON u.society_apartment_id = s.id
-      WHERE 1=1
+      WHERE 1=1 AND u.deleted_at IS NULL
     `;
     const params = [];
     let paramCount = 0;
@@ -731,7 +779,7 @@ export const getUnitLoginEmailPreview = async (req, res) => {
   try {
     const { id } = req.params;
     const scope = await query(
-      'SELECT society_apartment_id FROM units WHERE id = $1',
+      'SELECT society_apartment_id FROM units WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (scope.rows.length === 0) {
@@ -774,7 +822,7 @@ export const getUnitById = async (req, res) => {
        LEFT JOIN floors f ON u.floor_id = f.id
        LEFT JOIN blocks b ON u.block_id = b.id
        LEFT JOIN apartments s ON u.society_apartment_id = s.id
-       WHERE u.id = $1`,
+       WHERE u.id = $1 AND u.deleted_at IS NULL`,
       [id]
     );
 
@@ -886,6 +934,13 @@ export const createUnit = async (req, res) => {
       message: 'Unit created successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'property.unit.create',
+      resourceType: 'unit',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: {},
+    });
   } catch (error) {
     console.error('Create unit error:', error);
     res.status(500).json({
@@ -920,7 +975,7 @@ export const updateUnit = async (req, res) => {
       other_bills,
     } = req.body;
 
-    const existing = await query('SELECT id FROM units WHERE id = $1', [id]);
+    const existing = await query('SELECT id FROM units WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -1057,6 +1112,13 @@ export const updateUnit = async (req, res) => {
       message: 'Unit updated successfully',
       data: result.rows[0],
     })
+    await activity.track(req, {
+      eventType: 'property.unit.update',
+      resourceType: 'unit',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}) },
+    });
   } catch (error) {
     console.error('Update unit error:', error)
     res.status(500).json({
@@ -1075,7 +1137,7 @@ export const deleteUnit = async (req, res) => {
     const { id } = req.params;
 
     const existing = await query(
-      'SELECT id, block_id, society_apartment_id FROM units WHERE id = $1',
+      'SELECT id, block_id, society_apartment_id FROM units WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (existing.rows.length === 0) {
@@ -1085,15 +1147,20 @@ export const deleteUnit = async (req, res) => {
       });
     }
 
-    await query(`DELETE FROM users WHERE unit_id = $1 AND role = 'resident'`, [id]);
-    const maintenanceRef = await query('SELECT 1 FROM maintenance WHERE unit_id = $1 LIMIT 1', [id]);
+    await query(
+      `UPDATE users
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE unit_id = $1 AND role = 'resident' AND deleted_at IS NULL`,
+      [id, req.user?.id || null]
+    );
+    const maintenanceRef = await query('SELECT 1 FROM maintenance WHERE unit_id = $1 AND deleted_at IS NULL LIMIT 1', [id]);
     if (maintenanceRef.rows.length > 0) {
       return res.status(400).json({
         success: false,
         message: 'Cannot delete unit: it has maintenance records. Remove or reassign them first.',
       });
     }
-    const complaintsRef = await query('SELECT 1 FROM complaints WHERE unit_id = $1 LIMIT 1', [id]);
+    const complaintsRef = await query('SELECT 1 FROM complaints WHERE unit_id = $1 AND deleted_at IS NULL LIMIT 1', [id]);
     if (complaintsRef.rows.length > 0) {
       return res.status(400).json({
         success: false,
@@ -1108,7 +1175,12 @@ export const deleteUnit = async (req, res) => {
       });
     }
 
-    await query('DELETE FROM units WHERE id = $1', [id]);
+    await query(
+      `UPDATE units
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id, req.user?.id || null]
+    );
 
     const { block_id, society_apartment_id } = existing.rows[0];
     if (block_id) await refreshBlockTotals(block_id);
@@ -1117,6 +1189,13 @@ export const deleteUnit = async (req, res) => {
     res.json({
       success: true,
       message: 'Unit deleted successfully',
+    });
+    await activity.track(req, {
+      eventType: 'property.unit.delete',
+      resourceType: 'unit',
+      resourceId: id,
+      societyId: society_apartment_id,
+      details: {},
     });
   } catch (error) {
     console.error('Delete unit error:', error);
@@ -1213,7 +1292,7 @@ export const importUnits = async (req, res) => {
       }
 
       const existing = await query(
-        'SELECT id FROM units WHERE floor_id = $1 AND unit_number = $2',
+        'SELECT id FROM units WHERE floor_id = $1 AND unit_number = $2 AND deleted_at IS NULL',
         [floor_id, unit_number]
       );
 
@@ -1309,6 +1388,12 @@ export const importUnits = async (req, res) => {
         console.error('Could not delete temp import file:', e.message);
       }
     }
+
+    await activity.track(req, {
+      eventType: 'property.unit.import',
+      resourceType: 'unit',
+      details: { created, updated, errorCount: errors.length },
+    });
 
     return res.json({
       success: true,

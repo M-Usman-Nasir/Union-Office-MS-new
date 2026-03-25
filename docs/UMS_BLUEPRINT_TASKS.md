@@ -2,6 +2,8 @@
 
 Use this list to track progress. **Checked [x] = already in your current system.** Unchecked [ ] = to do; tick when complete.
 
+*Aligned with the HUMS repo: backend routes/controllers, migrations (e.g. 033 union approval, 034 global settings, 035 union features, 036 audit_log, 041 scheduled announcements, 044–046 soft-delete / essentials).*
+
 ---
 
 ## 1. Core System Architecture
@@ -12,7 +14,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [ ] Redis (sessions, OTPs, caching, queues)
 - [x] REST API
 - [x] JWT + Refresh Tokens
-- [ ] RBAC with full permission matrix (currently role-based only)
+- [ ] RBAC with full permission matrix (partial: `role_permissions` + `requirePermission` on users/finance/complaints/maintenance/properties/announcements; super-admin permission APIs; optional rows per role—no UI editor yet)
 
 ### Frontend
 - [x] Web: React
@@ -24,7 +26,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [ ] NGINX (reverse proxy)
 - [ ] Cloud deployment (AWS / DigitalOcean / Hetzner)
 - [ ] CI/CD pipeline
-- [ ] Automated backups
+- [x] Database backup & restore scripts (`npm run backup:db` / `restore:db` in backend—schedule on host or CI)
 
 ---
 
@@ -32,23 +34,21 @@ Use this list to track progress. **Checked [x] = already in your current system.
 
 ### Super Admin (Platform Owner)
 - [x] Create unions (apartments)
-- [ ] Formal approve workflow for unions
+- [x] Formal approve workflow for unions (`PATCH /api/societies/:id/approve` & reject; `approval_status`; union_admin login blocked until approved)
 - [x] Create Union Admin accounts
 - [x] View system-wide analytics
 - [x] Manage subscriptions & billing (basic)
-- [ ] Control global settings (currently per society only)
-- [ ] Enable/disable features per union
-- [ ] System audit logs
-- [ ] Resolve disputes & escalations
+- [x] Control global settings (`GET`/`PUT /api/settings/global`, super admin)
+- [x] Enable/disable features per union (`union_features`; super-admin APIs on apartment)
+- [x] System audit logs (audit_log table + service + super-admin viewer endpoint/UI)
+- [x] Resolve disputes & escalations (`GET`/`PATCH /api/super-admin/escalations…`)
 
 ### Union Admin (Local Union Authority)
 - [x] Manage residents
-- [ ] Approve property ownership/tenancy
 - [x] Manage staff (guards, maintenance)
 - [x] Manage finances
 - [x] Post announcements
 - [x] Handle complaints
-- [ ] Schedule meetings & elections
 - [x] Generate official reports
 - [x] Messaging with residents
 
@@ -56,7 +56,6 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [x] View bills
 - [ ] Full pay-dues flow (currently payment recording only)
 - [x] Submit complaints
-- [ ] Vote in elections/polls
 - [x] View announcements
 - [ ] Book facilities
 - [x] Track service requests (complaints)
@@ -74,15 +73,16 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [x] Device-based login (mobile app)
 
 ### Authorization
-- [ ] RBAC with permission matrix (currently role-based only)
+- [ ] RBAC with permission matrix (partial: same as §1 backend—DB + middleware + APIs; not full coverage of every route)
 - [x] Union-scoped access
 - [ ] Row-level security in PostgreSQL
 
 ### Security Measures
-- [ ] Rate limiting
+- [x] Rate limiting – Phase 1 (auth endpoints: login, refresh, resident registration, password-change routes)
+- [ ] Rate limiting – Phase 2 (global API limits + stricter limits on high-risk endpoints as traffic grows)
 - [ ] IP blocking
 - [ ] Encrypted sensitive fields (CNIC etc.; passwords already hashed)
-- [ ] Audit trails for all admin actions
+- [ ] Audit trails for all admin actions (partial `audit_log`: apartments, global settings, escalations resolve, users, finance; other modules use `activity_timeline` for many mutations)
 - [ ] GDPR-style data control
 
 ---
@@ -93,25 +93,18 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [x] Union profile (name, address, city, area)
 - [x] Location: City
 - [ ] Location: District, UC
-- [ ] Union rules & bylaws
-- [ ] Office bearers
-- [ ] Election cycle
 
 ### Property Management
 - [x] Units (houses/flats/shops – no type field yet)
 - [x] Blocks / Streets / Sectors (blocks, floors)
-- [ ] Ownership history
-- [ ] Formal tenant vs owner flag (currently owner_name/resident_name only)
 - [ ] Property status: active, vacant, disputed (currently is_occupied only)
 
 ---
 
 ## 5. Resident Management
 - [x] Resident profiles (name, contact, unit, move-in, profile image)
-- [ ] Family members
+- [x] Family members (admin CRUD: `/api/residents/:id/family-members`)
 - [ ] CNIC (encrypted / masked)
-- [ ] Ownership documents upload
-- [ ] Tenant agreements
 - [ ] Full move-in / move-out tracking (currently move_in_date only)
 - [ ] Blacklist / violation history
 
@@ -121,9 +114,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 
 ### Dues & Billing
 - [x] Monthly maintenance fees
-- [ ] Special charges
-- [ ] Penalties & late fees
-- [ ] Auto-generated invoices
+- [x] Auto-generated invoices (partial: **platform** subscription invoices for union admins—auto-generate API/job + `super_admin_invoices`; not per-resident PDF invoices)
 - [ ] PDF receipts
 
 ### Payments
@@ -135,8 +126,6 @@ Use this list to track progress. **Checked [x] = already in your current system.
 
 ### Accounting
 - [x] Income & expense ledger
-- [ ] Vendor payments (dedicated; currently expense entries only)
-- [ ] Budget planning
 - [ ] Export to Excel / PDF for finance (defaulters CSV done)
 - [ ] Audit-ready reports
 
@@ -145,17 +134,15 @@ Use this list to track progress. **Checked [x] = already in your current system.
 ## 7. Complaints & Service Requests
 
 ### Complaint System
-- [ ] Category-based complaints
+- [x] Category-based complaints (partial: `type` + `remarks` on complaints; not a full category taxonomy/SLA)
 - [x] Priority levels
 - [ ] SLA timers
 - [x] Status tracking
 - [x] Admin notes (progress)
-- [ ] Resident feedback (after resolution)
+- [x] Resident feedback (after resolution; resident app dialog + backend endpoint/store added)
 
 ### Maintenance Requests
-- [ ] Assign to vendors (currently staff only)
-- [ ] Cost tracking
-- [ ] Completion proof (images) – dedicated flow (currently complaint attachments only)
+- [x] Completion / payment proof (partial: resident payment-proof upload + admin approve/reject; admin receipt upload on maintenance record; complaint attachments separate)
 - [ ] Resident approval
 
 ---
@@ -165,40 +152,18 @@ Use this list to track progress. **Checked [x] = already in your current system.
 ### Announcements
 - [x] Union-wide
 - [x] Block-specific
-- [ ] Role-specific (currently audience field only)
-- [ ] Scheduled publishing
+- [x] Role-specific (partial: `audience` + filtering for resident/staff vs admin targeting)
+- [x] Scheduled publishing (`scheduled_publish_at`; residents/staff only see when live)
 
 ### Notifications
-- [ ] In-app notifications (stored feed)
+- [ ] In-app notifications (stored feed; push + email exist; `/api/notifications` is push subscribe/VAPID only)
 - [ ] SMS (Pakistan-ready)
 - [x] Email
 - [x] Push notifications (mobile)
 
 ---
 
-## 9. Elections, Voting & Polls
-- [ ] Elections – candidate management
-- [ ] Elections – voter eligibility
-- [ ] Elections – secure voting
-- [ ] Elections – time-bound
-- [ ] Elections – result transparency
-- [ ] Polls & surveys – community decisions
-- [ ] Polls – simple voting
-- [ ] Polls – analytics
-
----
-
-## 10. Meetings & Documents
-- [ ] Meeting scheduling
-- [ ] Agenda management
-- [ ] Attendance tracking
-- [ ] Minutes of meeting (MoM)
-- [ ] Official document repository
-- [ ] Version control (documents)
-
----
-
-## 11. Staff & Vendor Management
+## 9. Staff & Vendor Management
 - [ ] Security guards (staff type)
 - [ ] Maintenance staff (staff type; currently single staff role)
 - [ ] Contractors
@@ -208,7 +173,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 
 ---
 
-## 12. Mobile App Features (Residents)
+## 10. Mobile App Features (Residents)
 
 ### Must-Have
 - [ ] Login via OTP
@@ -233,7 +198,6 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [x] Pending complaints
 - [x] Active residents
 - [x] Recent payments
-- [ ] Upcoming meetings
 
 ### Super Admin Dashboard
 - [x] Total unions
@@ -254,16 +218,60 @@ Use this list to track progress. **Checked [x] = already in your current system.
 ---
 
 ## 15. System-Level Essentials
-- [ ] Full audit logs
-- [ ] Soft deletes
-- [ ] Activity timeline
-- [ ] Role permission editor
-- [ ] Feature toggles (beyond visibility toggles per society)
-- [ ] Backup & restore
-- [ ] Error monitoring (Sentry)
-- [ ] API versioning (e.g. /api/v1/)
+- [ ] Full audit logs (partial: `audit_log` for apartments/settings/escalations/users/finance; many other admin actions also recorded in `activity_timeline`; unify or expand `audit_log` coverage as needed)
+- [ ] Soft deletes (partial: users, finance, complaints, maintenance, announcements, and units moved to soft-delete columns/queries)
+- [ ] Activity timeline (partial: timeline table + super-admin `GET /activity-timeline` with filters: resource_type/id, action, action_prefix, user_id, role, society_id, date_from/to, paginated total; writes for users/finance/complaints/maintenance/announcements/properties; UI pending)
+- [ ] Role permission editor (partial: role_permissions table + permission middleware + super-admin permission APIs + enforcement on users/finance/complaints/maintenance/properties/announcements mutations; UI pending)
+- [ ] Feature toggles (beyond visibility toggles per society) (partial: global_feature_flags APIs added; UI + endpoint guards expansion pending)
+- [x] Backup & restore (DB backup/restore scripts + npm commands added)
+- [x] Error monitoring (Sentry) (backend integration via `SENTRY_DSN`)
+- [x] API versioning (e.g. /api/v1/) (implemented as a backwards-compatible alias to /api)
 - [ ] Localization (Urdu + English)
 - [ ] Timezone handling (PKT) – beyond en-PK currency
+
+### System Essentials Execution Plan
+
+#### P1 (Stability & Safety)
+- [x] Error monitoring baseline (backend Sentry init + error capture)
+- [x] Backup/restore operational scripts
+- [ ] Full audit log coverage for all admin mutation endpoints
+
+#### P2 (Data Integrity & Traceability)
+- [ ] Soft deletes expanded to more modules (complaints/maintenance/announcements/units done; blocks/floors and remaining domains pending)
+- [ ] Activity timeline UI + richer coverage for non-finance/user domains (backend write coverage expanded to complaints/maintenance/announcements/properties)
+
+#### P3 (Governance & Controlled Rollout)
+- [ ] Permission editor UI + broader `requirePermission` enforcement (expanded to complaints/maintenance/properties/announcements in backend)
+- [ ] Feature toggles expanded at runtime for guarded endpoints/features
+
+### API mount quick reference (`backend/server.js`)
+
+- **Base URL**: `/api/…` — same routers are also mounted under **`/api/v1/…`** (alias; no separate handlers).
+- **Health / diagnostics**: `GET /health`, `GET /api/test/db`
+- **Static uploads**: `/uploads` (profile images, etc.)
+- **Route prefixes** (each file defines its own subpaths; see `backend/routes/*.js`):
+  - `/api/bootstrap`
+  - `/api/auth`
+  - `/api/test`
+  - `/api/societies`
+  - `/api/residents`
+  - `/api/maintenance`
+  - `/api/finance`
+  - `/api/complaints`
+  - `/api/defaulters`
+  - `/api/announcements`
+  - `/api/properties`
+  - `/api/users`
+  - `/api/employees`
+  - `/api/union-members`
+  - `/api/super-admin` (audit, escalations, governance: permissions, feature flags, activity timeline)
+  - `/api/settings` (e.g. `GET`/`PUT /api/settings/global` for super admin)
+  - `/api/staff`
+  - `/api/notifications`
+  - `/api/messages`
+  - `/api/cron`
+  - `/api/unit-claims`
+  - `/api/whatsapp` (Meta webhook + adapter)
 
 ---
 
@@ -273,6 +281,32 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [ ] Data residency awareness
 - [ ] Union bylaws compliance
 - [ ] Manual override options (for real-world admin needs)
+
+---
+
+## 17. WhatsApp Action-Bot (Adapter Layer)
+- [x] Meta Cloud webhook endpoint (`/api/whatsapp/webhook`)
+- [x] Signature verification with optional `WA_APP_SECRET` (HMAC SHA-256)
+- [x] Idempotency log for inbound events (`whatsapp_event_logs`)
+- [x] Session state for menu-driven actions (`whatsapp_sessions`)
+- [x] Resident identity mapping via normalized phone number (`users.contact_number`)
+- [x] Action-menu flow (button driven, no chatbot free-text dependency)
+- [x] Resident action: submit maintenance payment proof via WhatsApp
+- [x] Reuse existing maintenance payment-request business logic (no duplicate domain logic)
+- [x] Feature flag for staged rollout (`WHATSAPP_ENABLED`)
+- [x] Webhook rate limiting (`whatsappWebhookRateLimiter`)
+
+### Required Environment Variables
+- `WHATSAPP_ENABLED=true`
+- `WA_VERIFY_TOKEN=<random-string-used-in-meta-webhook-setup>`
+- `WA_ACCESS_TOKEN=<meta-system-user-access-token>`
+- `WA_PHONE_NUMBER_ID=<meta-whatsapp-phone-number-id>`
+- `WA_APP_SECRET=<optional-but-recommended-for-signature-validation>`
+- `WA_META_BASE_URL=https://graph.facebook.com/v21.0` (optional override)
+
+### Release Notes (Current Scope)
+- First release is intentionally limited to one resident action: payment-proof submission.
+- Adapter layer orchestrates existing APIs/tables and does not introduce new finance or maintenance business rules.
 
 ---
 

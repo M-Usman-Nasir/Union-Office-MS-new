@@ -5,6 +5,7 @@ import { query } from '../config/database.js';
 import { deleteProfileImage, getImagePath } from '../config/multer.js';
 import { createOrUpdateSubscription } from './subscriptionController.js';
 import { RESIDENT_INITIAL_PASSWORD } from '../utils/unitResidentLogin.js';
+import { sendEmail } from '../services/emailService.js';
 
 // Generate JWT tokens
 const generateTokens = (userId) => {
@@ -72,7 +73,7 @@ export const login = async (req, res) => {
     const result = await query(
       `SELECT id, email, password, name, role, society_apartment_id, unit_id, is_active,
               COALESCE(must_change_password, false) AS must_change_password
-       FROM users WHERE email = $1`,
+       FROM users WHERE email = $1 AND deleted_at IS NULL`,
       [email.toLowerCase()]
     );
 
@@ -235,7 +236,7 @@ export const register = async (req, res) => {
 
     // Check if user already exists
     const existingUser = await query(
-      'SELECT id FROM users WHERE email = $1',
+      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
       [email.toLowerCase()]
     );
 
@@ -350,7 +351,7 @@ export const registerResident = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existing = await query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+    const existing = await query('SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL', [normalizedEmail]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ success: false, message: 'An account with this email already exists' });
     }
@@ -403,7 +404,7 @@ export const changePasswordFirstLogin = async (req, res) => {
 
     const row = await query(
       `SELECT id, password, COALESCE(must_change_password, false) AS must_change_password, role
-       FROM users WHERE id = $1 AND is_active = true`,
+       FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
       [req.user.id]
     );
     if (!row.rows.length) {
@@ -487,7 +488,7 @@ export const changePassword = async (req, res) => {
     }
 
     const row = await query(
-      `SELECT id, password FROM users WHERE id = $1 AND is_active = true`,
+      `SELECT id, password FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
       [req.user.id]
     );
     if (!row.rows.length) {
@@ -528,6 +529,206 @@ export const changePassword = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update password',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Public forgot password request.
+ * Sends a reset link if account exists; always returns success to avoid account enumeration.
+ */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const userResult = await query(
+      `SELECT id, email, password, is_active
+       FROM users
+       WHERE email = $1 AND deleted_at IS NULL
+       LIMIT 1`,
+      [normalizedEmail]
+    );
+
+    if (userResult.rows.length > 0) {
+      const u = userResult.rows[0];
+      if (u.is_active) {
+        const resetSecret = `${process.env.JWT_SECRET}:${u.password}`;
+        const token = jwt.sign(
+          { userId: u.id, email: u.email, type: 'password_reset' },
+          resetSecret,
+          { expiresIn: '15m' }
+        );
+
+        const clientBaseUrl = (process.env.CORS_ORIGIN || 'http://localhost:5173').replace(/\/$/, '');
+        const resetUrl = `${clientBaseUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(u.email)}`;
+
+        await sendEmail({
+          to: u.email,
+          subject: 'Reset your password',
+          text: `We received a request to reset your password.\n\nUse this link to set a new password (valid for 15 minutes):\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
+          html: `
+            <p>We received a request to reset your password.</p>
+            <p><a href="${resetUrl}">Reset your password</a> (valid for 15 minutes)</p>
+            <p>If you did not request this, you can ignore this email.</p>
+          `,
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'If an account with this email exists, a password reset link has been sent.',
+    });
+  } catch (error) {
+    console.error('forgotPassword:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to process forgot password request',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Public password reset using token from forgot password email.
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, email, new_password } = req.body;
+
+    if (!token || !email || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token, email, and new password are required',
+      });
+    }
+    if (String(new_password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters',
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const userResult = await query(
+      `SELECT id, email, password
+       FROM users
+       WHERE email = $1 AND is_active = true AND deleted_at IS NULL
+       LIMIT 1`,
+      [normalizedEmail]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset link',
+      });
+    }
+
+    const u = userResult.rows[0];
+    const resetSecret = `${process.env.JWT_SECRET}:${u.password}`;
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, resetSecret);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset link',
+      });
+    }
+
+    if (decoded.type !== 'password_reset' || decoded.userId !== u.id || decoded.email !== u.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset link',
+      });
+    }
+
+    const sameAsOld = await bcrypt.compare(new_password, u.password);
+    if (sameAsOld) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from current password',
+      });
+    }
+
+    const hashed = await bcrypt.hash(new_password, 10);
+    await query(
+      `UPDATE users
+       SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [hashed, u.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Password reset successful. Please sign in with your new password.',
+    });
+  } catch (error) {
+    console.error('resetPassword:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Protected endpoint to verify SMTP setup.
+ * Sends a test email to provided address, or falls back to logged-in user's email.
+ */
+export const sendTestEmail = async (req, res) => {
+  try {
+    const bodyEmail = typeof req.body?.to === 'string' ? req.body.to.trim().toLowerCase() : '';
+    const recipient = bodyEmail || req.user?.email;
+
+    if (!recipient) {
+      return res.status(400).json({
+        success: false,
+        message: 'Recipient email is required',
+      });
+    }
+
+    const subject = 'SMTP test email - Homeland Union';
+    const text = `SMTP is configured correctly.\n\nSent at: ${new Date().toISOString()}\nRequested by: ${req.user?.email || 'unknown'}`;
+    const html = `
+      <p><strong>SMTP is configured correctly.</strong></p>
+      <p>Sent at: ${new Date().toISOString()}</p>
+      <p>Requested by: ${req.user?.email || 'unknown'}</p>
+    `;
+
+    const sent = await sendEmail({
+      to: recipient,
+      subject,
+      text,
+      html,
+    });
+
+    if (!sent) {
+      return res.status(503).json({
+        success: false,
+        message: 'Email transport is not configured or sending failed',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `Test email sent to ${recipient}`,
+    });
+  } catch (error) {
+    console.error('sendTestEmail:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send test email',
       error: error.message,
     });
   }
@@ -689,7 +890,7 @@ export const refreshToken = async (req, res) => {
 
     // Check if user exists and is active
     const result = await query(
-      'SELECT id FROM users WHERE id = $1 AND is_active = true',
+      'SELECT id FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL',
       [decoded.userId]
     );
 

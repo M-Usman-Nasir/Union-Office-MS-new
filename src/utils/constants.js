@@ -41,6 +41,9 @@ export const API_ENDPOINTS = {
   REGISTER: '/auth/register',
   CHANGE_PASSWORD_FIRST_LOGIN: '/auth/change-password-first-login',
   CHANGE_PASSWORD: '/auth/change-password',
+  FORGOT_PASSWORD: '/auth/forgot-password',
+  RESET_PASSWORD: '/auth/reset-password',
+  TEST_EMAIL: '/auth/test-email',
   
   // Apartments (societies)
   SOCIETIES: '/societies',
@@ -84,12 +87,15 @@ export const API_ENDPOINTS = {
   COMPLAINTS_WITH_ATTACHMENTS: '/complaints/with-attachments',
   COMPLAINT_BY_ID: (id) => `/complaints/${id}`,
   COMPLAINT_STATUS: (id) => `/complaints/${id}/status`,
+  COMPLAINT_FEEDBACK: (id) => `/complaints/${id}/feedback`,
   COMPLAINT_ASSIGN: (id) => `/complaints/${id}/assign`,
   COMPLAINT_PROGRESS: (id) => `/complaints/${id}/progress`,
   COMPLAINT_ESCALATE: (id) => `/complaints/${id}/escalate`,
   
   // Defaulters
   DEFAULTERS: '/defaulters',
+  DEFAULTERS_PREVIOUS_YEARS: '/defaulters/previous-years',
+  DEFAULTERS_PREVIOUS_YEARS_EXPORT: '/defaulters/previous-years/export',
   DEFAULTERS_STATISTICS: '/defaulters/statistics',
   DEFAULTERS_EXPORT: '/defaulters/export',
   DEFAULTERS_SYNC: '/defaulters/sync',
@@ -181,6 +187,8 @@ export const ROUTES = {
   LOGIN: '/login',
   LOGOUT: '/logout',
   FORCE_CHANGE_PASSWORD: '/force-change-password',
+  FORGOT_PASSWORD: '/forgot-password',
+  RESET_PASSWORD: '/reset-password',
   
   // Super Admin
   SUPER_ADMIN_DASHBOARD: '/super-admin/dashboard',
@@ -206,6 +214,7 @@ export const ROUTES = {
   ADMIN_MAINTENANCE: '/admin/maintenance',
   ADMIN_FINANCE: '/admin/finance',
   ADMIN_DEFAULTERS: '/admin/defaulters',
+  ADMIN_PREVIOUS_DEFAULTERS: '/admin/previous-defaulters',
   ADMIN_COMPLAINTS: '/admin/complaints',
   ADMIN_ANNOUNCEMENTS: '/admin/announcements',
   ADMIN_SETTINGS: '/admin/settings',

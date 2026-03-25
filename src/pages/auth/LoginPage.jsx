@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import PropTypes from 'prop-types'
+import { keyframes } from '@mui/material/styles'
 import {
   Box,
   Card,
@@ -18,6 +19,9 @@ import {
   useTheme,
   alpha,
   Fade,
+  CircularProgress,
+  Chip,
+  Link,
 } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import SecurityIcon from '@mui/icons-material/Security'
@@ -29,33 +33,62 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import toast from 'react-hot-toast'
 
+const floatKeyframes = keyframes`
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(180deg); }
+`
+
 // Simple email format validation
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value?.trim() || '')
+
+const BRAND_LOGO_SRC = '/icons/mob_Logo.png'
 
 const FeatureCard = ({ icon, title, description }) => (
   <Paper
     elevation={0}
     sx={{
       p: 3,
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
       textAlign: 'center',
-      bgcolor: 'transparent',
+      bgcolor: (theme) => alpha(theme.palette.background.paper, 0.5),
       border: '1px solid',
       borderColor: 'divider',
       borderRadius: 3,
       transition: 'all 0.3s ease',
+      '@media (prefers-reduced-motion: reduce)': {
+        transition: 'none',
+        '&:hover': { transform: 'none' },
+      },
       '&:hover': {
         borderColor: 'primary.main',
-        transform: 'translateY(-2px)',
-        boxShadow: (theme) => `0 8px 25px ${alpha(theme.palette.primary.main, 0.15)}`,
+        transform: 'translateY(-4px)',
+        boxShadow: (theme) => `0 12px 32px ${alpha(theme.palette.primary.main, 0.18)}`,
       },
     }}
   >
-    <Box sx={{ color: 'primary.main', mb: 2 }}>{icon}</Box>
+    <Box
+      sx={{
+        width: 56,
+        height: 56,
+        borderRadius: '50%',
+        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'primary.main',
+        mb: 2,
+      }}
+    >
+      {icon}
+    </Box>
     <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
       {title}
     </Typography>
-    <Typography variant="body2" color="text.secondary">
+    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
       {description}
     </Typography>
   </Paper>
@@ -70,6 +103,7 @@ FeatureCard.propTypes = {
 const LoginPage = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -79,6 +113,16 @@ const LoginPage = () => {
   const emailValid = email.trim() !== '' && isValidEmail(email)
   const { login, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
+
+  const floatAnimation = prefersReducedMotion ? 'none' : `${floatKeyframes} 6s ease-in-out infinite`
+  const floatAnimationSlow = prefersReducedMotion
+    ? 'none'
+    : `${floatKeyframes} 8s ease-in-out infinite reverse`
+
+  const pageBg = `linear-gradient(135deg,
+    ${alpha(theme.palette.primary.main, 0.08)} 0%,
+    ${theme.palette.background.default} 42%,
+    ${alpha(theme.palette.secondary.main, 0.06)} 100%)`
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -121,7 +165,7 @@ const LoginPage = () => {
         setError(result.error || 'Login failed')
         toast.error(result.error || 'Login failed')
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
       toast.error('Login failed')
     } finally {
@@ -129,27 +173,50 @@ const LoginPage = () => {
     }
   }
 
+  const mobileFeatureChips = (
+    <Stack
+      direction="row"
+      spacing={1}
+      justifyContent="center"
+      flexWrap="wrap"
+      useFlexGap
+      sx={{ gap: 1, mt: 2 }}
+    >
+      <Chip icon={<HomeIcon />} label="Properties" size="small" variant="outlined" color="primary" />
+      <Chip icon={<PeopleIcon />} label="Residents" size="small" variant="outlined" color="primary" />
+      <Chip
+        icon={<SecurityIcon />}
+        label="Secure"
+        size="small"
+        variant="outlined"
+        color="primary"
+      />
+    </Stack>
+  )
+
   return (
     <Box
       sx={{
         minHeight: '100vh',
         display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
         bgcolor: 'background.default',
+        background: pageBg,
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Animated background elements */}
       <Box
         sx={{
           position: 'absolute',
           top: -50,
           right: -50,
-          width: 200,
-          height: 200,
+          width: 220,
+          height: 220,
           borderRadius: '50%',
-          bgcolor: alpha(theme.palette.primary.main, 0.05),
-          animation: 'float 6s ease-in-out infinite',
+          bgcolor: alpha(theme.palette.primary.main, 0.07),
+          animation: floatAnimation,
         }}
       />
       <Box
@@ -157,37 +224,96 @@ const LoginPage = () => {
           position: 'absolute',
           bottom: -100,
           left: -100,
-          width: 300,
-          height: 300,
+          width: 320,
+          height: 320,
           borderRadius: '50%',
-          bgcolor: alpha(theme.palette.secondary.main, 0.05),
-          animation: 'float 8s ease-in-out infinite reverse',
+          bgcolor: alpha(theme.palette.secondary.main, 0.07),
+          animation: floatAnimationSlow,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          top: '35%',
+          left: '8%',
+          width: 120,
+          height: 120,
+          borderRadius: '50%',
+          bgcolor: alpha(theme.palette.primary.main, 0.04),
+          animation: prefersReducedMotion ? 'none' : `${floatKeyframes} 10s ease-in-out infinite`,
         }}
       />
 
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @keyframes float {
-              0%, 100% { transform: translateY(0px) rotate(0deg); }
-              50% { transform: translateY(-20px) rotate(180deg); }
-            }
-          `,
+      <Container
+        maxWidth="xl"
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          py: 4,
+          zIndex: 1,
+          width: '100%',
         }}
-      />
+      >
+        {isMobile && (
+          <Box sx={{ width: '100%', textAlign: 'center', mb: 2 }}>
+            <Box
+              component="img"
+              src={BRAND_LOGO_SRC}
+              alt="Homeland Union"
+              sx={{ height: 72, width: 'auto', mb: 1.5, display: 'inline-block' }}
+            />
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 600,
+                letterSpacing: 0.5,
+                background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >
+              Homeland Union
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, px: 2 }}>
+              Resident management — streamlined operations and better living.
+            </Typography>
+            {mobileFeatureChips}
+          </Box>
+        )}
 
-      <Container maxWidth="xl" sx={{ display: 'flex', alignItems: 'center', py: 4, zIndex: 1 }}>
         <Grid container spacing={4} alignItems="center" justifyContent="center">
-          {/* Left side - welcome content (hidden on mobile) */}
           {!isMobile && (
             <Grid item xs={12} md={6} lg={7}>
               <Fade in timeout={800}>
                 <Box sx={{ pr: { md: 4, lg: 8 } }}>
+                  <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
+                    <Box
+                      component="img"
+                      src={BRAND_LOGO_SRC}
+                      alt="Homeland Union"
+                      sx={{ height: 88, width: 'auto' }}
+                    />
+                    <Typography
+                      variant="overline"
+                      sx={{
+                        letterSpacing: 2,
+                        color: 'text.secondary',
+                        fontWeight: 600,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      Office Management
+                    </Typography>
+                  </Stack>
                   <Typography
-                    variant="h1"
+                    variant="h2"
                     sx={{
                       fontWeight: 700,
                       mb: 2,
+                      fontSize: { md: '2.5rem', lg: '2.75rem' },
+                      lineHeight: 1.15,
                       background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
@@ -197,70 +323,81 @@ const LoginPage = () => {
                     Welcome to Homeland Union
                   </Typography>
                   <Typography
-                    variant="h5"
+                    variant="h6"
                     color="text.secondary"
-                    sx={{ mb: 4, lineHeight: 1.6, fontWeight: 300 }}
+                    sx={{ mb: 4, lineHeight: 1.65, fontWeight: 400 }}
                   >
                     Your comprehensive resident management solution. Streamline operations, enhance
                     communication, and create better living experiences.
                   </Typography>
 
-                  <Grid container spacing={3} sx={{ mt: 4 }}>
-                    <Grid item xs={12} sm={4}>
-                      <FeatureCard
-                        icon={<HomeIcon sx={{ fontSize: 40 }} />}
-                        title="Property Management"
-                        description="Efficiently manage properties, units, and maintenance requests"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <FeatureCard
-                        icon={<PeopleIcon sx={{ fontSize: 40 }} />}
-                        title="Resident Portal"
-                        description="Enhanced communication and service delivery platform"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <FeatureCard
-                        icon={<SecurityIcon sx={{ fontSize: 40 }} />}
-                        title="Secure Access"
-                        description="Advanced security features and access control systems"
-                      />
-                    </Grid>
+                  <Grid container spacing={3} sx={{ mt: 1 }}>
+                    {[
+                      {
+                        icon: <HomeIcon sx={{ fontSize: 28 }} />,
+                        title: 'Property Management',
+                        description:
+                          'Efficiently manage properties, units, and maintenance requests',
+                      },
+                      {
+                        icon: <PeopleIcon sx={{ fontSize: 28 }} />,
+                        title: 'Resident Portal',
+                        description: 'Enhanced communication and service delivery platform',
+                      },
+                      {
+                        icon: <SecurityIcon sx={{ fontSize: 28 }} />,
+                        title: 'Secure Access',
+                        description: 'Advanced security features and access control systems',
+                      },
+                    ].map((feature, index) => (
+                      <Grid item xs={12} sm={4} key={feature.title}>
+                        <Fade
+                          in
+                          timeout={600}
+                          style={{ transitionDelay: `${280 + index * 140}ms` }}
+                        >
+                          <Box>
+                            <FeatureCard
+                              icon={feature.icon}
+                              title={feature.title}
+                              description={feature.description}
+                            />
+                          </Box>
+                        </Fade>
+                      </Grid>
+                    ))}
                   </Grid>
                 </Box>
               </Fade>
             </Grid>
           )}
 
-          {/* Right side - login form */}
           <Grid item xs={12} md={6} lg={5}>
             <Fade in timeout={1000} style={{ transitionDelay: '200ms' }}>
               <Card
-                elevation={24}
+                elevation={0}
                 sx={{
                   p: { xs: 3, sm: 4, md: 5 },
                   borderRadius: 4,
-                  bgcolor: 'background.paper',
-                  boxShadow: `0 20px 60px ${alpha(theme.palette.common.black, 0.1)}`,
+                  bgcolor: (t) => alpha(t.palette.background.paper, 0.82),
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  boxShadow: `0 24px 64px ${alpha(theme.palette.common.black, 0.12)}`,
                   position: 'relative',
                   overflow: 'visible',
                 }}
               >
-
                 <Stack spacing={1} sx={{ textAlign: 'center', mb: 3 }}>
                   <Typography
-                    variant={isMobile ? 'h4' : 'h3'}
-                    sx={{ fontWeight: 700, color: 'text.primary', mb: 1 }}
+                    variant={isMobile ? 'h5' : 'h4'}
+                    sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}
                   >
-                    Welcome Back
+                    Welcome back
                   </Typography>
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    sx={{ fontSize: '1.1rem', lineHeight: 1.5 }}
-                  >
-                    Sign in to access your resident management dashboard
+                  <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                    Sign in to your dashboard
                   </Typography>
                 </Stack>
 
@@ -324,14 +461,46 @@ const LoginPage = () => {
                       ),
                     }}
                   />
+                  <Box sx={{ mt: 1, textAlign: 'right' }}>
+                    <Link
+                      component={RouterLink}
+                      to={ROUTES.FORGOT_PASSWORD}
+                      variant="body2"
+                      underline="hover"
+                    >
+                      Forgot password?
+                    </Link>
+                  </Box>
                   <Button
                     type="submit"
                     fullWidth
+                    size="large"
                     variant="contained"
-                    sx={{ mt: 3, mb: 2 }}
                     disabled={loading}
+                    sx={{
+                      mt: 3,
+                      mb: 1,
+                      py: 1.35,
+                      borderRadius: 2,
+                      fontWeight: 600,
+                      textTransform: 'none',
+                      fontSize: '1.05rem',
+                      boxShadow: (t) => `0 8px 24px ${alpha(t.palette.primary.main, 0.35)}`,
+                      '@media (prefers-reduced-motion: reduce)': {
+                        transition: 'none',
+                        '&:hover': { transform: 'none' },
+                      },
+                      '&:hover': {
+                        boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.45)}`,
+                        transform: 'translateY(-1px)',
+                      },
+                    }}
                   >
-                    {loading ? 'Logging in...' : 'Login'}
+                    {loading ? (
+                      <CircularProgress size={26} color="inherit" />
+                    ) : (
+                      'Sign in'
+                    )}
                   </Button>
                 </form>
               </Card>

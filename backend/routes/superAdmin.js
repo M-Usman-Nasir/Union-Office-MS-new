@@ -5,6 +5,7 @@ import * as invoiceController from '../controllers/invoiceController.js';
 import * as migrationsController from '../controllers/migrationsController.js';
 import * as auditLogController from '../controllers/auditLogController.js';
 import * as escalationsController from '../controllers/escalationsController.js';
+import * as governanceController from '../controllers/governanceController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { uploadInvoicePaymentProof } from '../config/multer.js';
 
@@ -42,5 +43,12 @@ router.patch('/subscription/plans/:id', requireRole('super_admin'), subscription
 router.get('/subscription/admins', requireRole('super_admin'), subscriptionController.getAdminsWithSubscriptions);
 router.post('/subscription', requireRole('super_admin'), subscriptionController.createSubscription);
 router.patch('/subscription/:id', requireRole('super_admin'), subscriptionController.updateSubscriptionStatus);
+
+// Governance (P2/P3 foundations)
+router.get('/activity-timeline', requireRole('super_admin'), governanceController.activityTimeline);
+router.get('/permissions/:role', requireRole('super_admin'), governanceController.getRolePermissions);
+router.put('/permissions/:role', requireRole('super_admin'), governanceController.upsertRolePermissions);
+router.get('/global-features', requireRole('super_admin'), governanceController.listGlobalFeatures);
+router.put('/global-features', requireRole('super_admin'), governanceController.upsertGlobalFeatures);
 
 export default router;

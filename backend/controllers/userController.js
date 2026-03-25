@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database.js';
 import { createOrUpdateSubscription } from './subscriptionController.js';
+import * as auditLog from '../services/auditLogService.js';
+import * as activity from '../services/activityService.js';
 
 // Get all users (Super Admin: all users; Union Admin: only users in their society)
 export const getAll = async (req, res) => {
@@ -12,7 +14,7 @@ export const getAll = async (req, res) => {
        e.department, e.designation, e.salary_rupees
        FROM users u
        LEFT JOIN employees e ON e.user_id = u.id
-       WHERE 1=1`;
+       WHERE 1=1 AND u.deleted_at IS NULL`;
     const params = [];
     let paramCount = 0;
 
@@ -52,7 +54,7 @@ export const getAll = async (req, res) => {
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM users WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM users WHERE deleted_at IS NULL';
     const countParams = [];
     let countParamCount = 0;
 
@@ -112,7 +114,7 @@ export const getById = async (req, res) => {
        e.department, e.designation, e.salary_rupees
        FROM users u
        LEFT JOIN employees e ON e.user_id = u.id
-       WHERE u.id = $1`,
+       WHERE u.id = $1 AND u.deleted_at IS NULL`,
       [id]
     );
 
@@ -171,7 +173,7 @@ export const checkEmail = async (req, res) => {
       });
     }
 
-    let sql = 'SELECT id FROM users WHERE LOWER(email) = $1';
+    let sql = 'SELECT id FROM users WHERE LOWER(email) = $1 AND deleted_at IS NULL';
     const params = [email];
     if (excludeId && !Number.isNaN(excludeId)) {
       sql += ' AND id != $2';
@@ -203,7 +205,7 @@ export const update = async (req, res) => {
     const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, address, city, postal_code, work_employer, work_title, work_phone, department, designation, salary_rupees } = req.body;
 
     const existing = await query(
-      'SELECT id, role, society_apartment_id FROM users WHERE id = $1',
+      'SELECT id, role, society_apartment_id FROM users WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (existing.rows.length === 0) {
@@ -243,7 +245,7 @@ export const update = async (req, res) => {
     const effectiveSocietyId = society_apartment_id !== undefined ? society_apartment_id : targetUser.society_apartment_id;
     if (effectiveRole === 'union_admin' && effectiveSocietyId) {
       const existingAdmin = await query(
-        'SELECT id FROM users WHERE role = $1 AND society_apartment_id = $2 AND id != $3',
+        'SELECT id FROM users WHERE role = $1 AND society_apartment_id = $2 AND id != $3 AND deleted_at IS NULL',
         ['union_admin', effectiveSocietyId, id]
       );
       if (existingAdmin.rows.length > 0) {
@@ -307,6 +309,23 @@ export const update = async (req, res) => {
       );
     }
 
+    await auditLog.log(req, {
+      action: 'user.update',
+      resourceType: 'user',
+      resourceId: id,
+      societyId: updatedUser.society_apartment_id,
+      details: {
+        fields: Object.keys(req.body || {}).filter((k) => req.body[k] !== undefined),
+      },
+    });
+    await activity.track(req, {
+      eventType: 'user.update',
+      resourceType: 'user',
+      resourceId: id,
+      societyId: updatedUser.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}).filter((k) => req.body[k] !== undefined) },
+    });
+
     res.json({
       success: true,
       message: 'User updated successfully',
@@ -355,6 +374,21 @@ export const updatePassword = async (req, res) => {
       });
     }
 
+    await auditLog.log(req, {
+      action: 'user.password_update',
+      resourceType: 'user',
+      resourceId: id,
+      details: {
+        forced_change: result.rows[0].role === 'resident' ? !!result.rows[0].must_change_password : false,
+      },
+    });
+    await activity.track(req, {
+      eventType: 'user.password_update',
+      resourceType: 'user',
+      resourceId: id,
+      details: {},
+    });
+
     res.json({
       success: true,
       message:
@@ -386,7 +420,7 @@ export const remove = async (req, res) => {
     }
 
     const existing = await query(
-      'SELECT id, role, society_apartment_id FROM users WHERE id = $1',
+      'SELECT id, role, society_apartment_id FROM users WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (existing.rows.length === 0) {
@@ -405,7 +439,13 @@ export const remove = async (req, res) => {
       }
     }
 
-    const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+    const result = await query(
+      `UPDATE users
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id`,
+      [id, req.user?.id || null]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -413,6 +453,21 @@ export const remove = async (req, res) => {
         message: 'User not found',
       });
     }
+
+    await auditLog.log(req, {
+      action: 'user.delete',
+      resourceType: 'user',
+      resourceId: id,
+      societyId: target?.society_apartment_id ?? null,
+      details: { role: target?.role ?? null },
+    });
+    await activity.track(req, {
+      eventType: 'user.delete',
+      resourceType: 'user',
+      resourceId: id,
+      societyId: target?.society_apartment_id ?? null,
+      details: { role: target?.role ?? null },
+    });
 
     res.json({
       success: true,

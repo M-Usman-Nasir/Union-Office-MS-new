@@ -1,10 +1,11 @@
 import { query } from '../config/database.js';
 import { sendNewComplaintNotificationToAdmin } from '../services/emailService.js';
+import * as activity from '../services/activityService.js';
 
 // Get all complaints
 export const getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 10, society_id, status, priority, assigned_to } = req.query;
+    const { page = 1, limit = 10, society_id, status, priority, assigned_to, has_feedback } = req.query;
     const offset = (page - 1) * limit;
 
     let sql = `
@@ -17,7 +18,7 @@ export const getAll = async (req, res) => {
       LEFT JOIN apartments s ON c.society_apartment_id = s.id
       LEFT JOIN users submitter ON c.submitted_by = submitter.id
       LEFT JOIN users assignee ON c.assigned_to = assignee.id
-      WHERE 1=1
+      WHERE 1=1 AND c.deleted_at IS NULL
     `;
     const params = [];
     let paramCount = 0;
@@ -61,13 +62,19 @@ export const getAll = async (req, res) => {
       params.push(assigned_to);
     }
 
+    if (has_feedback === 'yes' || has_feedback === 'true' || has_feedback === '1') {
+      sql += ' AND c.feedback_rating IS NOT NULL';
+    } else if (has_feedback === 'no' || has_feedback === 'false' || has_feedback === '0') {
+      sql += ' AND c.feedback_rating IS NULL';
+    }
+
     sql += ` ORDER BY c.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM complaints WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM complaints WHERE deleted_at IS NULL';
     const countParams = [];
     let countParamCount = 0;
 
@@ -95,6 +102,11 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND assigned_to = $${countParamCount}`;
       countParams.push(assigned_to);
+    }
+    if (has_feedback === 'yes' || has_feedback === 'true' || has_feedback === '1') {
+      countSql += ' AND feedback_rating IS NOT NULL';
+    } else if (has_feedback === 'no' || has_feedback === 'false' || has_feedback === '0') {
+      countSql += ' AND feedback_rating IS NULL';
     }
 
     const countResult = await query(countSql, countParams);
@@ -124,7 +136,7 @@ export const getStatistics = async (req, res) => {
   try {
     const { society_id } = req.query;
 
-    let whereClause = 'WHERE 1=1';
+    let whereClause = 'WHERE deleted_at IS NULL';
     const params = [];
     let paramCount = 0;
 
@@ -179,7 +191,7 @@ export const getById = async (req, res) => {
        LEFT JOIN apartments s ON c.society_apartment_id = s.id
        LEFT JOIN users submitter ON c.submitted_by = submitter.id
        LEFT JOIN users assignee ON c.assigned_to = assignee.id
-       WHERE c.id = $1`,
+       WHERE c.id = $1 AND c.deleted_at IS NULL`,
       [id]
     );
 
@@ -310,6 +322,13 @@ export const create = async (req, res) => {
       message: 'Complaint submitted successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'complaint.create',
+      resourceType: 'complaint',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: { priority: priority || 'medium' },
+    });
   } catch (error) {
     console.error('Create complaint error:', error);
     res.status(500).json({
@@ -420,6 +439,13 @@ export const createWithAttachments = async (req, res) => {
       message: 'Complaint submitted successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'complaint.create',
+      resourceType: 'complaint',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: { with_attachments: true },
+    });
   } catch (error) {
     console.error('Create complaint with attachments error:', error);
     res.status(500).json({
@@ -436,7 +462,7 @@ export const update = async (req, res) => {
     const { id } = req.params;
     const { title, description, priority, status, assigned_to, is_public } = req.body;
 
-    const existing = await query('SELECT * FROM complaints WHERE id = $1', [id]);
+    const existing = await query('SELECT * FROM complaints WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -491,6 +517,13 @@ export const update = async (req, res) => {
       message: 'Complaint updated successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'complaint.update',
+      resourceType: 'complaint',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}) },
+    });
   } catch (error) {
     console.error('Update complaint error:', error);
     res.status(500).json({
@@ -518,7 +551,7 @@ export const updateStatus = async (req, res) => {
       `UPDATE complaints 
        SET status = $1,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
+       WHERE id = $2 AND deleted_at IS NULL
        RETURNING *`,
       [status, id]
     );
@@ -535,6 +568,13 @@ export const updateStatus = async (req, res) => {
       message: 'Complaint status updated successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'complaint.status_update',
+      resourceType: 'complaint',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { status },
+    });
   } catch (error) {
     console.error('Update complaint status error:', error);
     res.status(500).json({
@@ -545,12 +585,101 @@ export const updateStatus = async (req, res) => {
   }
 };
 
+// Resident feedback after complaint resolution/closure
+export const submitFeedback = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawRating = req.body?.feedback_rating;
+    const feedbackCommentRaw = req.body?.feedback_comment;
+    const feedbackRating = Number(rawRating);
+    const feedbackComment = typeof feedbackCommentRaw === 'string' ? feedbackCommentRaw.trim() : null;
+
+    if (!Number.isInteger(feedbackRating) || feedbackRating < 1 || feedbackRating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'feedback_rating is required and must be an integer between 1 and 5',
+      });
+    }
+
+    if (feedbackComment && feedbackComment.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: 'feedback_comment must be 1000 characters or fewer',
+      });
+    }
+
+    const complaintResult = await query(
+      `SELECT id, submitted_by, status, society_apartment_id
+       FROM complaints
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+
+    if (complaintResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Complaint not found',
+      });
+    }
+
+    const complaint = complaintResult.rows[0];
+    if (complaint.submitted_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only submit feedback for your own complaint',
+      });
+    }
+
+    if (!['resolved', 'closed'].includes(complaint.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Feedback can only be submitted after complaint is resolved or closed',
+      });
+    }
+
+    const updated = await query(
+      `UPDATE complaints
+       SET feedback_rating = $1,
+           feedback_comment = $2,
+           feedback_submitted_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 AND deleted_at IS NULL
+       RETURNING *`,
+      [feedbackRating, feedbackComment || null, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Feedback submitted successfully',
+      data: updated.rows[0],
+    });
+
+    await activity.track(req, {
+      eventType: 'complaint.feedback_submit',
+      resourceType: 'complaint',
+      resourceId: id,
+      societyId: complaint.society_apartment_id,
+      details: { feedback_rating: feedbackRating },
+    });
+  } catch (error) {
+    console.error('Submit complaint feedback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit complaint feedback',
+      error: error.message,
+    });
+  }
+};
+
 // Delete complaint
 export const remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existing = await query('SELECT submitted_by FROM complaints WHERE id = $1', [id]);
+    const existing = await query(
+      'SELECT submitted_by, society_apartment_id FROM complaints WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -566,11 +695,24 @@ export const remove = async (req, res) => {
       });
     }
 
-    const result = await query('DELETE FROM complaints WHERE id = $1 RETURNING id', [id]);
+    const result = await query(
+      `UPDATE complaints
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id`,
+      [id, req.user?.id || null]
+    );
 
     res.json({
       success: true,
       message: 'Complaint deleted successfully',
+    });
+    await activity.track(req, {
+      eventType: 'complaint.delete',
+      resourceType: 'complaint',
+      resourceId: id,
+      societyId: existing.rows[0]?.society_apartment_id,
+      details: {},
     });
   } catch (error) {
     console.error('Delete complaint error:', error);
@@ -602,7 +744,7 @@ export const assignStaff = async (req, res) => {
     }
 
     // Check if complaint exists
-    const complaint = await query('SELECT id FROM complaints WHERE id = $1', [id]);
+    const complaint = await query('SELECT id FROM complaints WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (complaint.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -624,6 +766,13 @@ export const assignStaff = async (req, res) => {
       message: 'Staff assigned successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'complaint.assign',
+      resourceType: 'complaint',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { staff_id },
+    });
   } catch (error) {
     console.error('Assign staff error:', error);
     res.status(500).json({
@@ -641,7 +790,7 @@ export const addProgress = async (req, res) => {
     const { status, notes } = req.body;
 
     // Check if complaint exists
-    const complaint = await query('SELECT id FROM complaints WHERE id = $1', [id]);
+    const complaint = await query('SELECT id FROM complaints WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (complaint.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -675,6 +824,12 @@ export const addProgress = async (req, res) => {
       success: true,
       message: 'Progress updated successfully',
     });
+    await activity.track(req, {
+      eventType: 'complaint.progress_add',
+      resourceType: 'complaint',
+      resourceId: id,
+      details: { status: status || null },
+    });
   } catch (error) {
     console.error('Add progress error:', error);
     res.status(500).json({
@@ -692,7 +847,7 @@ export const escalate = async (req, res) => {
     const { reason } = req.body || {};
 
     const complaint = await query(
-      'SELECT id, society_apartment_id, submitted_by, escalated_at FROM complaints WHERE id = $1',
+      'SELECT id, society_apartment_id, submitted_by, escalated_at FROM complaints WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (complaint.rows.length === 0) {
@@ -725,6 +880,13 @@ export const escalate = async (req, res) => {
       message: 'Complaint escalated to platform. Super admin will review.',
       data: { id: parseInt(id, 10), escalated_at: new Date().toISOString() },
     });
+    await activity.track(req, {
+      eventType: 'complaint.escalate',
+      resourceType: 'complaint',
+      resourceId: id,
+      societyId: row.society_apartment_id,
+      details: { reason: reason || null },
+    });
   } catch (error) {
     console.error('Escalate complaint error:', error);
     res.status(500).json({
@@ -741,7 +903,7 @@ export const getProgress = async (req, res) => {
     const { id } = req.params;
 
     // Check if complaint exists
-    const complaint = await query('SELECT id FROM complaints WHERE id = $1', [id]);
+    const complaint = await query('SELECT id FROM complaints WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (complaint.rows.length === 0) {
       return res.status(404).json({
         success: false,

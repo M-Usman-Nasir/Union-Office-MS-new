@@ -223,6 +223,7 @@ const MainLayout = ({ children }) => {
         { text: 'Messages', icon: <MessageIcon />, path: ROUTES.ADMIN_MESSAGES },
         { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.ADMIN_MAINTENANCE },
         { text: 'Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_DEFAULTERS },
+        { text: 'Previous Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_PREVIOUS_DEFAULTERS },
         { text: 'Finance', icon: <AccountBalanceIcon />, path: ROUTES.ADMIN_FINANCE },
         { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.ADMIN_COMPLAINTS },
         { text: 'Employees', icon: <PeopleIcon />, path: ROUTES.ADMIN_EMPLOYEES },

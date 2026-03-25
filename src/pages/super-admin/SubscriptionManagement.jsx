@@ -18,21 +18,35 @@ import {
   Button,
   IconButton,
   Tooltip,
+  Link,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogContentText,
   DialogActions,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material'
 import CardMembershipIcon from '@mui/icons-material/CardMembership'
 import AutorenewIcon from '@mui/icons-material/Autorenew'
 import CancelIcon from '@mui/icons-material/Cancel'
 import HistoryIcon from '@mui/icons-material/History'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import PersonIcon from '@mui/icons-material/Person'
 import useSWR from 'swr'
 import { superAdminApi } from '@/api/superAdminApi'
 import { ROUTES } from '@/utils/constants'
 import dayjs from 'dayjs'
 import toast from 'react-hot-toast'
+
+const formatDate = (value) => (value ? dayjs(value).format('DD/MM/YYYY') : '—')
+const toTitleCase = (value) => {
+  const normalized = (value || '').toLowerCase()
+  if (!normalized) return '—'
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
 
 const SubscriptionManagement = () => {
   const navigate = useNavigate()
@@ -40,6 +54,7 @@ const SubscriptionManagement = () => {
   const [cancellingId, setCancellingId] = useState(null)
   const [confirmRenew, setConfirmRenew] = useState(null)
   const [confirmCancel, setConfirmCancel] = useState(null)
+  const [actionMenu, setActionMenu] = useState(null)
 
   const { data: adminsData, isLoading, mutate } = useSWR(
     '/super-admin/subscription/admins',
@@ -53,6 +68,34 @@ const SubscriptionManagement = () => {
   const admins = adminsData?.data ?? []
   const invoices = invoicesData?.data ?? []
 
+  const latestInvoiceByUserId = useMemo(() => {
+    const map = {}
+    invoices.forEach((inv) => {
+      if (!inv.user_id) return
+      const existing = map[inv.user_id]
+      const invCreatedAt = dayjs(inv.created_at || 0)
+      const existingCreatedAt = dayjs(existing?.created_at || 0)
+      if (!existing || invCreatedAt.isAfter(existingCreatedAt)) {
+        map[inv.user_id] = inv
+      }
+    })
+    return map
+  }, [invoices])
+
+  const latestPaidInvoiceByUserId = useMemo(() => {
+    const map = {}
+    invoices.forEach((inv) => {
+      if (!inv.user_id || inv.status !== 'paid') return
+      const existing = map[inv.user_id]
+      const invUpdatedAt = dayjs(inv.updated_at || inv.created_at || 0)
+      const existingUpdatedAt = dayjs(existing?.updated_at || existing?.created_at || 0)
+      if (!existing || invUpdatedAt.isAfter(existingUpdatedAt)) {
+        map[inv.user_id] = inv
+      }
+    })
+    return map
+  }, [invoices])
+
   const paymentStatusByUserId = useMemo(() => {
     const map = {}
     admins.forEach((a) => {
@@ -61,6 +104,8 @@ const SubscriptionManagement = () => {
     invoices.forEach((inv) => {
       if (inv.user_id && (inv.status === 'draft' || inv.status === 'sent')) {
         map[inv.user_id] = 'Pending'
+      } else if (inv.user_id && inv.status === 'paid') {
+        map[inv.user_id] = 'Paid'
       }
     })
     return map
@@ -118,6 +163,9 @@ const SubscriptionManagement = () => {
   const handleViewHistory = (userId) => {
     navigate(`${ROUTES.SUPER_ADMIN_INVOICES}?user_id=${userId}`)
   }
+  const handleViewAdminProfile = (userId) => {
+    navigate(`${ROUTES.SUPER_ADMIN_VIEW_DETAILS}?user_id=${userId}&from=users`)
+  }
 
   const canRenew = (row) =>
     row.subscription_id &&
@@ -126,6 +174,8 @@ const SubscriptionManagement = () => {
   const canCancel = (row) =>
     row.subscription_id &&
     ['active', 'trial', 'pending'].includes((row.subscription_status || '').toLowerCase())
+
+  const closeActionMenu = () => setActionMenu(null)
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -156,42 +206,53 @@ const SubscriptionManagement = () => {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell>Subscription ID</TableCell>
                 <TableCell>Apartment Name</TableCell>
-                <TableCell>Package Tier</TableCell>
-                <TableCell>Subscription Start Date</TableCell>
-                <TableCell>Subscription End Date</TableCell>
+                <TableCell>Admin Name</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Plan Name</TableCell>
+                <TableCell>Start Date</TableCell>
+                <TableCell>End Date</TableCell>
+                <TableCell>Billing Cycle</TableCell>
+                <TableCell>Amount</TableCell>
                 <TableCell>Payment Status</TableCell>
-                <TableCell>Next Renewal Date</TableCell>
+                <TableCell>Last Payment Date</TableCell>
+                <TableCell>Next Billing Date</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Notes</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {admins.map((row) => (
                 <TableRow key={row.id} hover>
-                  <TableCell>{row.apartment_name || '—'}</TableCell>
+                  <TableCell>{row.subscription_id || '—'}</TableCell>
                   <TableCell>
-                    {row.plan_name ? (
-                      <>
-                        {row.plan_name}
-                        {row.interval_months != null && (
-                          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                            ({row.interval_months} mo)
-                          </Typography>
-                        )}
-                      </>
-                    ) : (
-                      '—'
-                    )}
+                    {row.apartment_name ? (
+                      <Link
+                        component="button"
+                        variant="body2"
+                        underline="hover"
+                        onClick={() => handleViewAdminProfile(row.id)}
+                      >
+                        {row.apartment_name}
+                      </Link>
+                    ) : '—'}
+                  </TableCell>
+                  <TableCell>{row.name || '—'}</TableCell>
+                  <TableCell>{row.email || '—'}</TableCell>
+                  <TableCell>{row.plan_name || '—'}</TableCell>
+                  <TableCell>
+                    {formatDate(row.start_date)}
                   </TableCell>
                   <TableCell>
-                    {row.start_date
-                      ? dayjs(row.start_date).format('DD/MM/YYYY')
-                      : '—'}
+                    {formatDate(row.end_date)}
                   </TableCell>
                   <TableCell>
-                    {row.end_date
-                      ? dayjs(row.end_date).format('DD/MM/YYYY')
-                      : '—'}
+                    {row.interval_months != null ? `${row.interval_months} month(s)` : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {row.plan_amount != null ? `PKR ${Number(row.plan_amount).toLocaleString()}` : '—'}
                   </TableCell>
                   <TableCell>
                     {row.subscription_id ? (
@@ -206,53 +267,42 @@ const SubscriptionManagement = () => {
                     )}
                   </TableCell>
                   <TableCell>
-                    {row.next_billing_date
-                      ? dayjs(row.next_billing_date).format('DD/MM/YYYY')
-                      : '—'}
+                    {formatDate(latestPaidInvoiceByUserId[row.id]?.updated_at || latestPaidInvoiceByUserId[row.id]?.created_at)}
+                  </TableCell>
+                  <TableCell>
+                    {formatDate(row.next_billing_date)}
+                  </TableCell>
+                  <TableCell>
+                    {row.subscription_status ? (
+                      <Chip
+                        label={toTitleCase(row.subscription_status)}
+                        size="small"
+                        variant="outlined"
+                        color={
+                          row.subscription_status === 'active'
+                            ? 'success'
+                            : row.subscription_status === 'trial'
+                            ? 'info'
+                            : row.subscription_status === 'pending'
+                            ? 'warning'
+                            : 'default'
+                        }
+                      />
+                    ) : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {latestInvoiceByUserId[row.id]?.notes || '—'}
                   </TableCell>
                   <TableCell align="right">
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, flexWrap: 'wrap' }}>
-                      {canRenew(row) && (
-                        <Tooltip title="Renew subscription">
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={() => handleRenew(row)}
-                            disabled={renewingId === row.subscription_id}
-                          >
-                            {renewingId === row.subscription_id ? (
-                              <CircularProgress size={20} />
-                            ) : (
-                              <AutorenewIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {canCancel(row) && (
-                        <Tooltip title="Cancel subscription">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleCancel(row)}
-                            disabled={cancellingId === row.subscription_id}
-                          >
-                            {cancellingId === row.subscription_id ? (
-                              <CircularProgress size={20} />
-                            ) : (
-                              <CancelIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="View invoice history">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleViewHistory(row.id)}
-                        >
-                          <HistoryIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
+                    <Tooltip title="Actions">
+                      <IconButton
+                        size="small"
+                        aria-label="Open actions menu"
+                        onClick={(e) => setActionMenu({ anchorEl: e.currentTarget, row })}
+                      >
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -260,6 +310,71 @@ const SubscriptionManagement = () => {
           </Table>
         </TableContainer>
       )}
+
+      <Menu
+        anchorEl={actionMenu?.anchorEl}
+        open={Boolean(actionMenu)}
+        onClose={closeActionMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (actionMenu?.row) handleViewAdminProfile(actionMenu.row.id)
+            closeActionMenu()
+          }}
+        >
+          <ListItemIcon>
+            <PersonIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>View admin profile</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (actionMenu?.row) handleViewHistory(actionMenu.row.id)
+            closeActionMenu()
+          }}
+        >
+          <ListItemIcon>
+            <HistoryIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>View invoice history</ListItemText>
+        </MenuItem>
+        <MenuItem
+          disabled={!actionMenu?.row || !canRenew(actionMenu.row) || renewingId === actionMenu?.row?.subscription_id}
+          onClick={() => {
+            const r = actionMenu?.row
+            closeActionMenu()
+            if (r && canRenew(r)) handleRenew(r)
+          }}
+        >
+          <ListItemIcon>
+            {actionMenu?.row && renewingId === actionMenu.row.subscription_id ? (
+              <CircularProgress size={18} />
+            ) : (
+              <AutorenewIcon fontSize="small" color="primary" />
+            )}
+          </ListItemIcon>
+          <ListItemText>Renew subscription</ListItemText>
+        </MenuItem>
+        <MenuItem
+          disabled={!actionMenu?.row || !canCancel(actionMenu.row) || cancellingId === actionMenu?.row?.subscription_id}
+          onClick={() => {
+            const r = actionMenu?.row
+            closeActionMenu()
+            if (r && canCancel(r)) handleCancel(r)
+          }}
+        >
+          <ListItemIcon>
+            {actionMenu?.row && cancellingId === actionMenu.row.subscription_id ? (
+              <CircularProgress size={18} />
+            ) : (
+              <CancelIcon fontSize="small" color="error" />
+            )}
+          </ListItemIcon>
+          <ListItemText>Cancel subscription</ListItemText>
+        </MenuItem>
+      </Menu>
 
       <Dialog open={Boolean(confirmRenew)} onClose={() => setConfirmRenew(null)}>
         <DialogTitle>Renew subscription</DialogTitle>

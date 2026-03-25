@@ -33,6 +33,10 @@ export const complaintApi = {
     return api.patch(API_ENDPOINTS.COMPLAINT_STATUS(id), data)
   },
 
+  submitFeedback: (id, data) => {
+    return api.patch(API_ENDPOINTS.COMPLAINT_FEEDBACK(id), data)
+  },
+
   remove: (id) => {
     return api.delete(API_ENDPOINTS.COMPLAINT_BY_ID(id))
   },

@@ -1,6 +1,7 @@
 import express from 'express';
 import * as financeController from '../controllers/financeController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -22,12 +23,27 @@ router.get('/', financeController.getAll);
 router.get('/:id', financeController.getById);
 
 // Create finance record (admin only)
-router.post('/', requireRole('super_admin', 'union_admin'), financeController.create);
+router.post(
+  '/',
+  requireRole('super_admin', 'union_admin'),
+  requirePermission('finance.create'),
+  financeController.create
+);
 
 // Update finance record (admin only)
-router.put('/:id', requireRole('super_admin', 'union_admin'), financeController.update);
+router.put(
+  '/:id',
+  requireRole('super_admin', 'union_admin'),
+  requirePermission('finance.update'),
+  financeController.update
+);
 
 // Delete finance record (admin only)
-router.delete('/:id', requireRole('super_admin', 'union_admin'), financeController.remove);
+router.delete(
+  '/:id',
+  requireRole('super_admin', 'union_admin'),
+  requirePermission('finance.delete'),
+  financeController.remove
+);
 
 export default router;

@@ -49,6 +49,7 @@ const Complaints = () => {
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [feedbackFilter, setFeedbackFilter] = useState('')
   const [openViewDialog, setOpenViewDialog] = useState(false)
   const [openAssignDialog, setOpenAssignDialog] = useState(false)
   const [openProgressDialog, setOpenProgressDialog] = useState(false)
@@ -61,8 +62,18 @@ const Complaints = () => {
   const [societyId] = useState(user?.society_apartment_id)
 
   const { data, isLoading, mutate } = useSWR(
-    ['/complaints', page, limit, search, statusFilter, societyId],
-    () => complaintApi.getAll({ page, limit, search, status: statusFilter, society_id: societyId }).then(res => res.data)
+    ['/complaints', page, limit, search, statusFilter, feedbackFilter, societyId],
+    () =>
+      complaintApi
+        .getAll({
+          page,
+          limit,
+          search,
+          status: statusFilter,
+          society_id: societyId,
+          ...(feedbackFilter ? { has_feedback: feedbackFilter } : {}),
+        })
+        .then((res) => res.data)
   )
 
   const { data: stats } = useSWR(
@@ -363,6 +374,20 @@ const Complaints = () => {
       ),
     },
     {
+      id: 'feedback',
+      label: 'Resident Feedback',
+      minWidth: 170,
+      noWrapHeader: true,
+      render: (row) => {
+        if (!row.feedback_rating) return '—'
+        return (
+          <Typography variant="body2" noWrap sx={{ maxWidth: 220, fontSize: '0.8rem' }}>
+            {`${row.feedback_rating}/5${row.feedback_comment ? ` - ${row.feedback_comment}` : ''}`}
+          </Typography>
+        )
+      },
+    },
+    {
       id: 'actions',
       label: 'Actions',
       align: 'right',
@@ -481,6 +506,21 @@ const Complaints = () => {
             </MenuItem>
           ))}
         </TextField>
+        <TextField
+          select
+          size="small"
+          label="Resident feedback"
+          value={feedbackFilter}
+          onChange={(e) => {
+            setFeedbackFilter(e.target.value)
+            setPage(1)
+          }}
+          sx={{ minWidth: 180, flexShrink: 0 }}
+        >
+          <MenuItem value="">All</MenuItem>
+          <MenuItem value="yes">Has feedback</MenuItem>
+          <MenuItem value="no">No feedback</MenuItem>
+        </TextField>
       </Box>
 
       <DataTable
@@ -540,6 +580,16 @@ const Complaints = () => {
                   Created At
                 </Typography>
                 <Typography variant="body1">{formatDate(selectedComplaint.created_at)}</Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Resident Feedback
+                </Typography>
+                <Typography variant="body1">
+                  {selectedComplaint.feedback_rating
+                    ? `${selectedComplaint.feedback_rating}/5${selectedComplaint.feedback_comment ? ` - ${selectedComplaint.feedback_comment}` : ''}`
+                    : 'No feedback submitted'}
+                </Typography>
               </Grid>
               {progressData?.data && progressData.data.length > 0 && (
                 <Grid item xs={12}>

@@ -56,4 +56,20 @@ export const authApi = {
       new_password,
     })
   },
+
+  forgotPassword: (email) => {
+    return api.post(API_ENDPOINTS.FORGOT_PASSWORD, { email })
+  },
+
+  resetPassword: ({ token, email, new_password }) => {
+    return api.post(API_ENDPOINTS.RESET_PASSWORD, {
+      token,
+      email,
+      new_password,
+    })
+  },
+
+  sendTestEmail: (to) => {
+    return api.post(API_ENDPOINTS.TEST_EMAIL, to ? { to } : {})
+  },
 }

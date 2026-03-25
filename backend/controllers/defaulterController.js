@@ -197,6 +197,286 @@ export const getStatistics = async (req, res) => {
   }
 };
 
+// Get previous-year defaulters (aggregated by unit for a specific year, no month-wise data)
+export const getPreviousYearDefaulters = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, society_id, year, block_id, floor_id, search } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const targetYear = parseInt(year, 10);
+
+    if (Number.isNaN(targetYear)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid year is required',
+      });
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (targetYear >= currentYear) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select a previous year',
+      });
+    }
+
+    const effectiveSocietyId =
+      req.user?.role === 'union_admin'
+        ? req.user.society_apartment_id
+        : society_id;
+
+    if (!effectiveSocietyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'society_id is required',
+      });
+    }
+
+    let sql = `
+      SELECT
+        u.id AS unit_id,
+        u.unit_number,
+        u.contact_number AS resident_contact,
+        u.block_id,
+        u.floor_id,
+        f.floor_number,
+        b.name AS block_name,
+        COALESCE(
+          (SELECT usr.id FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
+          NULL
+        ) AS resident_id,
+        COALESCE(
+          (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
+          NULLIF(TRIM(u.resident_name), ''),
+          NULLIF(TRIM(u.owner_name), ''),
+          ''
+        ) AS resident_name,
+        SUM(m.total_amount - COALESCE(m.amount_paid, 0))::DECIMAL(10, 2) AS total_amount_due
+      FROM maintenance m
+      JOIN units u ON m.unit_id = u.id
+      LEFT JOIN floors f ON u.floor_id = f.id
+      LEFT JOIN blocks b ON u.block_id = b.id
+      WHERE m.society_apartment_id = $1
+        AND m.year = $2
+        AND (m.total_amount - COALESCE(m.amount_paid, 0)) > 0
+    `;
+    const params = [effectiveSocietyId, targetYear];
+    let paramCount = 2;
+
+    if (block_id) {
+      paramCount++;
+      sql += ` AND u.block_id = $${paramCount}`;
+      params.push(block_id);
+    }
+
+    if (floor_id) {
+      paramCount++;
+      sql += ` AND u.floor_id = $${paramCount}`;
+      params.push(floor_id);
+    }
+
+    if (search && String(search).trim() !== '') {
+      paramCount++;
+      const searchPattern = `%${String(search).trim()}%`;
+      sql += ` AND (
+        u.unit_number ILIKE $${paramCount}
+        OR COALESCE((SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1), '') ILIKE $${paramCount}
+        OR NULLIF(TRIM(u.resident_name), '') ILIKE $${paramCount}
+        OR NULLIF(TRIM(u.owner_name), '') ILIKE $${paramCount}
+        OR u.contact_number ILIKE $${paramCount}
+      )`;
+      params.push(searchPattern);
+    }
+
+    sql += `
+      GROUP BY u.id, u.unit_number, u.contact_number, u.block_id, u.floor_id, f.floor_number, b.name, u.resident_name, u.owner_name
+      ORDER BY total_amount_due DESC, u.unit_number
+      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+    `;
+    params.push(Number(limit), offset);
+
+    const result = await query(sql, params);
+
+    let countSql = `
+      SELECT COUNT(*) FROM (
+        SELECT u.id
+        FROM maintenance m
+        JOIN units u ON m.unit_id = u.id
+        WHERE m.society_apartment_id = $1
+          AND m.year = $2
+          AND (m.total_amount - COALESCE(m.amount_paid, 0)) > 0
+    `;
+    const countParams = [effectiveSocietyId, targetYear];
+    let countParamCount = 2;
+
+    if (block_id) {
+      countParamCount++;
+      countSql += ` AND u.block_id = $${countParamCount}`;
+      countParams.push(block_id);
+    }
+
+    if (floor_id) {
+      countParamCount++;
+      countSql += ` AND u.floor_id = $${countParamCount}`;
+      countParams.push(floor_id);
+    }
+
+    if (search && String(search).trim() !== '') {
+      countParamCount++;
+      const searchPattern = `%${String(search).trim()}%`;
+      countSql += ` AND (
+        u.unit_number ILIKE $${countParamCount}
+        OR COALESCE((SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1), '') ILIKE $${countParamCount}
+        OR NULLIF(TRIM(u.resident_name), '') ILIKE $${countParamCount}
+        OR NULLIF(TRIM(u.owner_name), '') ILIKE $${countParamCount}
+        OR u.contact_number ILIKE $${countParamCount}
+      )`;
+      countParams.push(searchPattern);
+    }
+
+    countSql += ' GROUP BY u.id ) x';
+    const countResult = await query(countSql, countParams);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: Number(countResult.rows[0]?.count || 0),
+        pages: Math.ceil(Number(countResult.rows[0]?.count || 0) / Number(limit)),
+      },
+    });
+  } catch (error) {
+    console.error('Get previous year defaulters error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch previous year defaulters',
+      error: error.message,
+    });
+  }
+};
+
+// Export previous-year defaulters as CSV (admin only)
+export const exportPreviousYearDefaultersCsv = async (req, res) => {
+  try {
+    const { society_id, year, block_id, floor_id, search } = req.query;
+    const targetYear = parseInt(year, 10);
+
+    if (Number.isNaN(targetYear)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid year is required',
+      });
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (targetYear >= currentYear) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select a previous year',
+      });
+    }
+
+    const effectiveSocietyId =
+      req.user?.role === 'union_admin'
+        ? req.user.society_apartment_id
+        : society_id;
+
+    if (!effectiveSocietyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'society_id is required',
+      });
+    }
+
+    let sql = `
+      SELECT
+        u.unit_number,
+        COALESCE(
+          (SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1),
+          NULLIF(TRIM(u.resident_name), ''),
+          NULLIF(TRIM(u.owner_name), ''),
+          ''
+        ) AS resident_name,
+        u.contact_number AS resident_contact,
+        b.name AS block_name,
+        f.floor_number,
+        SUM(m.total_amount - COALESCE(m.amount_paid, 0))::DECIMAL(10, 2) AS total_amount_due
+      FROM maintenance m
+      JOIN units u ON m.unit_id = u.id
+      LEFT JOIN floors f ON u.floor_id = f.id
+      LEFT JOIN blocks b ON u.block_id = b.id
+      WHERE m.society_apartment_id = $1
+        AND m.year = $2
+        AND (m.total_amount - COALESCE(m.amount_paid, 0)) > 0
+    `;
+    const params = [effectiveSocietyId, targetYear];
+    let paramCount = 2;
+
+    if (block_id) {
+      paramCount++;
+      sql += ` AND u.block_id = $${paramCount}`;
+      params.push(block_id);
+    }
+
+    if (floor_id) {
+      paramCount++;
+      sql += ` AND u.floor_id = $${paramCount}`;
+      params.push(floor_id);
+    }
+
+    if (search && String(search).trim() !== '') {
+      paramCount++;
+      const searchPattern = `%${String(search).trim()}%`;
+      sql += ` AND (
+        u.unit_number ILIKE $${paramCount}
+        OR COALESCE((SELECT usr.name FROM users usr WHERE usr.unit_id = u.id AND usr.role IN ('resident', 'union_admin') ORDER BY usr.id ASC LIMIT 1), '') ILIKE $${paramCount}
+        OR NULLIF(TRIM(u.resident_name), '') ILIKE $${paramCount}
+        OR NULLIF(TRIM(u.owner_name), '') ILIKE $${paramCount}
+        OR u.contact_number ILIKE $${paramCount}
+      )`;
+      params.push(searchPattern);
+    }
+
+    sql += `
+      GROUP BY u.id, u.unit_number, u.contact_number, b.name, f.floor_number, u.resident_name, u.owner_name
+      ORDER BY total_amount_due DESC, u.unit_number
+    `;
+
+    const result = await query(sql, params);
+
+    const headers = ['Year', 'Unit', 'Resident', 'Contact', 'Block', 'Floor', 'Total Amount Due'];
+    const escapeCsv = (val) => {
+      if (val == null) return '';
+      const s = String(val);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows = (result.rows || []).map((r) => ([
+      escapeCsv(targetYear),
+      escapeCsv(r.unit_number),
+      escapeCsv(r.resident_name),
+      escapeCsv(r.resident_contact),
+      escapeCsv(r.block_name),
+      escapeCsv(r.floor_number),
+      escapeCsv(r.total_amount_due),
+    ]));
+
+    const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="previous-defaulters-${targetYear}-${effectiveSocietyId}-${Date.now()}.csv"`);
+    res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+  } catch (error) {
+    console.error('Export previous year defaulters CSV error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export previous year defaulters',
+      error: error.message,
+    });
+  }
+};
+
 // Export defaulters as CSV (admin only)
 export const exportDefaulters = async (req, res) => {
   try {

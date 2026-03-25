@@ -6,6 +6,17 @@ export const defaulterApi = {
     return api.get(API_ENDPOINTS.DEFAULTERS, { params })
   },
 
+  getPreviousYear: (params) => {
+    return api.get(API_ENDPOINTS.DEFAULTERS_PREVIOUS_YEARS, { params })
+  },
+
+  exportPreviousYearCsv: (params) => {
+    return api.get(API_ENDPOINTS.DEFAULTERS_PREVIOUS_YEARS_EXPORT, {
+      params,
+      responseType: 'blob',
+    })
+  },
+
   getStatistics: (params) => {
     return api.get(API_ENDPOINTS.DEFAULTERS_STATISTICS, { params })
   },

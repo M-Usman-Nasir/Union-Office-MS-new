@@ -1,4 +1,6 @@
 import { query } from '../config/database.js';
+import * as auditLog from '../services/auditLogService.js';
+import * as activity from '../services/activityService.js';
 
 // Get all finance records
 export const getAll = async (req, res) => {
@@ -15,6 +17,7 @@ export const getAll = async (req, res) => {
       LEFT JOIN employees emp ON f.employee_id = emp.id
       LEFT JOIN users emp_u ON emp.user_id = emp_u.id
       WHERE 1=1
+      AND f.deleted_at IS NULL
     `;
     const params = [];
     let paramCount = 0;
@@ -49,7 +52,7 @@ export const getAll = async (req, res) => {
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM finance WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM finance WHERE deleted_at IS NULL';
     const countParams = [];
     let countParamCount = 0;
 
@@ -108,6 +111,7 @@ export const getSummary = async (req, res) => {
         COUNT(*) as count
       FROM finance
       WHERE 1=1
+      AND deleted_at IS NULL
     `;
     const params = [];
     let paramCount = 0;
@@ -181,7 +185,7 @@ export const getById = async (req, res) => {
        LEFT JOIN users u ON f.added_by = u.id
        LEFT JOIN employees emp ON f.employee_id = emp.id
        LEFT JOIN users emp_u ON emp.user_id = emp_u.id
-       WHERE f.id = $1`,
+       WHERE f.id = $1 AND f.deleted_at IS NULL`,
       [id]
     );
 
@@ -240,6 +244,28 @@ export const create = async (req, res) => {
       ]
     );
 
+    await auditLog.log(req, {
+      action: 'finance.create',
+      resourceType: 'finance',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: {
+        transaction_type,
+        amount,
+        month: month || new Date(transaction_date).getMonth() + 1,
+        year: year || new Date(transaction_date).getFullYear(),
+        status: status || 'paid',
+        employee_id: employee_id || null,
+      },
+    });
+    await activity.track(req, {
+      eventType: 'finance.create',
+      resourceType: 'finance',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: { amount, transaction_type },
+    });
+
     res.status(201).json({
       success: true,
       message: 'Finance record created successfully',
@@ -261,7 +287,7 @@ export const update = async (req, res) => {
     const { id } = req.params;
     const { transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, employee_id } = req.body;
 
-    const existing = await query('SELECT id FROM finance WHERE id = $1', [id]);
+    const existing = await query('SELECT id FROM finance WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -289,6 +315,23 @@ export const update = async (req, res) => {
       [transaction_date, transaction_type, expense_type, income_type, description, amount, payment_mode, remarks, month, year, status, employee_id ?? null, id]
     );
 
+    await auditLog.log(req, {
+      action: 'finance.update',
+      resourceType: 'finance',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: {
+        fields: Object.keys(req.body || {}).filter((k) => req.body[k] !== undefined),
+      },
+    });
+    await activity.track(req, {
+      eventType: 'finance.update',
+      resourceType: 'finance',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}).filter((k) => req.body[k] !== undefined) },
+    });
+
     res.json({
       success: true,
       message: 'Finance record updated successfully',
@@ -309,7 +352,13 @@ export const remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await query('DELETE FROM finance WHERE id = $1 RETURNING id', [id]);
+    const result = await query(
+      `UPDATE finance
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id, society_apartment_id`,
+      [id, req.user?.id || null]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -317,6 +366,21 @@ export const remove = async (req, res) => {
         message: 'Finance record not found',
       });
     }
+
+    await auditLog.log(req, {
+      action: 'finance.delete',
+      resourceType: 'finance',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: {},
+    });
+    await activity.track(req, {
+      eventType: 'finance.delete',
+      resourceType: 'finance',
+      resourceId: id,
+      societyId: result.rows[0]?.society_apartment_id,
+      details: {},
+    });
 
     res.json({
       success: true,
@@ -355,7 +419,7 @@ export const getMonthlyReport = async (req, res) => {
         COUNT(CASE WHEN transaction_type = 'income' THEN 1 END) as income_count,
         COUNT(CASE WHEN transaction_type = 'expense' THEN 1 END) as expense_count
       FROM finance
-      WHERE month = $1 AND year = $2 AND society_apartment_id = $3
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND deleted_at IS NULL
     `, [month, year, societyId]);
 
     // Get breakdown by income type
@@ -365,7 +429,7 @@ export const getMonthlyReport = async (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM finance
-      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'income'
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'income' AND deleted_at IS NULL
       GROUP BY income_type
       ORDER BY total DESC
     `, [month, year, societyId]);
@@ -377,7 +441,7 @@ export const getMonthlyReport = async (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM finance
-      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'expense'
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'expense' AND deleted_at IS NULL
       GROUP BY expense_type
       ORDER BY total DESC
     `, [month, year, societyId]);
@@ -441,7 +505,7 @@ export const getYearlyReport = async (req, res) => {
         SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) - 
         SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as net_income
       FROM finance
-      WHERE year = $1 AND society_apartment_id = $2
+      WHERE year = $1 AND society_apartment_id = $2 AND deleted_at IS NULL
       GROUP BY month
       ORDER BY month
     `, [year, societyId]);
@@ -456,7 +520,7 @@ export const getYearlyReport = async (req, res) => {
         COUNT(CASE WHEN transaction_type = 'income' THEN 1 END) as income_count,
         COUNT(CASE WHEN transaction_type = 'expense' THEN 1 END) as expense_count
       FROM finance
-      WHERE year = $1 AND society_apartment_id = $2
+      WHERE year = $1 AND society_apartment_id = $2 AND deleted_at IS NULL
     `, [year, societyId]);
 
     // Get breakdown by income type
@@ -466,7 +530,7 @@ export const getYearlyReport = async (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM finance
-      WHERE year = $1 AND society_apartment_id = $2 AND transaction_type = 'income'
+      WHERE year = $1 AND society_apartment_id = $2 AND transaction_type = 'income' AND deleted_at IS NULL
       GROUP BY income_type
       ORDER BY total DESC
     `, [year, societyId]);
@@ -478,7 +542,7 @@ export const getYearlyReport = async (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM finance
-      WHERE year = $1 AND society_apartment_id = $2 AND transaction_type = 'expense'
+      WHERE year = $1 AND society_apartment_id = $2 AND transaction_type = 'expense' AND deleted_at IS NULL
       GROUP BY expense_type
       ORDER BY total DESC
     `, [year, societyId]);
@@ -542,7 +606,7 @@ export const getPublicSummary = async (req, res) => {
         SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) - 
         SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as net_income
       FROM finance
-      WHERE month = $1 AND year = $2 AND society_apartment_id = $3
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND deleted_at IS NULL
     `, [month, year, societyId]);
 
     const incomeBreakdown = await query(
@@ -552,7 +616,7 @@ export const getPublicSummary = async (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM finance
-      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'income'
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'income' AND deleted_at IS NULL
       GROUP BY income_type
       ORDER BY total DESC
     `,
@@ -566,7 +630,7 @@ export const getPublicSummary = async (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM finance
-      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'expense'
+      WHERE month = $1 AND year = $2 AND society_apartment_id = $3 AND transaction_type = 'expense' AND deleted_at IS NULL
       GROUP BY expense_type
       ORDER BY total DESC
     `,

@@ -113,6 +113,17 @@ export const ensureSchemaPatches = async () => {
   } catch (e) {
     console.warn('⚠️  Schema patch (must_change_password) skipped:', e.message);
   }
+  try {
+    await pool.query(`
+      ALTER TABLE complaints
+      ADD COLUMN IF NOT EXISTS feedback_rating INTEGER,
+      ADD COLUMN IF NOT EXISTS feedback_comment TEXT,
+      ADD COLUMN IF NOT EXISTS feedback_submitted_at TIMESTAMP;
+    `);
+    console.log('✅ Schema patch: complaints.feedback_*');
+  } catch (e) {
+    console.warn('⚠️  Schema patch (complaints feedback) skipped:', e.message);
+  }
 };
 
 // Get all tables

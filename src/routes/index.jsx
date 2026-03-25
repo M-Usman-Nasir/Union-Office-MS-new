@@ -6,6 +6,8 @@ import { ROLES, ROUTES } from '@/utils/constants'
 // Import pages
 import LoginPage from '@/pages/auth/LoginPage'
 import ForceChangePasswordPage from '@/pages/auth/ForceChangePasswordPage'
+import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage'
+import ResetPasswordPage from '@/pages/auth/ResetPasswordPage'
 import SuperAdminDashboard from '@/pages/super-admin/Dashboard'
 import Leads from '@/pages/super-admin/Leads'
 import Blocks from '@/pages/super-admin/Blocks'
@@ -29,6 +31,7 @@ import Maintenance from '@/pages/admin/Maintenance'
 import Finance from '@/pages/admin/Finance'
 import Complaints from '@/pages/admin/Complaints'
 import Defaulters from '@/pages/admin/Defaulters'
+import PreviousDefaulters from '@/pages/admin/PreviousDefaulters'
 import Announcements from '@/pages/admin/Announcements'
 import Settings from '@/pages/admin/Settings'
 import AdminProfile from '@/pages/admin/Profile'
@@ -52,6 +55,8 @@ export const AppRoutes = () => {
     <Routes>
       {/* Public Routes */}
       <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+      <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
+      <Route path={ROUTES.RESET_PASSWORD} element={<ResetPasswordPage />} />
       <Route
         path={ROUTES.FORCE_CHANGE_PASSWORD}
         element={
@@ -104,6 +109,7 @@ export const AppRoutes = () => {
                 <Route path="maintenance" element={<Maintenance />} />
                 <Route path="finance" element={<Finance />} />
                 <Route path="defaulters" element={<Defaulters />} />
+                <Route path="previous-defaulters" element={<PreviousDefaulters />} />
                 <Route path="complaints" element={<Complaints />} />
                 <Route path="announcements" element={<Announcements />} />
                 <Route path="messages" element={<Messages />} />

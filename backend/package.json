@@ -16,7 +16,10 @@
     "migrate": "node scripts/runMigrations.js",
     "migrate:lastlogin": "node scripts/addLastLoginColumn.js",
     "seed": "node scripts/seedDatabase.js",
-    "seed:residents": "node scripts/seedResidentsForSociety.js"
+    "seed:residents": "node scripts/seedResidentsForSociety.js",
+    "test:whatsapp-adapter": "node scripts/testWhatsAppAdapter.js",
+    "backup:db": "node scripts/backupDatabase.js",
+    "restore:db": "node scripts/restoreDatabase.js"
   },
   "keywords": [
     "express",
@@ -26,12 +29,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@sentry/node": "^10.45.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "csv-parse": "^5.5.2",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.3.1",
     "express-validator": "^7.0.1",
     "fast-xml-parser": "^4.3.2",
     "jsonwebtoken": "^9.0.2",

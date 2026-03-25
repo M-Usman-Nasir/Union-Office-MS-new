@@ -22,6 +22,7 @@ import {
   ListItemText,
   Card,
   CardContent,
+  Rating,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
@@ -71,6 +72,13 @@ const ResidentComplaints = () => {
   const [filterType, setFilterType] = useState('my') // 'all', 'my', 'public' — default to My Complaints
   const [escalateDialog, setEscalateDialog] = useState({ open: false, complaint: null, reason: '' })
   const [escalating, setEscalating] = useState(false)
+  const [feedbackDialog, setFeedbackDialog] = useState({
+    open: false,
+    complaint: null,
+    rating: 5,
+    comment: '',
+  })
+  const [submittingFeedback, setSubmittingFeedback] = useState(false)
   const societyId = user?.society_apartment_id
 
   // Check visibility settings
@@ -131,6 +139,42 @@ const ResidentComplaints = () => {
       toast.error(e.response?.data?.message || 'Escalation failed')
     } finally {
       setEscalating(false)
+    }
+  }
+
+  const handleOpenFeedback = (complaint) => {
+    setFeedbackDialog({
+      open: true,
+      complaint,
+      rating: Number(complaint?.feedback_rating) || 5,
+      comment: complaint?.feedback_comment || '',
+    })
+  }
+
+  const handleCloseFeedback = () => {
+    setFeedbackDialog({
+      open: false,
+      complaint: null,
+      rating: 5,
+      comment: '',
+    })
+  }
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackDialog.complaint?.id) return
+    setSubmittingFeedback(true)
+    try {
+      await complaintApi.submitFeedback(feedbackDialog.complaint.id, {
+        feedback_rating: feedbackDialog.rating,
+        feedback_comment: feedbackDialog.comment?.trim() || null,
+      })
+      toast.success('Feedback submitted. Thank you!')
+      mutate()
+      handleCloseFeedback()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to submit feedback')
+    } finally {
+      setSubmittingFeedback(false)
     }
   }
 
@@ -268,6 +312,34 @@ const ResidentComplaints = () => {
         ) : row.escalated_at ? (
           <Chip size="small" label="Escalated" color="info" />
         ) : null,
+    },
+    {
+      id: 'feedback',
+      label: 'Feedback',
+      align: 'right',
+      render: (row) => {
+        const isOwnComplaint = Number(row.submitted_by) === Number(user?.id)
+        const isResolved = row.status === 'resolved' || row.status === 'closed'
+        if (!isOwnComplaint || !isResolved) return '—'
+
+        if (row.feedback_rating) {
+          return (
+            <Chip
+              size="small"
+              color="success"
+              variant="outlined"
+              label={`Rated ${row.feedback_rating}/5`}
+              onClick={() => handleOpenFeedback(row)}
+            />
+          )
+        }
+
+        return (
+          <Button size="small" variant="outlined" onClick={() => handleOpenFeedback(row)}>
+            Add feedback
+          </Button>
+        )
+      },
     },
   ]
 
@@ -569,6 +641,50 @@ const ResidentComplaints = () => {
           <Button onClick={closeEscalateDialog}>Cancel</Button>
           <Button variant="contained" color="warning" onClick={handleEscalate} disabled={escalating}>
             {escalating ? 'Escalating…' : 'Escalate'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={feedbackDialog.open} onClose={handleCloseFeedback} maxWidth="sm" fullWidth>
+        <DialogTitle>Rate resolution</DialogTitle>
+        <DialogContent>
+          {feedbackDialog.complaint && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Complaint: {feedbackDialog.complaint.title || feedbackDialog.complaint.id}
+            </Typography>
+          )}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              Your rating
+            </Typography>
+            <Rating
+              name="complaint-feedback-rating"
+              value={feedbackDialog.rating}
+              onChange={(_, value) =>
+                setFeedbackDialog((prev) => ({ ...prev, rating: value || 1 }))
+              }
+            />
+          </Box>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Comment (optional)"
+            value={feedbackDialog.comment}
+            onChange={(e) =>
+              setFeedbackDialog((prev) => ({ ...prev, comment: e.target.value }))
+            }
+            placeholder="How satisfied are you with the resolution?"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseFeedback}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitFeedback}
+            disabled={submittingFeedback}
+          >
+            {submittingFeedback ? 'Submitting...' : 'Submit feedback'}
           </Button>
         </DialogActions>
       </Dialog>

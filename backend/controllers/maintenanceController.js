@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import { runSyncForSocieties } from './defaulterController.js';
+import * as activity from '../services/activityService.js';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -51,7 +52,7 @@ export const getAll = async (req, res) => {
       FROM maintenance m
       LEFT JOIN units u ON m.unit_id = u.id
       LEFT JOIN apartments s ON m.society_apartment_id = s.id
-      WHERE 1=1
+      WHERE 1=1 AND m.deleted_at IS NULL
     `;
     const params = [];
     let paramCount = 0;
@@ -92,7 +93,7 @@ export const getAll = async (req, res) => {
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM maintenance WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM maintenance WHERE deleted_at IS NULL';
     const countParams = [];
     let countParamCount = 0;
 
@@ -154,7 +155,7 @@ export const getById = async (req, res) => {
        FROM maintenance m
        LEFT JOIN units u ON m.unit_id = u.id
        LEFT JOIN apartments s ON m.society_apartment_id = s.id
-       WHERE m.id = $1`,
+       WHERE m.id = $1 AND m.deleted_at IS NULL`,
       [id]
     );
 
@@ -218,6 +219,13 @@ export const create = async (req, res) => {
       message: 'Maintenance record created successfully',
       data: result.rows[0],
     });
+    await activity.track(req, {
+      eventType: 'maintenance.create',
+      resourceType: 'maintenance',
+      resourceId: result.rows[0]?.id,
+      societyId: society_apartment_id,
+      details: { month, year },
+    });
   } catch (error) {
     console.error('Create maintenance error:', error);
     res.status(500).json({
@@ -251,7 +259,7 @@ export const createForAllUnits = async (req, res) => {
 
     for (const unit of unitsResult.rows) {
       const existing = await query(
-        'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3',
+        'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL',
         [unit.id, month, year]
       );
       if (existing.rows.length > 0) {
@@ -272,6 +280,12 @@ export const createForAllUnits = async (req, res) => {
       message: `Maintenance created for all units. ${created} created, ${skipped} skipped (already exist).`,
       data: { created, skipped, total: unitsResult.rows.length },
     });
+    await activity.track(req, {
+      eventType: 'maintenance.bulk_create',
+      resourceType: 'maintenance',
+      societyId,
+      details: { month, year, created, skipped },
+    });
   } catch (error) {
     console.error('Create for all units error:', error);
     res.status(500).json({
@@ -288,7 +302,7 @@ export const update = async (req, res) => {
     const { id } = req.params;
     const { base_amount, total_amount, status, amount_paid, due_date } = req.body;
 
-    const existing = await query('SELECT id, society_apartment_id FROM maintenance WHERE id = $1', [id]);
+    const existing = await query('SELECT id, society_apartment_id FROM maintenance WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -333,6 +347,13 @@ export const update = async (req, res) => {
       success: true,
       message: 'Maintenance record updated successfully',
       data: result.rows[0],
+    });
+    await activity.track(req, {
+      eventType: 'maintenance.update',
+      resourceType: 'maintenance',
+      resourceId: id,
+      societyId: existing.rows[0]?.society_apartment_id,
+      details: { fields: Object.keys(req.body || {}) },
     });
   } catch (error) {
     console.error('Update maintenance error:', error);
@@ -393,7 +414,7 @@ export const recordPayment = async (req, res) => {
       });
     }
 
-    const existing = await query('SELECT * FROM maintenance WHERE id = $1', [id]);
+    const existing = await query('SELECT * FROM maintenance WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -466,6 +487,13 @@ export const recordPayment = async (req, res) => {
       data: result.rows[0],
       finance_income_created: financeCreated,
     });
+    await activity.track(req, {
+      eventType: 'maintenance.record_payment',
+      resourceType: 'maintenance',
+      resourceId: id,
+      societyId,
+      details: { amount_paid: paymentAmount, finance_income_created: financeCreated },
+    });
   } catch (error) {
     console.error('Record payment error:', error);
     res.status(500).json({
@@ -481,7 +509,13 @@ export const remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await query('DELETE FROM maintenance WHERE id = $1 RETURNING id', [id]);
+    const result = await query(
+      `UPDATE maintenance
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id`,
+      [id, req.user?.id || null]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -493,6 +527,12 @@ export const remove = async (req, res) => {
     res.json({
       success: true,
       message: 'Maintenance record deleted successfully',
+    });
+    await activity.track(req, {
+      eventType: 'maintenance.delete',
+      resourceType: 'maintenance',
+      resourceId: id,
+      details: {},
     });
   } catch (error) {
     console.error('Delete maintenance error:', error);
@@ -529,8 +569,11 @@ export const deleteByYear = async (req, res) => {
     }
 
     const result = await query(
-      'DELETE FROM maintenance WHERE society_apartment_id = $1 AND year = $2 RETURNING id',
-      [societyId, year]
+      `UPDATE maintenance
+       SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE society_apartment_id = $1 AND year = $2 AND deleted_at IS NULL
+       RETURNING id`,
+      [societyId, year, req.user?.id || null]
     );
     const deleted = result.rows.length;
 
@@ -538,6 +581,12 @@ export const deleteByYear = async (req, res) => {
       success: true,
       message: `Deleted ${deleted} maintenance record(s) for year ${year}.`,
       data: { deleted, year },
+    });
+    await activity.track(req, {
+      eventType: 'maintenance.delete_year',
+      resourceType: 'maintenance',
+      societyId,
+      details: { year, deleted },
     });
   } catch (error) {
     console.error('Delete by year error:', error);
@@ -572,7 +621,7 @@ export const submitPaymentProof = async (req, res) => {
     }
 
     const maintenanceResult = await query(
-      'SELECT id, unit_id, society_apartment_id FROM maintenance WHERE id = $1',
+      'SELECT id, unit_id, society_apartment_id FROM maintenance WHERE id = $1 AND deleted_at IS NULL',
       [parseInt(id)]
     );
     if (maintenanceResult.rows.length === 0) {
@@ -589,32 +638,24 @@ export const submitPaymentProof = async (req, res) => {
       });
     }
 
-    const existingPending = await query(
-      `SELECT id FROM maintenance_payment_requests 
-       WHERE maintenance_id = $1 AND status = 'pending' LIMIT 1`,
-      [id]
-    );
-    if (existingPending.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'A payment proof is already pending for this record. Wait for admin to review.',
-      });
-    }
-
-    const proofPath = `/uploads/maintenance-payment-proofs/${req.file.filename}`;
-    const note = (req.body && req.body.note) ? String(req.body.note).trim() : null;
-
-    const insertResult = await query(
-      `INSERT INTO maintenance_payment_requests (maintenance_id, submitted_by, proof_path, note, status)
-       VALUES ($1, $2, $3, $4, 'pending')
-       RETURNING *`,
-      [parseInt(id), userId, proofPath, note]
-    );
+    const insertResult = await createMaintenancePaymentRequest({
+      maintenanceId: parseInt(id),
+      submittedBy: userId,
+      proofPath: `/uploads/maintenance-payment-proofs/${req.file.filename}`,
+      note: (req.body && req.body.note) ? String(req.body.note).trim() : null,
+    });
 
     res.status(201).json({
       success: true,
       message: 'Payment proof submitted. It will be reviewed by the office.',
       data: insertResult.rows[0],
+    });
+    await activity.track(req, {
+      eventType: 'maintenance.payment_proof_submit',
+      resourceType: 'maintenance',
+      resourceId: id,
+      societyId: maintenance.society_apartment_id,
+      details: {},
     });
   } catch (error) {
     console.error('Submit payment proof error:', error);
@@ -625,6 +666,27 @@ export const submitPaymentProof = async (req, res) => {
     });
   }
 };
+
+export async function createMaintenancePaymentRequest({ maintenanceId, submittedBy, proofPath, note = null }) {
+  const existingPending = await query(
+    `SELECT id FROM maintenance_payment_requests 
+     WHERE maintenance_id = $1 AND status = 'pending' LIMIT 1`,
+    [maintenanceId]
+  );
+  if (existingPending.rows.length > 0) {
+    const error = new Error('A payment proof is already pending for this record. Wait for admin to review.');
+    error.status = 400;
+    throw error;
+  }
+
+  const insertResult = await query(
+    `INSERT INTO maintenance_payment_requests (maintenance_id, submitted_by, proof_path, note, status)
+     VALUES ($1, $2, $3, $4, 'pending')
+     RETURNING *`,
+    [maintenanceId, submittedBy, proofPath, note]
+  );
+  return insertResult.rows[0];
+}
 
 // Resident: get my payment requests (for showing "Pending verification" on resident maintenance page)
 export const getMyPaymentRequests = async (req, res) => {
@@ -668,7 +730,7 @@ export const getPaymentRequests = async (req, res) => {
              s.name AS society_name,
              submitter.name AS submitted_by_name, submitter.email AS submitted_by_email
       FROM maintenance_payment_requests r
-      JOIN maintenance m ON m.id = r.maintenance_id
+      JOIN maintenance m ON m.id = r.maintenance_id AND m.deleted_at IS NULL
       LEFT JOIN units u ON u.id = m.unit_id
       LEFT JOIN apartments s ON s.id = m.society_apartment_id
       LEFT JOIN users submitter ON submitter.id = r.submitted_by
@@ -717,7 +779,7 @@ export const approvePaymentRequest = async (req, res) => {
               m.total_amount, m.amount_paid, m.society_apartment_id, m.month, m.year,
               u.unit_number
        FROM maintenance_payment_requests r
-       JOIN maintenance m ON m.id = r.maintenance_id
+       JOIN maintenance m ON m.id = r.maintenance_id AND m.deleted_at IS NULL
        LEFT JOIN units u ON u.id = m.unit_id
        WHERE r.id = $1`,
       [requestId]
@@ -789,6 +851,13 @@ export const approvePaymentRequest = async (req, res) => {
       message: 'Payment approved and recorded successfully',
       data: { maintenance_id: row.maintenance_id, finance_income_created: financeCreated },
     });
+    await activity.track(req, {
+      eventType: 'maintenance.payment_request_approve',
+      resourceType: 'maintenance',
+      resourceId: row.maintenance_id,
+      societyId: societyId,
+      details: { request_id: requestId },
+    });
   } catch (error) {
     console.error('Approve payment request error:', error);
     res.status(500).json({
@@ -834,6 +903,12 @@ export const rejectPaymentRequest = async (req, res) => {
       success: true,
       message: 'Payment proof rejected',
       data: { id: requestId },
+    });
+    await activity.track(req, {
+      eventType: 'maintenance.payment_request_reject',
+      resourceType: 'maintenance_payment_request',
+      resourceId: requestId,
+      details: {},
     });
   } catch (error) {
     console.error('Reject payment request error:', error);
@@ -904,7 +979,7 @@ export const getYearlyLedger = async (req, res) => {
       FROM units u
       LEFT JOIN floors f ON u.floor_id = f.id
       LEFT JOIN blocks b ON u.block_id = b.id
-      LEFT JOIN maintenance m ON m.unit_id = u.id AND m.year = $1
+      LEFT JOIN maintenance m ON m.unit_id = u.id AND m.year = $1 AND m.deleted_at IS NULL
       WHERE u.society_apartment_id = $2
       GROUP BY u.id, u.unit_number, u.resident_name, u.owner_name, f.floor_number, u.floor_id, u.block_id, b.name
       ORDER BY b.name NULLS LAST, f.floor_number NULLS LAST, u.unit_number
@@ -973,7 +1048,7 @@ export const applyBaseForYear = async (req, res) => {
     for (const unit of unitsResult.rows) {
       for (let month = 1; month <= lastMonthToCreate; month++) {
         const existing = await query(
-          'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3',
+          'SELECT id FROM maintenance WHERE unit_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL',
           [unit.id, month, year]
         );
         if (existing.rows.length > 0) continue;
