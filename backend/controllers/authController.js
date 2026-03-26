@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import process from 'node:process';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
@@ -180,7 +181,8 @@ export const login = async (req, res) => {
 
     // Return user data (without password) and access token.
     // refreshToken is also returned so mobile clients can store it and send in body for /auth/refresh (cookies not reliable in RN).
-    const { password: _, ...userWithoutPassword } = user;
+    const userWithoutPassword = { ...user };
+    delete userWithoutPassword.password;
 
     let userForClient = userWithoutPassword;
     try {

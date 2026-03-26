@@ -37,6 +37,22 @@ import { defaulterApi } from '@/api/defaulterApi'
 import { settingsApi } from '@/api/settingsApi'
 import { ROUTES } from '@/utils/constants'
 import { propertyApi } from '@/api/propertyApi'
+import { alpha } from '@mui/material/styles'
+
+const glassCardSx = {
+  borderRadius: 3,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
+  boxShadow: (t) => `0 10px 24px ${alpha(t.palette.common.black, 0.08)}`,
+  transition: 'transform 220ms ease, box-shadow 220ms ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: (t) => `0 14px 30px ${alpha(t.palette.primary.main, 0.14)}`,
+  },
+}
 
 const ResidentDashboard = () => {
   const { user } = useAuth()
@@ -142,12 +158,29 @@ const ResidentDashboard = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container
+      maxWidth="lg"
+      sx={{
+        py: 4,
+        px: { xs: 1.5, sm: 2.5, md: 3 },
+        '& .MuiCardContent-root .MuiTypography-h6': {
+          fontWeight: 700,
+          lineHeight: 1.2,
+        },
+        '& .MuiCardContent-root .MuiTypography-subtitle2': {
+          fontWeight: 700,
+        },
+        '& .MuiCardContent-root .MuiTypography-caption': {
+          fontWeight: 600,
+          letterSpacing: 0.2,
+        },
+      }}
+    >
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
           Resident Dashboard
         </Typography>
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 600 }}>
           Welcome, {user?.name || user?.email}
         </Typography>
         {(unit || user?.created_at) && (
@@ -175,7 +208,7 @@ const ResidentDashboard = () => {
           {/* Overview Cards */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
                   <PaymentIcon sx={{ color: 'primary.main', mt: 0.25 }} fontSize="small" />
                   <Box>
@@ -198,7 +231,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
                   <ReportProblemOutlinedIcon sx={{ color: 'warning.main', mt: 0.25 }} fontSize="small" />
                   <Box>
@@ -211,7 +244,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
                   <HourglassEmptyIcon sx={{ color: 'info.main', mt: 0.25 }} fontSize="small" />
                   <Box>
@@ -225,7 +258,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
                   <HomeRepairServiceIcon sx={{ color: 'primary.main', mt: 0.25 }} fontSize="small" />
                   <Box>
@@ -239,7 +272,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
                   <PendingActionsIcon sx={{ color: 'warning.main', mt: 0.25 }} fontSize="small" />
                   <Box>
@@ -253,7 +286,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={4} lg={2} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 118 }}>
                 <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1 }}>
                   <ReceiptLongIcon sx={{ color: 'success.main', mt: 0.25 }} fontSize="small" />
                   <Box>
@@ -279,7 +312,7 @@ const ResidentDashboard = () => {
           {/* Payment History link card */}
           <Grid container spacing={2} sx={{ mb: 4 }}>
             <Grid item xs={12}>
-              <Card>
+              <Card sx={glassCardSx}>
                 <CardActionArea
                   onClick={() => navigate(ROUTES.RESIDENT_FINANCIAL_SUMMARY)}
                   sx={{
@@ -308,7 +341,7 @@ const ResidentDashboard = () => {
               <Typography variant="h6" gutterBottom>Quick Actions</Typography>
             </Grid>
             <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', minHeight: 88 }}>
                 <CardActionArea
                   onClick={() => navigate(ROUTES.RESIDENT_COMPLAINTS, { state: { openSubmit: true } })}
                   sx={{
@@ -326,7 +359,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', minHeight: 88 }}>
                 <CardActionArea
                   onClick={() => navigate(ROUTES.RESIDENT_DASHBOARD + '#announcements')}
                   sx={{
@@ -344,7 +377,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', minHeight: 88 }}>
                 <CardActionArea
                   onClick={() => navigate(ROUTES.RESIDENT_MAINTENANCE)}
                   sx={{
@@ -362,7 +395,7 @@ const ResidentDashboard = () => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', minHeight: 88 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', minHeight: 88 }}>
                 <CardActionArea
                   onClick={() => navigate(ROUTES.RESIDENT_UNION_MEMBERS)}
                   sx={{
@@ -384,7 +417,7 @@ const ResidentDashboard = () => {
           {/* My Complaints */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" gutterBottom>
                     My Complaints
@@ -442,7 +475,7 @@ const ResidentDashboard = () => {
 
             {/* My Maintenance */}
             <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+              <Card sx={{ ...glassCardSx, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" gutterBottom>
                     My Maintenance
@@ -508,7 +541,7 @@ const ResidentDashboard = () => {
 
           {/* Announcements */}
           <Grid item xs={12} id="announcements">
-            <Card>
+            <Card sx={glassCardSx}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   Recent Announcements
@@ -521,7 +554,7 @@ const ResidentDashboard = () => {
                   <Grid container spacing={2}>
                     {announcementsData?.data?.slice(0, 3).map((announcement) => (
                       <Grid item xs={12} md={4} key={announcement.id}>
-                        <Card variant="outlined">
+                        <Card variant="outlined" sx={glassCardSx}>
                           <CardContent>
                               <Box display="flex" justifyContent="space-between" alignItems="start" mb={1}>
                                 <Typography variant="subtitle1" fontWeight="bold">

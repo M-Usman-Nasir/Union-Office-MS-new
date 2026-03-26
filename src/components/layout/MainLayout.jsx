@@ -43,7 +43,7 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import SearchIcon from '@mui/icons-material/Search'
-import { useTheme } from '@mui/material/styles'
+import { useTheme, alpha } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme as useAppTheme } from '@/contexts/ThemeContext'
@@ -497,11 +497,16 @@ const MainLayout = ({ children }) => {
         sx={{
           width: { sm: `calc(100% - ${effectiveDrawerWidth}px)` },
           ml: { sm: `${effectiveDrawerWidth}px` },
-          background: 'linear-gradient(90deg, #0c9acc 0%, #1187c8 42%, #1c6fc0 100%)',
+          background: `linear-gradient(90deg,
+            ${theme.palette.primary.main} 0%,
+            ${theme.palette.primary.dark} 52%,
+            ${theme.palette.secondary.main} 100%)`,
           color: '#fff',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
+          borderBottom: `1px solid ${alpha('#fff', 0.24)}`,
           boxShadow: (t) => (t.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(99, 102, 241, 0.08)'),
           transition: 'box-shadow 0.3s ease',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
         }}
       >
         <Toolbar>
@@ -713,11 +718,41 @@ const MainLayout = ({ children }) => {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.enteringScreen,
             }),
+          position: 'relative',
+          overflow: 'hidden',
+          background: (t) => `linear-gradient(135deg,
+            ${alpha(t.palette.primary.main, 0.05)} 0%,
+            ${t.palette.background.default} 45%,
+            ${alpha(t.palette.secondary.main, 0.04)} 100%)`,
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: -80,
+            right: -80,
+            width: 240,
+            height: 240,
+            borderRadius: '50%',
+            bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
+            pointerEvents: 'none',
+          },
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            bottom: -120,
+            left: -120,
+            width: 300,
+            height: 300,
+            borderRadius: '50%',
+            bgcolor: (t) => alpha(t.palette.secondary.main, 0.08),
+            pointerEvents: 'none',
+          },
         }}
       >
         <Toolbar />
-        {isResidentWithoutSociety ? <ResidentPendingAssignment /> : children}
-        <PushNotificationEnabler />
+        <Box sx={{ position: 'relative', zIndex: 1 }}>
+          {isResidentWithoutSociety ? <ResidentPendingAssignment /> : children}
+          <PushNotificationEnabler />
+        </Box>
       </Box>
     </Box>
   )

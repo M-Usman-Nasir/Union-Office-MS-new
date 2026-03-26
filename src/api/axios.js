@@ -72,7 +72,7 @@ api.interceptors.response.use(
         if (refreshError.response?.status === 401) {
           localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
           localStorage.removeItem(STORAGE_KEYS.USER)
-          window.location.href = '/login'
+          window.location.href = `${ROUTES.LOGIN}?reason=session-expired`
           toast.error('Session expired. Please login again.')
           return Promise.reject(refreshError)
         }

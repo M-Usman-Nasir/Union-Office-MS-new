@@ -29,6 +29,24 @@ import PieChart from '@/components/charts/PieChart'
 import BarChart from '@/components/charts/BarChart'
 import { ROUTES } from '@/utils/constants'
 import dayjs from 'dayjs'
+import { alpha, keyframes } from '@mui/material/styles'
+
+const riseIn = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+`
+
+const classicTableHeadSx = {
+  bgcolor: (theme) =>
+    theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'grey.100',
+  fontWeight: 700,
+  fontSize: '0.68rem',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'text.secondary',
+  borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
+  py: 1.25,
+}
 
 const subscriptionStatusColor = (status) => {
   switch (status) {
@@ -86,7 +104,27 @@ const SuperAdminDashboard = () => {
     .map((s) => ({ category: s.name || '—', value: Number(s.total_units) || 0 }))
 
   return (
-    <Container maxWidth={false} disableGutters sx={{ py: 2 }}>
+    <Container
+      maxWidth={false}
+      disableGutters
+      sx={{
+        py: 2,
+        px: { xs: 1.5, sm: 2.5, md: 3 },
+        animation: `${riseIn} 420ms ease-out`,
+        '& .MuiCardContent-root .MuiTypography-h4': {
+          fontWeight: 700,
+          lineHeight: 1.15,
+        },
+        '& .MuiCardContent-root .MuiTypography-h6': {
+          fontWeight: 700,
+          letterSpacing: 0.2,
+        },
+        '& .MuiCardContent-root .MuiTypography-caption': {
+          fontWeight: 600,
+          letterSpacing: 0.2,
+        },
+      }}
+    >
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'baseline', gap: 2, flexWrap: 'wrap', rowGap: 0.5 }}>
 
         <Typography component="span" variant="body1" color="text.secondary" sx={{ mx: 0.5 }}>
@@ -109,7 +147,7 @@ const SuperAdminDashboard = () => {
         >
           {user?.name || user?.email}
         </Typography>
-        <Typography component="span" variant="caption" color="text.secondary">
+        <Typography component="span" variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
           {dayjs().format('dddd, D MMMM YYYY')}
         </Typography>
       </Box>
@@ -119,9 +157,24 @@ const SuperAdminDashboard = () => {
           <CircularProgress />
         </Box>
       ) : (
-        <Grid container spacing={4}>
+        <Grid container spacing={3}>
           <Grid item xs={12} sm={6} md={3}>
-            <Card>
+            <Card
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.78),
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: (t) => `0 14px 30px ${alpha(t.palette.common.black, 0.08)}`,
+                transition: 'transform 220ms ease, box-shadow 220ms ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: (t) => `0 18px 36px ${alpha(t.palette.primary.main, 0.16)}`,
+                },
+              }}
+            >
               <CardContent>
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Box>
@@ -139,7 +192,22 @@ const SuperAdminDashboard = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Card>
+            <Card
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.78),
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: (t) => `0 14px 30px ${alpha(t.palette.common.black, 0.08)}`,
+                transition: 'transform 220ms ease, box-shadow 220ms ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: (t) => `0 18px 36px ${alpha(t.palette.success.main, 0.16)}`,
+                },
+              }}
+            >
               <CardContent>
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Box>
@@ -157,7 +225,22 @@ const SuperAdminDashboard = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Card>
+            <Card
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.78),
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: (t) => `0 14px 30px ${alpha(t.palette.common.black, 0.08)}`,
+                transition: 'transform 220ms ease, box-shadow 220ms ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: (t) => `0 18px 36px ${alpha(t.palette.warning.main, 0.18)}`,
+                },
+              }}
+            >
               <CardContent>
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Box>
@@ -175,7 +258,22 @@ const SuperAdminDashboard = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Card>
+            <Card
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.78),
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: (t) => `0 14px 30px ${alpha(t.palette.common.black, 0.08)}`,
+                transition: 'transform 220ms ease, box-shadow 220ms ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: (t) => `0 18px 36px ${alpha(t.palette.primary.main, 0.16)}`,
+                },
+              }}
+            >
               <CardContent>
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Box>
@@ -193,7 +291,17 @@ const SuperAdminDashboard = () => {
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
+            <Card
+              sx={{
+                height: '100%',
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+              }}
+            >
               <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                   <Typography variant="h6">
@@ -216,15 +324,21 @@ const SuperAdminDashboard = () => {
                   <TableContainer
                     component={Paper}
                     variant="outlined"
-                    sx={{ maxHeight: 320, overflowX: 'hidden' }}
+                    sx={{
+                      maxHeight: 320,
+                      overflowX: 'hidden',
+                      borderRadius: 2,
+                      borderColor: 'divider',
+                      boxShadow: (t) => `0 8px 22px ${alpha(t.palette.common.black, 0.07)}`,
+                    }}
                   >
                     <Table size="small" stickyHeader>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>Name</TableCell>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>Apartment</TableCell>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>Status</TableCell>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>Next Billing</TableCell>
+                          <TableCell sx={classicTableHeadSx}>Name</TableCell>
+                          <TableCell sx={classicTableHeadSx}>Apartment</TableCell>
+                          <TableCell sx={classicTableHeadSx}>Status</TableCell>
+                          <TableCell sx={classicTableHeadSx}>Next Billing</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -240,6 +354,12 @@ const SuperAdminDashboard = () => {
                                     : 'rgba(0,0,0,0.02)'
                                   : 'transparent',
                               '&:not(:last-child) td': { borderBottom: 1, borderColor: 'divider' },
+                              '&:hover': {
+                                bgcolor: (theme) =>
+                                  theme.palette.mode === 'dark'
+                                    ? 'rgba(59,130,246,0.11)'
+                                    : 'rgba(59,130,246,0.07)',
+                              },
                             }}
                           >
                             <TableCell sx={{ py: 1.25 }}>{row.name || '—'}</TableCell>
@@ -267,7 +387,17 @@ const SuperAdminDashboard = () => {
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
+            <Card
+              sx={{
+                height: '100%',
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+              }}
+            >
               <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                   <Typography variant="h6">
@@ -287,13 +417,22 @@ const SuperAdminDashboard = () => {
                     No clients yet. Create apartments to get started.
                   </Typography>
                 ) : (
-                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320 }}>
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{
+                      maxHeight: 320,
+                      borderRadius: 2,
+                      borderColor: 'divider',
+                      boxShadow: (t) => `0 8px 22px ${alpha(t.palette.common.black, 0.07)}`,
+                    }}
+                  >
                     <Table size="small" stickyHeader>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>Name</TableCell>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>City</TableCell>
-                          <TableCell sx={{ fontWeight: 600, py: 1.5 }}>Units</TableCell>
+                          <TableCell sx={classicTableHeadSx}>Name</TableCell>
+                          <TableCell sx={classicTableHeadSx}>City</TableCell>
+                          <TableCell sx={classicTableHeadSx}>Units</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -309,6 +448,12 @@ const SuperAdminDashboard = () => {
                                     : 'rgba(0,0,0,0.02)'
                                   : 'transparent',
                               '&:not(:last-child) td': { borderBottom: 1, borderColor: 'divider' },
+                              '&:hover': {
+                                bgcolor: (theme) =>
+                                  theme.palette.mode === 'dark'
+                                    ? 'rgba(59,130,246,0.11)'
+                                    : 'rgba(59,130,246,0.07)',
+                              },
                             }}
                           >
                             <TableCell sx={{ py: 1.25 }}>{row.name || '—'}</TableCell>
@@ -326,7 +471,16 @@ const SuperAdminDashboard = () => {
 
           {Object.keys(subscriptionByStatus).length > 0 && (
             <Grid item xs={12} md={6}>
-              <Card>
+              <Card
+                sx={{
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                }}
+              >
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
                     Subscriptions by status
@@ -345,7 +499,16 @@ const SuperAdminDashboard = () => {
 
           {topClientsByUnits.length > 0 && (
             <Grid item xs={12} md={6}>
-              <Card>
+              <Card
+                sx={{
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: (t) => alpha(t.palette.background.paper, 0.8),
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                }}
+              >
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
                     Units by client (top 8)

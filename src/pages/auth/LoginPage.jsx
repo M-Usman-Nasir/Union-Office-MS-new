@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import { keyframes } from '@mui/material/styles'
 import {
@@ -38,12 +38,36 @@ const floatKeyframes = keyframes`
   0%, 100% { transform: translateY(0px) rotate(0deg); }
   50% { transform: translateY(-20px) rotate(180deg); }
 `
+const driftKeyframes = keyframes`
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0.75; }
+  50% { transform: translate3d(18px, -14px, 0) rotate(6deg); opacity: 1; }
+`
+const pulseKeyframes = keyframes`
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.07); opacity: 1; }
+`
+const shimmerBorderKeyframes = keyframes`
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+`
 
 // Simple email format validation
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value?.trim() || '')
 
 const BRAND_LOGO_SRC = brandLogo
+const QUOTE_ROTATE_MS = 7000
+const PROJECT_QUOTES = [
+  '"Building better communities through smarter management."',
+  '"Every resident interaction matters."',
+  '"Transparent operations, trusted living."',
+  '"One platform for homes, people, and peace of mind."',
+  '"From complaints to clarity - all in one place."',
+  '"Where residents, staff, and administration stay connected."',
+  '"Reliable records, faster service, happier communities."',
+  '"Simple workflows for complex community operations."',
+]
 
 const FeatureCard = ({ icon, title, description }) => (
   <Paper
@@ -110,10 +134,12 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [quoteIndex, setQuoteIndex] = useState(0)
 
   const emailValid = email.trim() !== '' && isValidEmail(email)
   const { login, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const floatAnimation = prefersReducedMotion ? 'none' : `${floatKeyframes} 6s ease-in-out infinite`
   const floatAnimationSlow = prefersReducedMotion
@@ -139,6 +165,30 @@ const LoginPage = () => {
       }
     }
   }, [isAuthenticated, user, navigate])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setQuoteIndex((prev) => (prev + 1) % PROJECT_QUOTES.length)
+    }, QUOTE_ROTATE_MS)
+
+    return () => clearInterval(timer)
+  }, [])
+
+  const searchParams = new URLSearchParams(location.search)
+  const sessionExpired = searchParams.get('reason') === 'session-expired'
+
+  useEffect(() => {
+    if (!sessionExpired) return
+    const next = new URLSearchParams(location.search)
+    next.delete('reason')
+    navigate(
+      {
+        pathname: location.pathname,
+        search: next.toString() ? `?${next.toString()}` : '',
+      },
+      { replace: true }
+    )
+  }, [sessionExpired, location.pathname, location.search, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -195,6 +245,52 @@ const LoginPage = () => {
     </Stack>
   )
 
+  const quoteCard = (
+    <Fade in key={`quote-${quoteIndex}`} timeout={900}>
+      <Box
+        sx={{
+          mb: 2.5,
+          px: 2,
+          py: 1.5,
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: (t) => alpha(t.palette.primary.main, 0.22),
+          bgcolor: (t) => alpha(t.palette.background.paper, 0.72),
+          boxShadow: (t) => `0 10px 26px ${alpha(t.palette.primary.main, 0.12)}`,
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          maxWidth: { xs: 420, md: 720 },
+          mx: { xs: 'auto', md: 0 },
+          transition: 'transform 260ms ease, box-shadow 260ms ease',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: (t) => `0 14px 30px ${alpha(t.palette.primary.main, 0.18)}`,
+          },
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            fontStyle: 'italic',
+            fontWeight: 500,
+            lineHeight: 1.75,
+            textAlign: { xs: 'center', md: 'left' },
+          }}
+        >
+          {PROJECT_QUOTES[quoteIndex]}
+        </Typography>
+        <Typography
+          variant="caption"
+          color="text.disabled"
+          sx={{ mt: 0.8, display: 'block', textAlign: { xs: 'center', md: 'left' } }}
+        >
+          Quote {quoteIndex + 1} of {PROJECT_QUOTES.length}
+        </Typography>
+      </Box>
+    </Fade>
+  )
+
   return (
     <Box
       sx={{
@@ -242,6 +338,41 @@ const LoginPage = () => {
           borderRadius: '50%',
           bgcolor: alpha(theme.palette.primary.main, 0.04),
           animation: prefersReducedMotion ? 'none' : `${floatKeyframes} 10s ease-in-out infinite`,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          top: { xs: '16%', md: '12%' },
+          left: { xs: '-8%', md: '6%' },
+          width: { xs: 180, md: 260 },
+          height: { xs: 120, md: 170 },
+          borderRadius: 4,
+          bgcolor: alpha(theme.palette.primary.main, 0.09),
+          transform: 'rotate(-12deg)',
+          animation: prefersReducedMotion ? 'none' : `${driftKeyframes} 9s ease-in-out infinite`,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: { xs: '12%', md: '10%' },
+          right: { xs: '-8%', md: '7%' },
+          width: { xs: 160, md: 240 },
+          height: { xs: 160, md: 240 },
+          borderRadius: 6,
+          bgcolor: alpha(theme.palette.secondary.main, 0.08),
+          transform: 'rotate(18deg)',
+          animation: prefersReducedMotion ? 'none' : `${pulseKeyframes} 7s ease-in-out infinite`,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background: `radial-gradient(circle at 15% 25%, ${alpha(theme.palette.primary.light, 0.12)} 0%, transparent 40%),
+                       radial-gradient(circle at 85% 75%, ${alpha(theme.palette.secondary.light, 0.11)} 0%, transparent 38%)`,
+          pointerEvents: 'none',
         }}
       />
 
@@ -296,6 +427,7 @@ const LoginPage = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, px: 2 }}>
               Resident management — streamlined operations and better living.
             </Typography>
+            <Box sx={{ mt: 1.25 }}>{quoteCard}</Box>
             {mobileFeatureChips}
           </Box>
         )}
@@ -362,6 +494,7 @@ const LoginPage = () => {
                     Your comprehensive resident management solution. Streamline operations, enhance
                     communication, and create better living experiences.
                   </Typography>
+                  {quoteCard}
 
                   <Grid container spacing={3} sx={{ mt: 1 }}>
                     {[
@@ -419,6 +552,31 @@ const LoginPage = () => {
                   boxShadow: `0 24px 64px ${alpha(theme.palette.common.black, 0.12)}`,
                   position: 'relative',
                   overflow: 'visible',
+                  transition: 'transform 320ms ease, box-shadow 320ms ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: `0 28px 72px ${alpha(theme.palette.common.black, 0.16)}`,
+                  },
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    inset: -1,
+                    borderRadius: 'inherit',
+                    padding: '1px',
+                    background: `linear-gradient(120deg,
+                      ${alpha(theme.palette.primary.main, 0.55)},
+                      ${alpha(theme.palette.secondary.main, 0.5)},
+                      ${alpha(theme.palette.primary.light, 0.45)})`,
+                    backgroundSize: '200% 200%',
+                    animation: prefersReducedMotion
+                      ? 'none'
+                      : `${shimmerBorderKeyframes} 6s ease-in-out infinite`,
+                    WebkitMask:
+                      'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                    WebkitMaskComposite: 'xor',
+                    maskComposite: 'exclude',
+                    pointerEvents: 'none',
+                  },
                 }}
               >
                 <Stack spacing={1} sx={{ textAlign: 'center', mb: 3 }}>
@@ -432,6 +590,12 @@ const LoginPage = () => {
                     Sign in to your dashboard
                   </Typography>
                 </Stack>
+
+                {sessionExpired && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    Your session expired due to inactivity. Please sign in again.
+                  </Alert>
+                )}
 
                 {error && (
                   <Alert severity="error" sx={{ mb: 2 }}>
