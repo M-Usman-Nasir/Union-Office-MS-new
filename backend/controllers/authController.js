@@ -24,6 +24,33 @@ const generateTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
+// Cross-domain cookie options for refresh token:
+// - Production default: SameSite=None + Secure=true (required for different frontend/backend domains)
+// - Development default: SameSite=Lax + Secure=false
+const getRefreshCookieOptions = () => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSiteEnv = (process.env.COOKIE_SAMESITE || '').trim().toLowerCase();
+  const secureEnv = (process.env.COOKIE_SECURE || '').trim().toLowerCase();
+
+  const sameSite =
+    sameSiteEnv === 'strict' || sameSiteEnv === 'lax' || sameSiteEnv === 'none'
+      ? sameSiteEnv
+      : (isProd ? 'none' : 'lax');
+
+  const secure =
+    secureEnv === 'true' ? true
+      : secureEnv === 'false' ? false
+      : isProd;
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/',
+  };
+};
+
 /**
  * User row for API responses with unit / block / apartment (society) labels for mobile & web.
  */
@@ -149,12 +176,7 @@ export const login = async (req, res) => {
     const { accessToken, refreshToken } = generateTokens(user.id);
 
     // Set refresh token in httpOnly cookie
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     // Return user data (without password) and access token.
     // refreshToken is also returned so mobile clients can store it and send in body for /auth/refresh (cookies not reliable in RN).
@@ -435,12 +457,7 @@ export const changePasswordFirstLogin = async (req, res) => {
     );
 
     const { accessToken, refreshToken } = generateTokens(u.id);
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     const fresh = await query(
       `SELECT id, email, name, role, society_apartment_id, unit_id, cnic, contact_number,
@@ -930,8 +947,14 @@ export const refreshToken = async (req, res) => {
 // Logout
 export const logout = async (req, res) => {
   try {
-    // Clear refresh token cookie
-    res.clearCookie('refreshToken');
+    // Clear refresh token cookie using same attributes used when setting it
+    const cookieOptions = getRefreshCookieOptions();
+    res.clearCookie('refreshToken', {
+      httpOnly: cookieOptions.httpOnly,
+      secure: cookieOptions.secure,
+      sameSite: cookieOptions.sameSite,
+      path: cookieOptions.path,
+    });
     
     res.json({
       success: true,

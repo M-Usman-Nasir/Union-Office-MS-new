@@ -202,8 +202,43 @@ const SubscriptionManagement = () => {
           </CardContent>
         </Card>
       ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          sx={{
+            borderRadius: 2,
+            borderColor: 'divider',
+            overflow: 'hidden',
+            boxShadow: (theme) => `0 10px 28px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(15,23,42,0.08)'}`,
+            maxHeight: '70vh',
+            overflowX: 'auto',
+            overflowY: 'auto',
+            scrollbarWidth: 'thin',
+          }}
+        >
+          <Table
+            size="small"
+            stickyHeader
+            sx={{
+              minWidth: 1280,
+              '& .MuiTableCell-root': {
+                py: 1.1,
+                px: 1.25,
+                borderColor: 'divider',
+                whiteSpace: 'nowrap',
+                fontSize: '0.8125rem',
+              },
+              '& .MuiTableCell-head': {
+                bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'grey.100'),
+                color: 'text.secondary',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                fontWeight: 700,
+                fontSize: '0.68rem',
+                borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
+              },
+            }}
+          >
             <TableHead>
               <TableRow>
                 <TableCell>Subscription ID</TableCell>
@@ -225,7 +260,18 @@ const SubscriptionManagement = () => {
             </TableHead>
             <TableBody>
               {admins.map((row) => (
-                <TableRow key={row.id} hover>
+                <TableRow
+                  key={row.id}
+                  hover
+                  sx={{
+                    '&:nth-of-type(even)': {
+                      bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'grey.50'),
+                    },
+                    '&:hover': {
+                      bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(59,130,246,0.10)' : 'rgba(59,130,246,0.06)'),
+                    },
+                  }}
+                >
                   <TableCell>{row.subscription_id || '—'}</TableCell>
                   <TableCell>
                     {row.apartment_name ? (
@@ -239,8 +285,8 @@ const SubscriptionManagement = () => {
                       </Link>
                     ) : '—'}
                   </TableCell>
-                  <TableCell>{row.name || '—'}</TableCell>
-                  <TableCell>{row.email || '—'}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{row.name || '—'}</TableCell>
+                  <TableCell sx={{ color: 'text.secondary' }}>{row.email || '—'}</TableCell>
                   <TableCell>{row.plan_name || '—'}</TableCell>
                   <TableCell>
                     {formatDate(row.start_date)}
@@ -251,7 +297,7 @@ const SubscriptionManagement = () => {
                   <TableCell>
                     {row.interval_months != null ? `${row.interval_months} month(s)` : '—'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>
                     {row.plan_amount != null ? `PKR ${Number(row.plan_amount).toLocaleString()}` : '—'}
                   </TableCell>
                   <TableCell>
@@ -260,7 +306,8 @@ const SubscriptionManagement = () => {
                         label={paymentStatusByUserId[row.id] || '—'}
                         color={paymentStatusByUserId[row.id] === 'Pending' ? 'warning' : 'success'}
                         size="small"
-                        variant="outlined"
+                        variant="filled"
+                        sx={{ fontWeight: 600 }}
                       />
                     ) : (
                       '—'
@@ -277,7 +324,8 @@ const SubscriptionManagement = () => {
                       <Chip
                         label={toTitleCase(row.subscription_status)}
                         size="small"
-                        variant="outlined"
+                        variant="filled"
+                        sx={{ fontWeight: 600 }}
                         color={
                           row.subscription_status === 'active'
                             ? 'success'
@@ -290,7 +338,7 @@ const SubscriptionManagement = () => {
                       />
                     ) : '—'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {latestInvoiceByUserId[row.id]?.notes || '—'}
                   </TableCell>
                   <TableCell align="right">
