@@ -32,6 +32,7 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff'
 import { useAuth } from '@/contexts/AuthContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import toast from 'react-hot-toast'
+import brandLogo from '@/assets/images/logo.png'
 
 const floatKeyframes = keyframes`
   0%, 100% { transform: translateY(0px) rotate(0deg); }
@@ -42,7 +43,7 @@ const floatKeyframes = keyframes`
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value?.trim() || '')
 
-const BRAND_LOGO_SRC = '/icons/mob_Logo.png'
+const BRAND_LOGO_SRC = brandLogo
 
 const FeatureCard = ({ icon, title, description }) => (
   <Paper
@@ -258,11 +259,27 @@ const LoginPage = () => {
         {isMobile && (
           <Box sx={{ width: '100%', textAlign: 'center', mb: 2 }}>
             <Box
-              component="img"
-              src={BRAND_LOGO_SRC}
-              alt="Homeland Union"
-              sx={{ height: 72, width: 'auto', mb: 1.5, display: 'inline-block' }}
-            />
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 2,
+                mb: 1.5,
+                bgcolor: (t) => alpha(t.palette.background.paper, 0.94),
+                border: '1px solid',
+                borderColor: (t) => alpha(t.palette.common.black, 0.08),
+                boxShadow: (t) => `0 10px 24px ${alpha(t.palette.common.black, 0.12)}`,
+              }}
+            >
+              <Box
+                component="img"
+                src={BRAND_LOGO_SRC}
+                alt="Homeland Union"
+                sx={{ height: 72, width: 'auto', display: 'block' }}
+              />
+            </Box>
             <Typography
               variant="subtitle1"
               sx={{
@@ -290,11 +307,26 @@ const LoginPage = () => {
                 <Box sx={{ pr: { md: 4, lg: 8 } }}>
                   <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
                     <Box
-                      component="img"
-                      src={BRAND_LOGO_SRC}
-                      alt="Homeland Union"
-                      sx={{ height: 88, width: 'auto' }}
-                    />
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        px: 1.75,
+                        py: 1,
+                        borderRadius: 2.5,
+                        bgcolor: (t) => alpha(t.palette.background.paper, 0.94),
+                        border: '1px solid',
+                        borderColor: (t) => alpha(t.palette.common.black, 0.08),
+                        boxShadow: (t) => `0 12px 28px ${alpha(t.palette.common.black, 0.14)}`,
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={BRAND_LOGO_SRC}
+                        alt="Homeland Union"
+                        sx={{ height: 88, width: 'auto', display: 'block' }}
+                      />
+                    </Box>
                     <Typography
                       variant="overline"
                       sx={{
@@ -424,6 +456,7 @@ const LoginPage = () => {
                         ? 'Please enter a valid email address'
                         : ''
                     }
+                    InputLabelProps={{ shrink: true }}
                     InputProps={{
                       endAdornment: emailValid ? (
                         <InputAdornment position="end">
@@ -441,6 +474,7 @@ const LoginPage = () => {
                     margin="normal"
                     required
                     autoComplete="current-password"
+                    InputLabelProps={{ shrink: true }}
                     InputProps={{
                       endAdornment: (
                         <InputAdornment position="end">

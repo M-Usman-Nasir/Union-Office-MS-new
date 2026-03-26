@@ -90,10 +90,13 @@ export const getAdminsWithSubscriptions = async (req, res) => {
              s.id AS subscription_id, s.status AS subscription_status, s.start_date, s.end_date, s.next_billing_date,
              p.name AS plan_name, p.amount AS plan_amount, p.interval_months
       FROM users u
-      LEFT JOIN apartments a ON u.society_apartment_id = a.id
+      JOIN apartments a ON u.society_apartment_id = a.id
       LEFT JOIN subscriptions s ON s.user_id = u.id
       LEFT JOIN subscription_plans p ON s.plan_id = p.id
       WHERE u.role = 'union_admin'
+        AND u.deleted_at IS NULL
+        AND u.is_active = true
+        AND COALESCE(a.is_active, true) = true
       ORDER BY a.city, a.area, a.name, u.name
     `);
     res.json({ success: true, data: result.rows });

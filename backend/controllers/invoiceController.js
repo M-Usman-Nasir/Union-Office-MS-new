@@ -25,8 +25,8 @@ export const listInvoices = async (req, res) => {
       SELECT i.*, u.name AS user_name, u.email AS user_email,
              a.name AS apartment_name, a.city, a.area
       FROM super_admin_invoices i
-      JOIN users u ON i.user_id = u.id
-      JOIN apartments a ON i.society_apartment_id = a.id
+      JOIN users u ON i.user_id = u.id AND u.role = 'union_admin' AND u.is_active = true AND u.deleted_at IS NULL
+      JOIN apartments a ON i.society_apartment_id = a.id AND COALESCE(a.is_active, true) = true
       WHERE 1=1 ${whereClause}
       ORDER BY i.created_at DESC LIMIT $${n} OFFSET $${n + 1}
     `;
@@ -34,7 +34,11 @@ export const listInvoices = async (req, res) => {
     const result = await query(listSql, params);
 
     const countResult = await query(
-      `SELECT COUNT(*) AS total FROM super_admin_invoices i WHERE 1=1 ${whereClause}`,
+      `SELECT COUNT(*) AS total
+       FROM super_admin_invoices i
+       JOIN users u ON i.user_id = u.id AND u.role = 'union_admin' AND u.is_active = true AND u.deleted_at IS NULL
+       JOIN apartments a ON i.society_apartment_id = a.id AND COALESCE(a.is_active, true) = true
+       WHERE 1=1 ${whereClause}`,
       params.slice(0, -2)
     );
     const total = parseInt(countResult.rows[0]?.total || 0, 10);
@@ -126,6 +130,12 @@ export const runAutoGenerateInvoices = async () => {
   const result = await query(
     `SELECT s.id AS subscription_id, s.user_id, s.society_apartment_id, s.next_billing_date, p.amount
      FROM subscriptions s
+     JOIN users u ON u.id = s.user_id
+       AND u.role = 'union_admin'
+       AND u.is_active = true
+       AND u.deleted_at IS NULL
+     JOIN apartments a ON a.id = s.society_apartment_id
+       AND COALESCE(a.is_active, true) = true
      LEFT JOIN subscription_plans p ON s.plan_id = p.id
      WHERE s.status = 'active'
        AND s.next_billing_date IS NOT NULL
