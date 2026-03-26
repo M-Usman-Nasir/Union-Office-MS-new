@@ -1,9 +1,10 @@
+import React from 'react';
 import PropTypes from 'prop-types';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, StatusBar, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, StatusBar, View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { colors } from '../theme';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
@@ -169,6 +170,124 @@ const Tab = createBottomTabNavigator();
 const ComplaintsStack = createNativeStackNavigator();
 const MoreStack = createNativeStackNavigator();
 const HomeStack = createNativeStackNavigator();
+const TAB_ICON_ANIMATION_PRESET = 'bouncy'; // switch to 'subtle' for smoother animation
+
+const TAB_ICON_ANIMATION = {
+  bouncy: {
+    restScale: 0.92,
+    springFriction: 5.2,
+    springTension: 150,
+    pulseDuration: 220,
+    pulseFrom: 0.84,
+  },
+  subtle: {
+    restScale: 0.96,
+    springFriction: 8,
+    springTension: 95,
+    pulseDuration: 260,
+    pulseFrom: 0.95,
+  },
+};
+
+function TabIcon({ routeName, focused }) {
+  const icons = {
+    Home: focused ? 'home' : 'home-outline',
+    Complaints: focused ? 'document-text' : 'document-text-outline',
+    Maintenance: focused ? 'card' : 'card-outline',
+    Defaulter: focused ? 'warning' : 'warning-outline',
+    Finance: focused ? 'bar-chart' : 'bar-chart-outline',
+    More: focused ? 'person' : 'person-outline',
+  };
+
+  const iconColors = {
+    Home: focused ? '#1D4ED8' : colors.textMuted,
+    Complaints: focused ? '#2563EB' : colors.textMuted,
+    Maintenance: focused ? '#0EA5E9' : colors.textMuted,
+    Defaulter: focused ? '#EA580C' : colors.textMuted,
+    Finance: focused ? '#059669' : colors.textMuted,
+    More: focused ? '#7C3AED' : colors.textMuted,
+  };
+
+  const animation = TAB_ICON_ANIMATION[TAB_ICON_ANIMATION_PRESET] ?? TAB_ICON_ANIMATION.subtle;
+  const iconColor = iconColors[routeName] ?? (focused ? colors.primary : colors.textMuted);
+  const scale = React.useRef(new Animated.Value(focused ? 1 : animation.restScale)).current;
+
+  React.useEffect(() => {
+    if (focused && TAB_ICON_ANIMATION_PRESET === 'bouncy') {
+      Animated.sequence([
+        Animated.spring(scale, {
+          toValue: 1.2,
+          friction: 4,
+          tension: 220,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 0.96,
+          friction: 5,
+          tension: 180,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          friction: 5,
+          tension: 160,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+    Animated.spring(scale, {
+      toValue: focused ? 1 : animation.restScale,
+      friction: animation.springFriction,
+      tension: animation.springTension,
+      useNativeDriver: true,
+    }).start();
+  }, [animation.restScale, animation.springFriction, animation.springTension, focused, scale]);
+
+  const pulse = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!focused) {
+      pulse.setValue(0);
+      return;
+    }
+    pulse.setValue(0);
+    Animated.timing(pulse, {
+      toValue: 1,
+      duration: animation.pulseDuration,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [animation.pulseDuration, focused, pulse]);
+
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [animation.pulseFrom, 1],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        transform: [{ scale }],
+      }}
+    >
+      <Animated.View
+        style={{
+          width: focused ? 44 : 36,
+          height: focused ? 44 : 36,
+          alignItems: 'center',
+          justifyContent: 'center',
+          transform: focused ? [{ scale: pulseScale }] : [{ scale: 1 }],
+        }}
+      >
+        <Ionicons name={icons[routeName] || 'ellipse'} size={focused ? 26 : 24} color={iconColor} />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+TabIcon.propTypes = {
+  routeName: PropTypes.string.isRequired,
+  focused: PropTypes.bool.isRequired,
+};
 
 function HomeStackScreen() {
   const headerStyle = { backgroundColor: colors.surface };
@@ -250,27 +369,8 @@ export default function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         lazy: false, // Keep all tabs mounted so hook order in BottomTabView stays consistent (avoids Rules of Hooks error).
-        tabBarIcon: ({ focused }) => {
-          const icons = {
-            Home: focused ? 'home' : 'home-outline',
-            Complaints: focused ? 'document-text' : 'document-text-outline',
-            Maintenance: focused ? 'card' : 'card-outline',
-            Defaulter: focused ? 'warning' : 'warning-outline',
-            Finance: focused ? 'bar-chart' : 'bar-chart-outline',
-            More: focused ? 'person' : 'person-outline',
-          };
-          const iconColors = {
-            Home: focused ? colors.primary : colors.textMuted,
-            Complaints: focused ? colors.primary : colors.textMuted,
-            Maintenance: focused ? colors.primary : colors.textMuted,
-            Defaulter: focused ? colors.warning : colors.textMuted,
-            Finance: focused ? colors.primary : colors.textMuted,
-            More: focused ? colors.primary : colors.textMuted,
-          };
-          const iconColor = iconColors[route.name] ?? (focused ? colors.primary : colors.textMuted);
-          return <Ionicons name={icons[route.name] || 'ellipse'} size={28} color={iconColor} />;
-        },
-        tabBarActiveTintColor: colors.primary,
+        tabBarIcon: ({ focused }) => <TabIcon routeName={route.name} focused={focused} />,
+        tabBarActiveTintColor: '#1D4ED8',
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
           fontSize: 12,

@@ -12,6 +12,7 @@ export const authApi = {
       current_password,
       new_password,
     }),
+  forgotPassword: (email) => client.post(API_ENDPOINTS.FORGOT_PASSWORD, { email }),
   refresh: (refreshToken) => client.post(API_ENDPOINTS.REFRESH, { refreshToken }),
 
   /**

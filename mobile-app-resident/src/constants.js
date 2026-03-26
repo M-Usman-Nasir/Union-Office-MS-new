@@ -20,6 +20,7 @@ export const API_ENDPOINTS = {
   REFRESH: '/auth/refresh',
   ME: '/auth/me',
   CHANGE_PASSWORD_FIRST_LOGIN: '/auth/change-password-first-login',
+  FORGOT_PASSWORD: '/auth/forgot-password',
   REGISTER_RESIDENT: '/auth/register/resident',
   COMPLAINTS: '/complaints',
   COMPLAINT_BY_ID: (id) => `/complaints/${id}`,
