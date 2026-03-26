@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import SafeScreen from '../components/SafeScreen';
 import { useAuth } from '../context/AuthContext';
 import { complaintsApi } from '../api/complaints';
@@ -33,6 +34,28 @@ export default function ComplaintsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const limit = 20;
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+              return;
+            }
+            const tabNav = navigation.getParent?.();
+            tabNav?.navigate?.('Home');
+          }}
+          style={styles.headerBack}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.navyHeaderIconMail} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+
   const load = async (pageNum = 1, append = false) => {
     try {
       const res = await complaintsApi.getAll({ page: pageNum, limit });
@@ -51,12 +74,14 @@ export default function ComplaintsScreen() {
     if (user) load(1, false);
   }, [user]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     load(1, false);
-  };
+  }, []);
 
-  const renderItem = ({ item }) => (
+  const keyExtractor = useCallback((item) => String(item.id), []);
+
+  const renderItem = useCallback(({ item }) => (
     <TouchableOpacity
       style={styles.card}
       onPress={() => navigation.navigate('ComplaintDetail', { id: item.id })}
@@ -72,7 +97,7 @@ export default function ComplaintsScreen() {
         <Text style={styles.date}>{formatDate(item.created_at)}</Text>
       </View>
     </TouchableOpacity>
-  );
+  ), [navigation]);
 
   if (loading) {
     return (
@@ -99,11 +124,16 @@ export default function ComplaintsScreen() {
         <FlatList
           data={list}
           renderItem={renderItem}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={keyExtractor}
           style={styles.listFlex}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={<Text style={styles.empty}>No complaints yet</Text>}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          updateCellsBatchingPeriod={50}
+          removeClippedSubviews
         />
       </View>
     </SafeScreen>
@@ -143,4 +173,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   fabText: { color: '#fff', fontWeight: '600' },
+  headerBack: { padding: 8, marginRight: 2 },
 });

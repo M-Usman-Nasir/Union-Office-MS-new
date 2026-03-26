@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, StatusBar, View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
+import { Platform, StatusBar, View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { colors } from '../theme';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
@@ -165,12 +165,6 @@ import MessagesScreen from '../screens/MessagesScreen';
 import UnionMembersScreen from '../screens/UnionMembersScreen';
 import UnionMemberDetailScreen from '../screens/UnionMemberDetailScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
-import homeTabAnimatedIcon from '../../assets/maintabs/family-life.gif';
-import maintenanceTabAnimatedIcon from '../../assets/maintabs/maintenance.gif';
-import complaintsTabAnimatedIcon from '../../assets/maintabs/complains.gif';
-import defaulterTabAnimatedIcon from '../../assets/maintabs/defaulter.gif';
-import financeTabAnimatedIcon from '../../assets/maintabs/finance.gif';
-import profileTabAnimatedIcon from '../../assets/maintabs/profile.gif';
 
 const Tab = createBottomTabNavigator();
 const ComplaintsStack = createNativeStackNavigator();
@@ -194,36 +188,29 @@ const TAB_ICON_ANIMATION = {
     pulseFrom: 0.95,
   },
 };
-function TabIcon({ routeName, focused }) {
-  const icons = {
-    Home: 'home-outline',
-    Complaints: 'document-text-outline',
-    Maintenance: 'card-outline',
-    Defaulter: 'warning-outline',
-    Finance: 'bar-chart-outline',
-    More: 'person-outline',
-  };
+const TAB_ICONS = {
+  Home: 'home-outline',
+  Complaints: 'document-text-outline',
+  Maintenance: 'card-outline',
+  Defaulter: 'warning-outline',
+  Finance: 'bar-chart-outline',
+  More: 'person-outline',
+};
 
-  const iconColors = {
-    Home: focused ? '#2563EB' : '#93C5FD',
-    Complaints: focused ? '#0EA5E9' : '#7DD3FC',
-    Maintenance: focused ? '#14B8A6' : '#99F6E4',
-    Defaulter: focused ? '#F97316' : '#FDBA74',
-    Finance: focused ? '#10B981' : '#86EFAC',
-    More: focused ? '#8B5CF6' : '#C4B5FD',
-  };
-  const gifIcons = {
-    Home: homeTabAnimatedIcon,
-    Maintenance: maintenanceTabAnimatedIcon,
-    Complaints: complaintsTabAnimatedIcon,
-    Defaulter: defaulterTabAnimatedIcon,
-    Finance: financeTabAnimatedIcon,
-    More: profileTabAnimatedIcon,
-  };
+const TAB_ICON_COLORS = {
+  Home: { active: '#2563EB', inactive: '#93C5FD' },
+  Complaints: { active: '#0EA5E9', inactive: '#7DD3FC' },
+  Maintenance: { active: '#14B8A6', inactive: '#99F6E4' },
+  Defaulter: { active: '#F97316', inactive: '#FDBA74' },
+  Finance: { active: '#10B981', inactive: '#86EFAC' },
+  More: { active: '#8B5CF6', inactive: '#C4B5FD' },
+};
+
+const TabIcon = React.memo(function TabIcon({ routeName, focused }) {
 
   const animation = TAB_ICON_ANIMATION[TAB_ICON_ANIMATION_PRESET] ?? TAB_ICON_ANIMATION.subtle;
-  const iconColor = iconColors[routeName] ?? (focused ? colors.primary : colors.textMuted);
-  const gifSource = gifIcons[routeName];
+  const iconColor = (focused ? TAB_ICON_COLORS[routeName]?.active : TAB_ICON_COLORS[routeName]?.inactive)
+    ?? (focused ? colors.primary : colors.textMuted);
   const scale = React.useRef(new Animated.Value(focused ? 1 : animation.restScale)).current;
 
   React.useEffect(() => {
@@ -258,26 +245,6 @@ function TabIcon({ routeName, focused }) {
     }).start();
   }, [animation.restScale, animation.springFriction, animation.springTension, focused, scale]);
 
-  const pulse = React.useRef(new Animated.Value(0)).current;
-  React.useEffect(() => {
-    if (!focused) {
-      pulse.setValue(0);
-      return;
-    }
-    pulse.setValue(0);
-    Animated.timing(pulse, {
-      toValue: 1,
-      duration: animation.pulseDuration,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start();
-  }, [animation.pulseDuration, focused, pulse]);
-
-  const pulseScale = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [animation.pulseFrom, 1],
-  });
-
   return (
     <Animated.View
       style={{
@@ -290,26 +257,13 @@ function TabIcon({ routeName, focused }) {
           height: focused ? 44 : 36,
           alignItems: 'center',
           justifyContent: 'center',
-          transform: focused ? [{ scale: pulseScale }] : [{ scale: 1 }],
         }}
       >
-        {focused && gifSource ? (
-          <Animated.Image
-            source={gifSource}
-            style={{
-              width: 30,
-              height: 30,
-              opacity: 1,
-            }}
-            resizeMode="contain"
-          />
-        ) : (
-          <Ionicons name={icons[routeName] || 'ellipse'} size={focused ? 26 : 24} color={iconColor} />
-        )}
+        <Ionicons name={TAB_ICONS[routeName] || 'ellipse'} size={focused ? 26 : 24} color={iconColor} />
       </Animated.View>
     </Animated.View>
   );
-}
+});
 TabIcon.propTypes = {
   routeName: PropTypes.string.isRequired,
   focused: PropTypes.bool.isRequired,

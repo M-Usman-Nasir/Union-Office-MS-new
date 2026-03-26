@@ -1,5 +1,5 @@
 /* global require */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SafeScreen from '../components/SafeScreen';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { complaintsApi } from '../api/complaints';
@@ -51,6 +51,7 @@ const CAROUSEL_IMAGES = [
   require('../../assets/images/13.jpg'),
   require('../../assets/images/14.png'),
 ];
+const REMOTE_CAROUSEL_IMAGES = CAROUSEL_IMAGES.filter((img) => typeof img === 'string');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CAROUSEL_ITEM_WIDTH = SCREEN_WIDTH * 0.85;
 /** Match MainTabs stack header so dashboard bar aligns under status bar the same way */
@@ -89,6 +90,7 @@ function getTodayFormatted() {
 export default function DashboardScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const safeInsets = useSafeAreaInsets();
   const headerTopInset = Math.max(safeInsets.top, STATUS_BAR_HEIGHT, 28);
   const [refreshing, setRefreshing] = useState(false);
@@ -115,14 +117,19 @@ export default function DashboardScreen() {
     carouselIndexRef.current = carouselIndex;
   }, [carouselIndex]);
 
-  const scrollToCarouselIndex = (index) => {
+  const scrollToCarouselIndex = useCallback((index) => {
     const i = Math.max(0, Math.min(index, CAROUSEL_IMAGES.length - 1));
     setCarouselIndex(i);
     const x = i * (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP);
     carouselRef.current?.scrollTo({ x, animated: true });
-  };
+  }, []);
 
   useEffect(() => {
+    if (!isFocused) {
+      if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
+      return undefined;
+    }
     autoScrollTimerRef.current = setInterval(() => {
       const next = (carouselIndexRef.current + 1) % CAROUSEL_IMAGES.length;
       setCarouselIndex(next);
@@ -131,17 +138,20 @@ export default function DashboardScreen() {
     }, CAROUSEL_AUTO_INTERVAL_MS);
     return () => {
       if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
     };
-  }, []);
+  }, [isFocused]);
 
-  const onCarouselScroll = (e) => {
+  const onCarouselScroll = useCallback((e) => {
     const x = e.nativeEvent.contentOffset.x;
     const index = Math.round(x / (CAROUSEL_ITEM_WIDTH + CAROUSEL_GAP));
     const clamped = Math.max(0, Math.min(index, CAROUSEL_IMAGES.length - 1));
-    if (clamped !== carouselIndex) setCarouselIndex(clamped);
-  };
+    if (clamped !== carouselIndexRef.current) {
+      setCarouselIndex(clamped);
+    }
+  }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [complRes, maintRes, annRes, setRes, extRes, famRes] = await Promise.all([
         complaintsApi.getAll({ limit: 20, page: 1 }).catch(() => ({ data: {} })),
@@ -175,9 +185,9 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [user]);
 
-  const fetchWeather = async () => {
+  const fetchWeather = useCallback(async () => {
     try {
       const url = `${WEATHER_API}?latitude=${DEFAULT_LAT}&longitude=${DEFAULT_LON}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,uv_index`;
       const res = await fetch(url);
@@ -194,12 +204,20 @@ export default function DashboardScreen() {
     } catch (e) {
       console.warn('Weather fetch failed', e);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     fetchWeather();
-    const interval = setInterval(fetchWeather, 10 * 60 * 1000); // refresh every 10 min
+    const interval = setInterval(fetchWeather, 10 * 60 * 1000); // refresh every 10 min when dashboard is focused
     return () => clearInterval(interval);
+  }, [fetchWeather, isFocused]);
+
+  useEffect(() => {
+    // Prefetch remote carousel assets once to reduce first-scroll decode/network stutter.
+    REMOTE_CAROUSEL_IMAGES.forEach((uri) => {
+      Image.prefetch(uri).catch(() => {});
+    });
   }, []);
 
   useEffect(() => {
@@ -219,31 +237,42 @@ export default function DashboardScreen() {
 
   // Continuous subtle marquee/glow for the welcome name
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isFocused) return undefined;
+    let isCancelled = false;
     const loop = () => {
       Animated.sequence([
         Animated.timing(nameMarqueeAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
         Animated.timing(nameMarqueeAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
       ]).start(({ finished }) => {
-        if (finished) loop();
+        if (finished && !isCancelled) loop();
       });
     };
     loop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- start loop when user is set
-  }, [user?.id]);
+    return () => {
+      isCancelled = true;
+      nameMarqueeAnim.stopAnimation();
+      nameMarqueeAnim.setValue(0);
+    };
+  }, [isFocused, nameMarqueeAnim, user]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     load();
     fetchWeather();
-  };
+  }, [fetchWeather, load]);
 
-  const totalPending = defaulters.reduce((sum, d) => sum + (parseFloat(d.pending_amount) || 0), 0);
+  const totalPending = useMemo(
+    () => defaulters.reduce((sum, d) => sum + (parseFloat(d.pending_amount) || 0), 0),
+    [defaulters]
+  );
 
-  const maintenanceList = maintenance.data || [];
-  const paidMaintenance = maintenanceList
-    .filter((m) => (m.status || '').toLowerCase() === 'paid')
-    .sort((a, b) => new Date(b.updated_at || b.paid_at || b.created_at || 0) - new Date(a.updated_at || a.paid_at || a.created_at || 0));
+  const maintenanceList = useMemo(() => maintenance.data || [], [maintenance.data]);
+  const paidMaintenance = useMemo(
+    () => maintenanceList
+      .filter((m) => (m.status || '').toLowerCase() === 'paid')
+      .sort((a, b) => new Date(b.updated_at || b.paid_at || b.created_at || 0) - new Date(a.updated_at || a.paid_at || a.created_at || 0)),
+    [maintenanceList]
+  );
   const lastPaidMaintenance = paidMaintenance[0];
 
   const ext = residentExtended;
@@ -252,41 +281,46 @@ export default function DashboardScreen() {
     (parseInt(String(ext?.number_of_bikes ?? 0), 10) || 0);
   const familyCount = familyMembers.length;
 
-  const unpaidMaintenance = maintenanceList.filter(
-    (m) => !['paid', 'closed', 'cancelled'].includes((m.status || '').toLowerCase())
+  const unpaidMaintenance = useMemo(
+    () => maintenanceList.filter((m) => !['paid', 'closed', 'cancelled'].includes((m.status || '').toLowerCase())),
+    [maintenanceList]
   );
-  const sortedUnpaidByDue = [...unpaidMaintenance].sort(
-    (a, b) =>
-      new Date(a.due_date || a.created_at || 0) - new Date(b.due_date || b.created_at || 0)
+  const sortedUnpaidByDue = useMemo(
+    () => [...unpaidMaintenance].sort(
+      (a, b) => new Date(a.due_date || a.created_at || 0) - new Date(b.due_date || b.created_at || 0)
+    ),
+    [unpaidMaintenance]
   );
   const nextDueMaintenance = sortedUnpaidByDue[0];
 
-  const vehicleDetailLines = [];
-  if (ext?.car_make_model || ext?.license_plate) {
-    vehicleDetailLines.push(
-      [ext.car_make_model, ext.license_plate].filter(Boolean).join(' · ') || '—'
-    );
-  }
-  if (ext?.bike_make_model || ext?.bike_license_plate) {
-    vehicleDetailLines.push(
-      [ext.bike_make_model, ext.bike_license_plate].filter(Boolean).join(' · ') || '—'
-    );
-  }
+  const vehicleDetailLines = useMemo(() => {
+    const lines = [];
+    if (ext?.car_make_model || ext?.license_plate) {
+      lines.push([ext.car_make_model, ext.license_plate].filter(Boolean).join(' · ') || '—');
+    }
+    if (ext?.bike_make_model || ext?.bike_license_plate) {
+      lines.push([ext.bike_make_model, ext.bike_license_plate].filter(Boolean).join(' · ') || '—');
+    }
+    return lines;
+  }, [ext]);
 
-  const utilityTiles = [];
-  if (ext?.k_electric_account) {
-    utilityTiles.push({ key: 'ke', icon: 'flash-outline', label: 'Electric', value: String(ext.k_electric_account) });
-  }
-  if (ext?.gas_account) {
-    utilityTiles.push({ key: 'gas', icon: 'flame-outline', label: 'Gas', value: String(ext.gas_account) });
-  }
-  if (ext?.water_account) {
-    utilityTiles.push({ key: 'wtr', icon: 'water-outline', label: 'Water', value: String(ext.water_account) });
-  }
-  const phoneTv = ext?.phone_tv_account || ext?.telephone_bills;
-  if (phoneTv) {
-    utilityTiles.push({ key: 'tel', icon: 'call-outline', label: 'Phone / TV', value: String(phoneTv) });
-  }
+  const utilityTiles = useMemo(() => {
+    const tiles = [];
+    if (ext?.k_electric_account) {
+      tiles.push({ key: 'ke', icon: 'flash-outline', label: 'Electric', value: String(ext.k_electric_account) });
+    }
+    if (ext?.gas_account) {
+      tiles.push({ key: 'gas', icon: 'flame-outline', label: 'Gas', value: String(ext.gas_account) });
+    }
+    if (ext?.water_account) {
+      tiles.push({ key: 'wtr', icon: 'water-outline', label: 'Water', value: String(ext.water_account) });
+    }
+    const phoneTv = ext?.phone_tv_account || ext?.telephone_bills;
+    if (phoneTv) {
+      tiles.push({ key: 'tel', icon: 'call-outline', label: 'Phone / TV', value: String(phoneTv) });
+    }
+    return tiles;
+  }, [ext]);
 
   const nameOpacity = nameMarqueeAnim.interpolate({
     inputRange: [0, 1],
@@ -351,6 +385,7 @@ export default function DashboardScreen() {
           ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews
         >
         {/* Welcome card — same navy as header, scrolls away (not sticky) */}
         <View style={styles.welcomeCardScroll}>
@@ -505,7 +540,7 @@ export default function DashboardScreen() {
             contentContainerStyle={styles.carouselContent}
             showsHorizontalScrollIndicator={false}
             onScroll={onCarouselScroll}
-            scrollEventThrottle={32}
+            scrollEventThrottle={64}
           >
             {CAROUSEL_IMAGES.map((uri, i) => (
               <TouchableOpacity
@@ -514,7 +549,13 @@ export default function DashboardScreen() {
                 activeOpacity={1}
                 onPress={() => scrollToCarouselIndex(i)}
               >
-                <Image source={typeof uri === 'string' ? { uri } : uri} style={styles.carouselImage} resizeMode="cover" />
+                <Image
+                  source={typeof uri === 'string' ? { uri } : uri}
+                  style={styles.carouselImage}
+                  resizeMode="cover"
+                  fadeDuration={120}
+                  progressiveRenderingEnabled
+                />
               </TouchableOpacity>
             ))}
           </ScrollView>
