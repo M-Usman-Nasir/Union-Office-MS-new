@@ -58,6 +58,10 @@ export const list = async (req, res) => {
       params.push(to_date);
     }
 
+    paramCount++;
+    sql += ` AND (al.user_id IS NULL OR al.user_id = $${paramCount} OR NOT EXISTS (SELECT 1 FROM users hu WHERE hu.id = al.user_id AND COALESCE(hu.hidden_from_ui, false)))`;
+    params.push(req.user.id);
+
     const countParams = [];
     let c = 0;
     let countFilter = '';
@@ -66,6 +70,9 @@ export const list = async (req, res) => {
     if (action) { c++; countFilter += ` AND action = $${c}`; countParams.push(action); }
     if (from_date) { c++; countFilter += ` AND created_at >= $${c}::timestamp`; countParams.push(from_date); }
     if (to_date) { c++; countFilter += ` AND created_at <= $${c}::timestamp`; countParams.push(to_date); }
+    c++;
+    countFilter += ` AND (user_id IS NULL OR user_id = $${c} OR NOT EXISTS (SELECT 1 FROM users hu WHERE hu.id = user_id AND COALESCE(hu.hidden_from_ui, false)))`;
+    countParams.push(req.user.id);
 
     const countResult = await query(
       `SELECT COUNT(*) AS total FROM audit_log WHERE 1=1${countFilter}`,

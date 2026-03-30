@@ -1,7 +1,8 @@
 # UMS Blueprint vs Current System – Checklist
 
 This document compares the production-grade Union Management System (UMS) blueprint for Pakistan with the current codebase.  
-**✅ = Already done** · **❌ = Necessary to align (not yet done)**
+**✅ = Already done** · **⚠️ = Partial / optional / not everywhere** · **❌ = Necessary to align (not yet done)**  
+*Last reviewed against the repo: March 2026.*
 
 ---
 
@@ -16,7 +17,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Redis (sessions, OTPs, caching, queues) | ❌ |
 | REST API | ✅ |
 | JWT + Refresh Tokens | ✅ |
-| RBAC (Role-Based Access Control) | ⚠️ Role-based only; no permission matrix yet |
+| RBAC (Role-Based Access Control) | ⚠️ Roles + optional `role_permissions` matrix (`requirePermission` when rows exist) |
 
 ### Frontend
 
@@ -34,7 +35,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | NGINX (reverse proxy) | ❌ |
 | Cloud deployment (AWS / DigitalOcean / Hetzner) | ❌ |
 | CI/CD pipeline | ❌ |
-| Automated backups | ❌ |
+| Automated backups | ⚠️ `backup:db` / `restore:db` scripts; no scheduled cloud backups |
 
 ---
 
@@ -48,10 +49,10 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Create Union Admin accounts | ✅ |
 | View system-wide analytics | ✅ |
 | Manage subscriptions & billing | ✅ (basic) |
-| Control global settings | ⚠️ Settings per society only |
-| Enable/disable features per union | ❌ |
-| System audit logs | ❌ |
-| Resolve disputes & escalations | ❌ |
+| Control global settings | ⚠️ Global settings API + per-society settings |
+| Enable/disable features per union | ⚠️ Per-society visibility toggles; global feature flags (`global_feature_flags`) |
+| System audit logs | ⚠️ `audit_log` table, Super Admin list API; not every action logged |
+| Resolve disputes & escalations | ⚠️ Escalated complaints workflow for Super Admin (`/escalations`) |
 
 ### Union Admin (Local Union Authority)
 
@@ -63,7 +64,6 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Manage finances | ✅ |
 | Post announcements | ✅ |
 | Handle complaints | ✅ |
-| Schedule meetings & elections | ❌ |
 | Generate official reports | ✅ |
 | Messaging with residents | ✅ (extra in current system) |
 
@@ -73,9 +73,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 |----------------|--------|
 | View bills & pay dues | ✅ View; ⚠️ “pay” = record payment, not full payment flow |
 | Submit complaints | ✅ |
-| Vote in elections/polls | ❌ |
 | View announcements | ✅ |
-| Book facilities | ❌ |
 | Track service requests (complaints) | ✅ |
 | Receive notifications | ✅ |
 
@@ -97,7 +95,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 | Item | Status |
 |------|--------|
-| RBAC (role + permission matrix) | ⚠️ Role-based only |
+| RBAC (role + permission matrix) | ⚠️ Matrix in DB + middleware; routes opt in via `requirePermission` |
 | Union-scoped access | ✅ |
 | Row-level security in PostgreSQL | ❌ (enforced in app only) |
 
@@ -105,10 +103,10 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 | Item | Status |
 |------|--------|
-| Rate limiting | ❌ |
+| Rate limiting | ⚠️ auth + WhatsApp webhook (`express-rate-limit`); not global on all routes |
 | IP blocking | ❌ |
 | Encrypted sensitive fields | ⚠️ Passwords hashed; CNIC etc. not encrypted |
-| Audit trails for all admin actions | ❌ |
+| Audit trails for all admin actions | ⚠️ `audit_log` + writes from key controllers; not exhaustive |
 | GDPR-style data control | ❌ |
 
 ---
@@ -124,7 +122,6 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Location: District, UC | ❌ |
 | Union rules & bylaws | ❌ |
 | Office bearers | ❌ |
-| Election cycle | ❌ |
 
 ### Property Management
 
@@ -132,7 +129,6 @@ This document compares the production-grade Union Management System (UMS) bluepr
 |------|--------|
 | Houses / Flats / Shops (units) | ✅ (no type: house/flat/shop) |
 | Blocks / Streets / Sectors | ✅ Blocks, floors |
-| Ownership history | ❌ |
 | Tenant vs Owner | ⚠️ owner_name / resident_name only; no formal flag |
 | Property status (active, vacant, disputed) | ⚠️ is_occupied only; no “disputed” |
 
@@ -143,10 +139,8 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Item | Status |
 |------|--------|
 | Resident profiles (name, contact, unit, move-in, profile image) | ✅ |
-| Family members | ❌ |
+| Family members | ✅ (API: CRUD under resident `family-members`) |
 | CNIC (encrypted / masked) | ❌ |
-| Ownership documents upload | ❌ |
-| Tenant agreements | ❌ |
 | Move-in / move-out tracking | ⚠️ move_in_date only; no move-out or history |
 | Blacklist / violation history | ❌ |
 
@@ -159,9 +153,8 @@ This document compares the production-grade Union Management System (UMS) bluepr
 | Item | Status |
 |------|--------|
 | Monthly maintenance fees | ✅ |
-| Special charges | ❌ |
 | Penalties & late fees | ❌ |
-| Auto-generated invoices | ❌ |
+| Auto-generated invoices | ⚠️ Monthly dues cron; subscription billing auto-invoice for union admins; not full resident PDF invoice product |
 | PDF receipts | ❌ |
 
 ### Payments
@@ -225,29 +218,14 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 | Item | Status |
 |------|--------|
-| In-app notifications | ❌ |
+| In-app notifications | ⚠️ No dedicated inbox; mobile “Notifications” uses announcements feed; push + email elsewhere |
 | SMS (Pakistan-ready) | ❌ |
 | Email | ✅ |
 | Push notifications (mobile) | ✅ |
 
 ---
 
-## 9. Elections, Voting & Polls
-
-| Item | Status |
-|------|--------|
-| Elections – candidate management | ❌ |
-| Elections – voter eligibility | ❌ |
-| Elections – secure voting | ❌ |
-| Elections – time-bound | ❌ |
-| Elections – result transparency | ❌ |
-| Polls & surveys – community decisions | ❌ |
-| Polls – simple voting | ❌ |
-| Polls – analytics | ❌ |
-
----
-
-## 10. Meetings & Documents
+## 9. Meetings & Documents
 
 | Item | Status |
 |------|--------|
@@ -260,11 +238,11 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 ---
 
-## 11. Staff & Vendor Management
+## 10. Staff & Vendor Management
 
 | Item | Status |
 |------|--------|
-| Security guards | ❌ |
+| Security guards | ⚠️ Generic staff role; no guard-specific type |
 | Maintenance staff | ⚠️ Staff role only; no types |
 | Contractors | ❌ |
 | Duty schedules | ❌ |
@@ -273,7 +251,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 ---
 
-## 12. Mobile App Features (Residents)
+## 11. Mobile App Features (Residents)
 
 ### Must-Have
 
@@ -297,7 +275,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 ---
 
-## 13. Admin Web Dashboard
+## 12. Admin Web Dashboard
 
 ### Union Admin Dashboard
 
@@ -321,7 +299,7 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 ---
 
-## 14. Reporting & Analytics
+## 13. Reporting & Analytics
 
 | Item | Status |
 |------|--------|
@@ -333,24 +311,24 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 ---
 
-## 15. System-Level Essentials
+## 14. System-Level Essentials
 
 | Item | Status |
 |------|--------|
-| Full audit logs | ❌ |
-| Soft deletes | ❌ |
-| Activity timeline | ❌ |
-| Role permission editor | ❌ |
-| Feature toggles | ⚠️ Visibility toggles per society only |
-| Backup & restore | ❌ |
-| Error monitoring (Sentry) | ❌ |
-| API versioning | ❌ |
+| Full audit logs | ⚠️ `audit_log` + Super Admin queries; coverage not universal |
+| Soft deletes | ⚠️ e.g. `deleted_at` on complaints, users; not all entities |
+| Activity timeline | ⚠️ `activity_timeline` + Super Admin `GET /activity-timeline` (coverage varies) |
+| Role permission editor | ⚠️ Super Admin API `GET/PUT /permissions/:role` |
+| Feature toggles | ⚠️ Per-society visibility + global `global_feature_flags` |
+| Backup & restore | ⚠️ `npm run backup:db` / `restore:db` (manual ops) |
+| Error monitoring (Sentry) | ⚠️ `@sentry/node` when `SENTRY_DSN` is set |
+| API versioning | ⚠️ e.g. `/api/v1/notifications` alongside `/api`; not full v1 everywhere |
 | Localization (Urdu + English) | ❌ |
 | Timezone handling (PKT) | ⚠️ en-PK currency only |
 
 ---
 
-## 16. Legal & Pakistan-Specific Considerations
+## 15. Legal & Pakistan-Specific Considerations
 
 | Item | Status |
 |------|--------|
@@ -362,11 +340,12 @@ This document compares the production-grade Union Management System (UMS) bluepr
 
 ---
 
-## 17. Summary
+## 16. Summary
 
-- **✅ Already done:** Backend (Node, Express, PostgreSQL, JWT+refresh, roles, union scope), three main roles + staff, core features (unions/apartments, properties, residents, maintenance, finance, complaints, defaulters, announcements, subscriptions, reports, messaging, notifications), React web + React Native resident app, shared API. Resident profiles & move-in; monthly dues & manual/bank payments; complaint priority, status, admin notes, staff assign; announcements union/block; email + push. Staff role & complaint/payment assign; mobile view dues, complaints, push, 1:1 chat; Union Admin dashboard (finance, complaints, residents, recent payments); Super Admin (unions, revenue); monthly finance reports, defaulters CSV; visibility toggles; en-PK currency.
-- **❌ Necessary to align:** Redis, Docker, NGINX, cloud, CI/CD, backups; CNIC encryption/masking, OTP, 2FA; permission matrix/RLS; rate limiting, IP blocking, audit logs, GDPR-style; District/UC, bylaws, office bearers; ownership history, tenant/owner flag, property status; family members, ownership docs, tenant agreements, move-out, blacklist/violations; special charges, penalties, invoices, PDF receipts, JazzCash/Stripe, reconciliation, budget, audit reports; complaint category, SLA, resident feedback, maintenance cost/completion/approval; scheduled announcements, in-app notifications, SMS; elections & polls; meetings & document repository. Staff: guard/contractor types, duty schedules, salary/performance. Mobile: OTP login, in-app pay, visitor entry, emergency alerts, community chat, event calendar. Dashboards: upcoming meetings, active users card, system health, feature usage. Reporting: resolution time, engagement, PDF/Excel. System: audit logs, soft deletes, activity timeline, permission editor, feature toggles, backup/restore, Sentry, API versioning, Urdu+English, PKT. Legal: CNIC protection, PTA SMS, data residency, bylaws compliance, manual override.
+- **✅ Already done:** Backend (Node, Express, PostgreSQL, JWT+refresh, roles, union scope), three main roles + staff, core features (unions/apartments, properties, residents, **family members API**, maintenance, finance, complaints, defaulters, announcements, subscriptions, reports, messaging, notifications), React web + React Native resident app, shared API. Resident profiles & move-in; **automated monthly dues** & manual/bank payments; complaint priority, status, admin notes, staff assign; announcements union/block; email + push. Staff role & complaint/payment assign; mobile view dues, complaints, push, 1:1 chat; Union Admin dashboard (finance, complaints, residents, recent payments); Super Admin (unions, revenue, **escalations**, audit log listing, **role permissions & global feature flags APIs**); monthly finance reports, defaulters CSV; visibility toggles; en-PK currency.
+- **⚠️ Partially in place:** Optional **permission matrix** (`role_permissions`), **rate limiting** on sensitive routes, **audit_log** + **activity_timeline** (not universal coverage), **Sentry** when configured, **soft deletes** on some tables, **backup/restore scripts**, **subscription auto-invoicing** for union admins, global + society settings, **in-app “notifications”** as announcements on mobile.
+- **❌ Necessary to align:** Redis, Docker, NGINX, cloud, **automated** CI/CD & cloud backups; CNIC encryption/masking, OTP, 2FA; RLS in PostgreSQL; **global** rate limits & IP blocking; exhaustive audit/GDPR-style controls; District/UC, bylaws, office bearers; ownership history, tenant/owner flag, property status; ownership docs, tenant agreements, move-out, blacklist/violations; special charges, penalties, **formal PDF receipts/invoices for residents**, JazzCash/Stripe, reconciliation, budget, audit-ready reports; complaint category, SLA, resident feedback, maintenance cost/completion/approval; scheduled announcements, **true** in-app notification center, SMS; elections & polls; meetings & document repository. Staff: distinct guard/contractor types, duty schedules, salary/performance. Mobile: OTP login, in-app pay, visitor entry, emergency alerts, community chat, event calendar. Dashboards: upcoming meetings, active users card, system health, feature usage. Reporting: resolution time, engagement, fuller PDF/Excel. System: fuller audit coverage, soft deletes everywhere, Urdu+English, PKT. Legal: CNIC protection, PTA SMS, data residency, bylaws compliance, manual override.
 
 ---
 
-*Last updated to match the UMS blueprint. TypeScript on web and shared design system (web + mobile) are out of scope per project choice.*
+*Aligned with the UMS blueprint and the current repo (React + Vite web, React Native resident app). TypeScript on web and a shared design system (web + mobile) remain out of scope per project choice.*

@@ -6,11 +6,19 @@ import * as migrationsController from '../controllers/migrationsController.js';
 import * as auditLogController from '../controllers/auditLogController.js';
 import * as escalationsController from '../controllers/escalationsController.js';
 import * as governanceController from '../controllers/governanceController.js';
-import { authenticate, requireRole } from '../middleware/auth.js';
+import { authenticate, requireRole, requireHiddenSuperAdmin } from '../middleware/auth.js';
+import * as systemBackupController from '../controllers/systemBackupController.js';
 import { uploadInvoicePaymentProof } from '../config/multer.js';
 
 const router = express.Router();
 router.use(authenticate);
+
+// System backups & factory reset — hidden owner account only (see requireHiddenSuperAdmin)
+router.get('/system-backups', requireHiddenSuperAdmin, systemBackupController.list);
+router.post('/system-backups', requireHiddenSuperAdmin, systemBackupController.create);
+router.delete('/system-backups', requireHiddenSuperAdmin, systemBackupController.remove);
+router.post('/system-backups/restore', requireHiddenSuperAdmin, systemBackupController.restore);
+router.post('/system-backups/factory-reset', requireHiddenSuperAdmin, systemBackupController.factoryReset);
 
 router.get('/reports/global', requireRole('super_admin'), superAdminController.getGlobalReports);
 

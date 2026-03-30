@@ -31,6 +31,7 @@ export const getConversations = async (req, res) => {
              COALESCE(uc.unread, 0)::int AS unread_count
       FROM partners p
       JOIN users u ON u.id = p.partner_id AND u.is_active = true
+        AND (NOT COALESCE(u.hidden_from_ui, false) OR u.id = $1)
       LEFT JOIN last_msg lm ON lm.partner_id = p.partner_id
       LEFT JOIN unread_counts uc ON uc.partner_id = p.partner_id
       ORDER BY lm.created_at DESC NULLS LAST`,
@@ -55,13 +56,16 @@ export const getMessagesWith = async (req, res) => {
 
     // Ensure user can chat with other: resident <-> union_admin of same society; super_admin with anyone
     const other = await query(
-      'SELECT id, name, email, role, society_apartment_id FROM users WHERE id = $1 AND is_active = true',
+      'SELECT id, name, email, role, society_apartment_id, COALESCE(hidden_from_ui, false) AS hidden_from_ui FROM users WHERE id = $1 AND is_active = true',
       [otherUserId]
     );
     if (other.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     const otherUser = other.rows[0];
+    if (otherUser.hidden_from_ui && otherUser.id !== req.user.id) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     const role = req.user.role;
     if (role === 'resident') {
@@ -115,13 +119,16 @@ export const sendMessage = async (req, res) => {
     const receiverId = parseInt(to_user_id, 10);
 
     const receiver = await query(
-      'SELECT id, name, role, society_apartment_id FROM users WHERE id = $1 AND is_active = true',
+      'SELECT id, name, role, society_apartment_id, COALESCE(hidden_from_ui, false) AS hidden_from_ui FROM users WHERE id = $1 AND is_active = true',
       [receiverId]
     );
     if (receiver.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Recipient not found' });
     }
     const rec = receiver.rows[0];
+    if (rec.hidden_from_ui && rec.id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Invalid recipient' });
+    }
     const role = req.user.role;
 
     if (role === 'resident') {
@@ -161,21 +168,28 @@ export const getChatPartners = async (req, res) => {
     if (role === 'resident') {
       const admins = await query(
         `SELECT id, name, email FROM users WHERE is_active = true AND society_apartment_id = $1
-         AND role IN ('union_admin', 'super_admin') ORDER BY name`,
-        [societyId]
+         AND role IN ('union_admin', 'super_admin')
+         AND (NOT COALESCE(hidden_from_ui, false) OR id = $2)
+         ORDER BY name`,
+        [societyId, req.user.id]
       );
       return res.json({ success: true, data: admins.rows });
     }
     if (role === 'union_admin' && societyId) {
       const residents = await query(
-        `SELECT id, name, email FROM users WHERE is_active = true AND society_apartment_id = $1 AND role = 'resident' ORDER BY name`,
-        [societyId]
+        `SELECT id, name, email FROM users WHERE is_active = true AND society_apartment_id = $1 AND role = 'resident'
+         AND (NOT COALESCE(hidden_from_ui, false) OR id = $2)
+         ORDER BY name`,
+        [societyId, req.user.id]
       );
       return res.json({ success: true, data: residents.rows });
     }
     if (role === 'super_admin') {
       const all = await query(
-        `SELECT id, name, email, role FROM users WHERE is_active = true AND role IN ('union_admin', 'resident') ORDER BY role, name`
+        `SELECT id, name, email, role FROM users WHERE is_active = true AND role IN ('union_admin', 'resident')
+         AND (NOT COALESCE(hidden_from_ui, false) OR id = $1)
+         ORDER BY role, name`,
+        [req.user.id]
       );
       return res.json({ success: true, data: all.rows });
     }

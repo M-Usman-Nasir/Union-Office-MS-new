@@ -1,15 +1,16 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database.js';
+import { getUiSocietyId } from '../utils/multiUiContext.js';
 
 // List employees for the current union_admin's society only
 export const getAll = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = getUiSocietyId(req) ?? req.user?.society_apartment_id;
     if (!societyId) {
       return res.status(403).json({
         success: false,
-        message: 'No society assigned. Only union admins with an assigned society can manage employees.',
+        message: 'No society assigned. Only union admins with an assigned society can manage employees. (Multi-UI: set society in the toolbar / X-Hums-Ui-Society-Id.)',
       });
     }
 
@@ -98,7 +99,7 @@ export const getAll = async (req, res) => {
 // Get one employee by user id (union_admin society only)
 export const getById = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = getUiSocietyId(req) ?? req.user?.society_apartment_id;
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -158,7 +159,7 @@ export const getById = async (req, res) => {
 // Create employee (user staff + employees row)
 export const create = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = getUiSocietyId(req) ?? req.user?.society_apartment_id;
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -232,7 +233,7 @@ export const create = async (req, res) => {
 // Update employee (user + employees row)
 export const update = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = getUiSocietyId(req) ?? req.user?.society_apartment_id;
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -313,7 +314,7 @@ export const update = async (req, res) => {
 // Delete employee (and user; employees row removed via CASCADE)
 export const remove = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = getUiSocietyId(req) ?? req.user?.society_apartment_id;
     if (!societyId) {
       return res.status(403).json({
         success: false,

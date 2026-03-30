@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -38,6 +38,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import CardMembershipIcon from '@mui/icons-material/CardMembership'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import MessageIcon from '@mui/icons-material/Message'
+import BackupIcon from '@mui/icons-material/Backup'
 import LogoutIcon from '@mui/icons-material/Logout'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
@@ -50,6 +51,7 @@ import { useTheme as useAppTheme } from '@/contexts/ThemeContext'
 import { ROUTES, ROLES } from '@/utils/constants'
 import { messagesApi } from '@/api/messagesApi'
 import PushNotificationEnabler from '@/components/notifications/PushNotificationEnabler'
+import MultiUiContextBar from '@/components/layout/MultiUiContextBar'
 import ResidentPendingAssignment from '@/pages/resident/PendingAssignment'
 import superAdminAvatar from '@/assets/images/users/super_admin.webp'
 import toast from 'react-hot-toast'
@@ -91,12 +93,20 @@ const MainLayout = ({ children }) => {
   const fetchUnreadRef = useRef(null)
 
   const role = user?.role ? String(user.role).toLowerCase().replace(/\s/g, '_') : ''
-  const showMessagesInToolbar = ['super_admin', 'union_admin', 'resident', 'admin'].includes(role)
+  const showMessagesInToolbar = user?.hidden_from_ui
+    ? !location.pathname.startsWith('/staff')
+    : ['super_admin', 'union_admin', 'resident', 'admin'].includes(role)
   const isResidentWithoutSociety =
+    !user?.hidden_from_ui &&
     user?.role === ROLES.RESIDENT &&
     (user?.society_apartment_id == null || user?.society_apartment_id === '')
 
   const getMessagesRoute = () => {
+    if (user?.hidden_from_ui) {
+      if (location.pathname.startsWith('/admin')) return ROUTES.ADMIN_MESSAGES
+      if (location.pathname.startsWith('/resident')) return ROUTES.RESIDENT_MESSAGES
+      return ROUTES.SUPER_ADMIN_MESSAGES
+    }
     if (role === 'super_admin') return ROUTES.SUPER_ADMIN_MESSAGES
     if (role === 'union_admin' || role === 'admin') return ROUTES.ADMIN_MESSAGES
     if (role === 'resident') return ROUTES.RESIDENT_MESSAGES
@@ -200,8 +210,65 @@ const MainLayout = ({ children }) => {
     return 'Good evening'
   }
 
-  // Menu items based on role
+  // Menu items based on role (hidden super admin: sidebar follows current route prefix)
   const getMenuItems = () => {
+    if (user?.hidden_from_ui && user?.role === ROLES.SUPER_ADMIN) {
+      const p = location.pathname
+      if (p.startsWith('/admin')) {
+        return [
+          { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.ADMIN_DASHBOARD },
+          { text: 'Residents', icon: <PeopleIcon />, path: ROUTES.ADMIN_RESIDENTS },
+          { text: 'Messages', icon: <MessageIcon />, path: ROUTES.ADMIN_MESSAGES },
+          { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.ADMIN_MAINTENANCE },
+          { text: 'Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_DEFAULTERS },
+          { text: 'Previous Defaulters', icon: <WarningIcon />, path: ROUTES.ADMIN_PREVIOUS_DEFAULTERS },
+          { text: 'Finance', icon: <AccountBalanceIcon />, path: ROUTES.ADMIN_FINANCE },
+          { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.ADMIN_COMPLAINTS },
+          { text: 'Employees', icon: <PeopleIcon />, path: ROUTES.ADMIN_EMPLOYEES },
+          { text: 'Announcements', icon: <AnnouncementIcon />, path: ROUTES.ADMIN_ANNOUNCEMENTS },
+          { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.ADMIN_SETTINGS },
+          { text: 'Union Members', icon: <PeopleIcon />, path: ROUTES.ADMIN_UNION_MEMBERS },
+          { text: 'Ownership Requests', icon: <ApartmentIcon />, path: ROUTES.ADMIN_UNIT_CLAIMS },
+          { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.ADMIN_PROFILE },
+          { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
+        ]
+      }
+      if (p.startsWith('/resident')) {
+        return [
+          { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.RESIDENT_DASHBOARD },
+          { text: 'Messages', icon: <MessageIcon />, path: ROUTES.RESIDENT_MESSAGES },
+          { text: 'Complaints', icon: <FeedbackIcon />, path: ROUTES.RESIDENT_COMPLAINTS },
+          { text: 'Maintenance', icon: <PaymentIcon />, path: ROUTES.RESIDENT_MAINTENANCE },
+          { text: 'Financial Summary', icon: <AssessmentIcon />, path: ROUTES.RESIDENT_FINANCIAL_SUMMARY },
+          { text: 'Union Info', icon: <ApartmentIcon />, path: ROUTES.RESIDENT_UNION_INFO },
+          { text: 'Union Members', icon: <PeopleIcon />, path: ROUTES.RESIDENT_UNION_MEMBERS },
+          { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.RESIDENT_PROFILE },
+          { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
+        ]
+      }
+      if (p.startsWith('/staff')) {
+        return [
+          { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.STAFF_DASHBOARD },
+          { text: 'My Complaints', icon: <FeedbackIcon />, path: ROUTES.STAFF_COMPLAINTS },
+          { text: 'Payment Updates', icon: <PaymentIcon />, path: ROUTES.STAFF_PAYMENTS },
+          { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
+        ]
+      }
+      return [
+        { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.SUPER_ADMIN_DASHBOARD },
+        { text: 'Leads', icon: <ApartmentIcon />, path: ROUTES.SUPER_ADMIN_SOCIETIES },
+        { text: 'Clients', icon: <PeopleIcon />, path: ROUTES.SUPER_ADMIN_USERS },
+        { text: 'Subscription Management', icon: <CardMembershipIcon />, path: ROUTES.SUPER_ADMIN_SUBSCRIPTION_MANAGEMENT },
+        { text: 'Invoices', icon: <ReceiptLongIcon />, path: ROUTES.SUPER_ADMIN_INVOICES },
+        { text: 'Escalations', icon: <FeedbackIcon />, path: ROUTES.SUPER_ADMIN_ESCALATIONS },
+        { text: 'Messages', icon: <MessageIcon />, path: ROUTES.SUPER_ADMIN_MESSAGES },
+        { text: 'Audit logs', icon: <AssessmentIcon />, path: ROUTES.SUPER_ADMIN_AUDIT_LOGS },
+        { text: 'Reset & Backup', icon: <BackupIcon />, path: ROUTES.SUPER_ADMIN_RESET_BACKUP },
+        { text: 'Settings', icon: <SettingsIcon />, path: ROUTES.SUPER_ADMIN_SETTINGS },
+        { text: 'Profile', icon: <AccountCircleIcon />, path: ROUTES.SUPER_ADMIN_PROFILE },
+        { text: 'Logout', icon: <LogoutIcon />, path: '/logout', action: handleLogout },
+      ]
+    }
     if (user?.role === ROLES.SUPER_ADMIN) {
       return [
         { text: 'Dashboard', icon: <DashboardIcon />, path: ROUTES.SUPER_ADMIN_DASHBOARD },
@@ -256,7 +323,7 @@ const MainLayout = ({ children }) => {
     }
   }
 
-  const menuItems = getMenuItems()
+  const menuItems = useMemo(() => getMenuItems(), [user, location.pathname])
 
   const drawer = (collapsed = false) => (
     <Box
@@ -530,6 +597,7 @@ const MainLayout = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'Dashboard'}
           </Typography>
+          <MultiUiContextBar user={user} />
           <TextField
             size="small"
             placeholder="Search..."
@@ -628,7 +696,7 @@ const MainLayout = ({ children }) => {
             </MenuItem>
             <MenuItem disabled>
               <Typography variant="caption" color="text.secondary">
-                {user?.role}
+                {user?.hidden_from_ui ? 'super_admin (multi-UI)' : user?.role}
               </Typography>
             </MenuItem>
             <Divider />

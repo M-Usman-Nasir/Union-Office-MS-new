@@ -72,6 +72,7 @@ async function loadUserProfileWithLocation(userId) {
        u.created_at,
        u.last_login,
        COALESCE(u.must_change_password, false) AS must_change_password,
+       COALESCE(u.hidden_from_ui, false) AS hidden_from_ui,
        un.unit_number,
        b.name AS block_name,
        ap.name AS apartment_name

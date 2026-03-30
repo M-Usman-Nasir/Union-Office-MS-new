@@ -1,6 +1,12 @@
 import { query } from '../config/database.js';
 import { runSyncForSocieties } from './defaulterController.js';
 import * as activity from '../services/activityService.js';
+import {
+  getUiSocietyId,
+  getUiResidentIdSync,
+  isMultiUiSuperAdmin,
+  getResidentRowForMultiUi,
+} from '../utils/multiUiContext.js';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -27,7 +33,8 @@ async function createFinanceIncomeFromMaintenance({ societyId, addedBy, amount, 
 // Get all maintenance records
 export const getAll = async (req, res) => {
   try {
-    // Resident must belong to a society and unit; otherwise return empty (no access)
+    let forceUnitId = null;
+
     if (req.user?.role === 'resident') {
       if (!req.user.society_apartment_id || !req.user.unit_id) {
         const limitNum = Number(req.query.limit) || 10;
@@ -42,6 +49,23 @@ export const getAll = async (req, res) => {
           },
         });
       }
+      forceUnitId = req.user.unit_id;
+    } else if (isMultiUiSuperAdmin(req) && getUiResidentIdSync(req)) {
+      const row = await getResidentRowForMultiUi(req);
+      if (!row?.unit_id) {
+        const limitNum = Number(req.query.limit) || 10;
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            page: 1,
+            limit: limitNum,
+            total: 0,
+            pages: 0,
+          },
+        });
+      }
+      forceUnitId = row.unit_id;
     }
 
     const { page = 1, limit = 10, society_id, unit_id, status, month, year } = req.query;
@@ -87,6 +111,12 @@ export const getAll = async (req, res) => {
       params.push(year);
     }
 
+    if (forceUnitId != null) {
+      paramCount++;
+      sql += ` AND m.unit_id = $${paramCount}`;
+      params.push(forceUnitId);
+    }
+
     sql += ` ORDER BY m.year DESC, m.month DESC, m.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
@@ -121,6 +151,12 @@ export const getAll = async (req, res) => {
       countParamCount++;
       countSql += ` AND year = $${countParamCount}`;
       countParams.push(year);
+    }
+
+    if (forceUnitId != null) {
+      countParamCount++;
+      countSql += ` AND unit_id = $${countParamCount}`;
+      countParams.push(forceUnitId);
     }
 
     const countResult = await query(countSql, countParams);
@@ -239,7 +275,10 @@ export const create = async (req, res) => {
 // Create maintenance record for all units in a society (one record per unit for given month/year; skips existing)
 export const createForAllUnits = async (req, res) => {
   try {
-    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : req.body.society_apartment_id;
+    const societyId =
+      getUiSocietyId(req) ||
+      (req.user?.role === 'union_admin' ? req.user.society_apartment_id : null) ||
+      req.body.society_apartment_id;
     const { month, year, base_amount, total_amount, due_date } = req.body;
 
     if (!societyId || !month || !year || total_amount == null) {
@@ -551,9 +590,10 @@ export const deleteByYear = async (req, res) => {
     const yearParam = req.query.year != null ? req.query.year : req.body?.year;
     const year = yearParam != null ? parseInt(yearParam, 10) : null;
     const societyId =
-      req.user?.role === 'union_admin'
-        ? req.user.society_apartment_id
-        : req.query.society_id ?? req.body?.society_id;
+      getUiSocietyId(req) ||
+      (req.user?.role === 'union_admin' ? req.user.society_apartment_id : null) ||
+      req.query.society_id ||
+      req.body?.society_id;
 
     if (!societyId) {
       return res.status(400).json({
@@ -604,10 +644,20 @@ export const deleteByYear = async (req, res) => {
 export const submitPaymentProof = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id;
-    const unitId = req.user?.unit_id;
+    let userId = req.user?.id;
+    let unitId = req.user?.unit_id;
 
-    if (req.user?.role !== 'resident' || !unitId) {
+    if (isMultiUiSuperAdmin(req)) {
+      const row = await getResidentRowForMultiUi(req);
+      if (!row?.unit_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Resident context required (Multi-UI: select resident / X-Hums-Ui-Resident-Id).',
+        });
+      }
+      userId = row.id;
+      unitId = row.unit_id;
+    } else if (req.user?.role !== 'resident' || !unitId) {
       return res.status(403).json({
         success: false,
         message: 'Only residents can submit payment proof for their unit.',
@@ -691,7 +741,8 @@ export async function createMaintenancePaymentRequest({ maintenanceId, submitted
 // Resident: get my payment requests (for showing "Pending verification" on resident maintenance page)
 export const getMyPaymentRequests = async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId =
+      getUiResidentIdSync(req) || (req.user?.role === 'resident' ? req.user.id : null);
     if (!userId) {
       return res.json({ success: true, data: [] });
     }
@@ -744,10 +795,11 @@ export const getPaymentRequests = async (req, res) => {
       sql += ` AND m.society_apartment_id = $${paramCount}`;
       params.push(society_id);
     }
-    if (req.user?.role === 'union_admin' && req.user?.society_apartment_id) {
+    const unionScope = getUiSocietyId(req) || (req.user?.role === 'union_admin' ? req.user.society_apartment_id : null);
+    if (unionScope) {
       paramCount++;
       sql += ` AND m.society_apartment_id = $${paramCount}`;
-      params.push(req.user.society_apartment_id);
+      params.push(unionScope);
     }
 
     sql += ` ORDER BY r.created_at ASC`;
@@ -1005,7 +1057,10 @@ export const getYearlyLedger = async (req, res) => {
 // Apply society-level base amount to all units for all months of a year (create missing records only)
 export const applyBaseForYear = async (req, res) => {
   try {
-    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : req.body.society_id;
+    const societyId =
+      getUiSocietyId(req) ||
+      (req.user?.role === 'union_admin' ? req.user.society_apartment_id : null) ||
+      req.body.society_id;
     const year = req.body.year ? parseInt(req.body.year, 10) : new Date().getFullYear();
 
     if (!societyId) {
@@ -1087,7 +1142,7 @@ export const generateMonthlyDues = async (req, res) => {
     const targetMonth = month || currentDate.getMonth() + 1;
     const targetYear = year || currentDate.getFullYear();
 
-    const societyId = req.user?.role === 'union_admin' ? req.user.society_apartment_id : null;
+    const societyId = getUiSocietyId(req) || (req.user?.role === 'union_admin' ? req.user.society_apartment_id : null);
 
     const { generateMonthlyDues: generateDues } = await import('../jobs/monthlyDuesGenerator.js');
     const result = await generateDues(targetMonth, targetYear, societyId);
@@ -1119,7 +1174,7 @@ export const generateMonthlyDues = async (req, res) => {
 // Generate monthly dues for a block or floor (union_admin only, for their society)
 export const generateForScope = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = getUiSocietyId(req) || req.user?.society_apartment_id;
     if (!societyId) {
       return res.status(400).json({
         success: false,

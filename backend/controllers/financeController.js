@@ -46,6 +46,18 @@ export const getAll = async (req, res) => {
       params.push(year);
     }
 
+    paramCount++;
+    params.push(req.user.id);
+    const viewerPid = paramCount;
+    sql = sql.replace(
+      'u.name as added_by_name',
+      `CASE WHEN u.id IS NOT NULL AND COALESCE(u.hidden_from_ui, false) AND u.id <> $${viewerPid} THEN NULL ELSE u.name END as added_by_name`
+    );
+    sql = sql.replace(
+      'emp_u.name as employee_name',
+      `CASE WHEN emp_u.id IS NOT NULL AND COALESCE(emp_u.hidden_from_ui, false) AND emp_u.id <> $${viewerPid} THEN NULL ELSE emp_u.name END as employee_name`
+    );
+
     sql += ` ORDER BY f.transaction_date DESC, f.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
@@ -178,15 +190,16 @@ export const getById = async (req, res) => {
     const { id } = req.params;
 
     const result = await query(
-      `SELECT f.*, s.name as society_name, u.name as added_by_name,
-              emp_u.name as employee_name
+      `SELECT f.*, s.name as society_name,
+              CASE WHEN u.id IS NOT NULL AND COALESCE(u.hidden_from_ui, false) AND u.id <> $2 THEN NULL ELSE u.name END as added_by_name,
+              CASE WHEN emp_u.id IS NOT NULL AND COALESCE(emp_u.hidden_from_ui, false) AND emp_u.id <> $2 THEN NULL ELSE emp_u.name END as employee_name
        FROM finance f
        LEFT JOIN apartments s ON f.society_apartment_id = s.id
        LEFT JOIN users u ON f.added_by = u.id
        LEFT JOIN employees emp ON f.employee_id = emp.id
        LEFT JOIN users emp_u ON emp.user_id = emp_u.id
        WHERE f.id = $1 AND f.deleted_at IS NULL`,
-      [id]
+      [id, req.user.id]
     );
 
     if (result.rows.length === 0) {

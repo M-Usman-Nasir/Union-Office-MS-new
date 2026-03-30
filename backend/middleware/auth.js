@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
+import { isMultiUiSuperAdmin } from '../utils/multiUiContext.js';
 
 // Verify JWT token
 export const authenticate = async (req, res, next) => {
@@ -22,7 +23,8 @@ export const authenticate = async (req, res, next) => {
     // Get user from database
     const result = await query(
       `SELECT id, email, name, role, society_apartment_id, unit_id,
-              COALESCE(must_change_password, false) AS must_change_password
+              COALESCE(must_change_password, false) AS must_change_password,
+              COALESCE(hidden_from_ui, false) AS hidden_from_ui
        FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
       [decoded.userId]
     );
@@ -92,15 +94,47 @@ export const requireRole = (...roles) => {
       });
     }
 
-    if (!flatRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions. Required role: ' + flatRoles.join(' or '),
-      });
+    if (flatRoles.includes(req.user.role)) {
+      return next();
     }
 
-    next();
+    // Private multi-UI super_admin (hidden_from_ui): may call union_admin / resident / staff routes when using UI headers.
+    if (isMultiUiSuperAdmin(req)) {
+      const lifted = ['union_admin', 'resident', 'staff'];
+      if (flatRoles.some((r) => lifted.includes(r))) {
+        return next();
+      }
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'Insufficient permissions. Required role: ' + flatRoles.join(' or '),
+    });
   };
+};
+
+/** Only the private owner account (hidden_from_ui super_admin). Optional HUMS_OWNER_USER_ID env for extra lock. */
+export const requireHiddenSuperAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required',
+    });
+  }
+  if (req.user.role !== 'super_admin' || !req.user.hidden_from_ui) {
+    return res.status(403).json({
+      success: false,
+      message: 'This action is restricted to the system owner account.',
+    });
+  }
+  const ownerId = process.env.HUMS_OWNER_USER_ID;
+  if (ownerId && String(req.user.id) !== String(ownerId)) {
+    return res.status(403).json({
+      success: false,
+      message: 'This action is restricted to the system owner account.',
+    });
+  }
+  next();
 };
 
 // Optional authentication (doesn't fail if no token)
@@ -114,7 +148,8 @@ export const optionalAuth = async (req, res, next) => {
 
       const result = await query(
         `SELECT id, email, name, role, society_apartment_id, unit_id,
-                COALESCE(must_change_password, false) AS must_change_password
+                COALESCE(must_change_password, false) AS must_change_password,
+                COALESCE(hidden_from_ui, false) AS hidden_from_ui
          FROM users WHERE id = $1 AND is_active = true AND deleted_at IS NULL`,
         [decoded.userId]
       );
@@ -142,6 +177,9 @@ export const allowResidentSelfOrAdmin = (req, res, next) => {
   const isResidentSelf = req.user.role === 'resident' && String(req.params.id) === String(req.user.id);
   if (isResidentSelf) {
     req.residentSelfUpdate = true;
+    return next();
+  }
+  if (isMultiUiSuperAdmin(req)) {
     return next();
   }
   return requireRole('super_admin', 'union_admin')(req, res, next);

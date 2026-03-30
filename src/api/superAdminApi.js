@@ -29,6 +29,25 @@ export const superAdminApi = {
   updateGlobalSettings: (data) => api.put(API_ENDPOINTS.SETTINGS_GLOBAL, data),
 
   getAuditLogs: (params) => api.get(API_ENDPOINTS.SUPER_ADMIN_AUDIT_LOGS, { params }),
+
+  listSystemBackups: () => api.get(API_ENDPOINTS.SUPER_ADMIN_SYSTEM_BACKUPS),
+  createSystemBackup: () =>
+    api.post(API_ENDPOINTS.SUPER_ADMIN_SYSTEM_BACKUPS, {}, { timeout: 600000 }),
+  deleteSystemBackup: (filename) =>
+    api.delete(API_ENDPOINTS.SUPER_ADMIN_SYSTEM_BACKUPS, {
+      data: { filename, confirm: 'DELETE' },
+    }),
+  restoreSystemBackup: (filename) =>
+    api.post(
+      API_ENDPOINTS.SUPER_ADMIN_SYSTEM_BACKUPS_RESTORE,
+      { filename, confirm: 'RESTORE' },
+      { timeout: 120000 }
+    ),
+  factoryResetSystem: (password) =>
+    api.post(API_ENDPOINTS.SUPER_ADMIN_SYSTEM_BACKUPS_FACTORY_RESET, {
+      confirm: 'FACTORY RESET',
+      password,
+    }),
   getEscalations: (params) => api.get(API_ENDPOINTS.SUPER_ADMIN_ESCALATIONS, { params }),
   resolveEscalation: (id, data) => api.patch(API_ENDPOINTS.SUPER_ADMIN_ESCALATION_RESOLVE(id), data),
 }

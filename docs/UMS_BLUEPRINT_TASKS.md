@@ -57,7 +57,6 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [ ] Full pay-dues flow (currently payment recording only)
 - [x] Submit complaints
 - [x] View announcements
-- [ ] Book facilities
 - [x] Track service requests (complaints)
 - [x] Receive notifications
 
@@ -134,12 +133,12 @@ Use this list to track progress. **Checked [x] = already in your current system.
 ## 7. Complaints & Service Requests
 
 ### Complaint System
-- [x] Category-based complaints (partial: `type` + `remarks` on complaints; not a full category taxonomy/SLA)
+- [ ] Category-based complaints (current complaints flow does not yet implement a dedicated category taxonomy)
 - [x] Priority levels
 - [ ] SLA timers
 - [x] Status tracking
 - [x] Admin notes (progress)
-- [x] Resident feedback (after resolution; resident app dialog + backend endpoint/store added)
+- [ ] Resident feedback (after resolution)
 
 ### Maintenance Requests
 - [x] Completion / payment proof (partial: resident payment-proof upload + admin approve/reject; admin receipt upload on maintenance record; complaint attachments separate)
@@ -153,7 +152,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [x] Union-wide
 - [x] Block-specific
 - [x] Role-specific (partial: `audience` + filtering for resident/staff vs admin targeting)
-- [x] Scheduled publishing (`scheduled_publish_at`; residents/staff only see when live)
+- [ ] Scheduled publishing
 
 ### Notifications
 - [ ] In-app notifications (stored feed; push + email exist; `/api/notifications` is push subscribe/VAPID only)
@@ -180,7 +179,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [ ] Pay bills in app (view dues done)
 - [x] Submit complaints
 - [x] Track requests
-- [ ] View announcements (full list; union info done)
+- [ ] View announcements (full announcements experience still partial)
 - [x] Push notifications
 
 ### Nice-to-Have
@@ -225,7 +224,7 @@ Use this list to track progress. **Checked [x] = already in your current system.
 - [ ] Feature toggles (beyond visibility toggles per society) (partial: global_feature_flags APIs added; UI + endpoint guards expansion pending)
 - [x] Backup & restore (DB backup/restore scripts + npm commands added)
 - [x] Error monitoring (Sentry) (backend integration via `SENTRY_DSN`)
-- [x] API versioning (e.g. /api/v1/) (implemented as a backwards-compatible alias to /api)
+- [ ] API versioning (partial: `/api/v1` alias exists for some routes; not full versioned contract)
 - [ ] Localization (Urdu + English)
 - [ ] Timezone handling (PKT) – beyond en-PK currency
 

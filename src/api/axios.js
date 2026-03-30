@@ -20,7 +20,24 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
-    
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.USER)
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u.hidden_from_ui) {
+          const sid = localStorage.getItem(STORAGE_KEYS.HUMS_UI_SOCIETY_ID)
+          const rid = localStorage.getItem(STORAGE_KEYS.HUMS_UI_RESIDENT_ID)
+          const stid = localStorage.getItem(STORAGE_KEYS.HUMS_UI_STAFF_ID)
+          if (sid) config.headers['x-hums-ui-society-id'] = String(sid)
+          if (rid) config.headers['x-hums-ui-resident-id'] = String(rid)
+          if (stid) config.headers['x-hums-ui-staff-id'] = String(stid)
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
     // Don't set Content-Type for FormData - let browser set it with boundary
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type']

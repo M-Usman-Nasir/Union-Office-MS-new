@@ -166,6 +166,9 @@ export const API_ENDPOINTS = {
   SUPER_ADMIN_INVOICE_UPLOAD_PAYMENT_PROOF: (id) => `/super-admin/invoices/${id}/upload-payment-proof`,
   SUPER_ADMIN_RUN_MIGRATIONS: '/super-admin/run-migrations',
   SUPER_ADMIN_AUDIT_LOGS: '/super-admin/audit-logs',
+  SUPER_ADMIN_SYSTEM_BACKUPS: '/super-admin/system-backups',
+  SUPER_ADMIN_SYSTEM_BACKUPS_RESTORE: '/super-admin/system-backups/restore',
+  SUPER_ADMIN_SYSTEM_BACKUPS_FACTORY_RESET: '/super-admin/system-backups/factory-reset',
   SUPER_ADMIN_ESCALATIONS: '/super-admin/escalations',
   SUPER_ADMIN_ESCALATION_RESOLVE: (id) => `/super-admin/escalations/${id}/resolve`,
   // Societies cascading (City → Area → Apartment)
@@ -179,6 +182,10 @@ export const STORAGE_KEYS = {
   REFRESH_TOKEN: 'refreshToken',
   USER: 'user',
   THEME: 'theme',
+  /** Multi-UI (hidden super admin only): API context headers */
+  HUMS_UI_SOCIETY_ID: 'hums_ui_society_id',
+  HUMS_UI_RESIDENT_ID: 'hums_ui_resident_id',
+  HUMS_UI_STAFF_ID: 'hums_ui_staff_id',
 }
 
 // Route Paths
@@ -204,6 +211,7 @@ export const ROUTES = {
   SUPER_ADMIN_SETTINGS: '/super-admin/settings',
   SUPER_ADMIN_PROFILE: '/super-admin/profile',
   SUPER_ADMIN_AUDIT_LOGS: '/super-admin/audit-logs',
+  SUPER_ADMIN_RESET_BACKUP: '/super-admin/reset-backup',
   SUPER_ADMIN_ESCALATIONS: '/super-admin/escalations',
   SUPER_ADMIN_MESSAGES: '/super-admin/messages',
 

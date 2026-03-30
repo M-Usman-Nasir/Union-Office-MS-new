@@ -48,6 +48,10 @@ export const getAll = async (req, res) => {
       params.push(`%${search}%`);
     }
 
+    paramCount++;
+    sql += ` AND (NOT COALESCE(u.hidden_from_ui, false) OR u.id = $${paramCount})`;
+    params.push(req.user.id);
+
     sql += ` ORDER BY u.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
     params.push(limit, offset);
 
@@ -82,6 +86,10 @@ export const getAll = async (req, res) => {
       countParams.push(`%${search}%`);
     }
 
+    countParamCount++;
+    countSql += ` AND (NOT COALESCE(hidden_from_ui, false) OR id = $${countParamCount})`;
+    countParams.push(req.user.id);
+
     const countResult = await query(countSql, countParams);
 
     res.json({
@@ -111,7 +119,8 @@ export const getById = async (req, res) => {
 
     const result = await query(
       `SELECT u.id, u.email, u.name, u.role, u.society_apartment_id, u.unit_id, u.cnic, u.contact_number, u.emergency_contact, u.move_in_date, u.is_active, u.created_at, u.last_login, u.address, u.city, u.postal_code, u.work_employer, u.work_title, u.work_phone,
-       e.department, e.designation, e.salary_rupees
+       e.department, e.designation, e.salary_rupees,
+       COALESCE(u.hidden_from_ui, false) AS hidden_from_ui
        FROM users u
        LEFT JOIN employees e ON e.user_id = u.id
        WHERE u.id = $1 AND u.deleted_at IS NULL`,
@@ -126,6 +135,12 @@ export const getById = async (req, res) => {
     }
 
     const userRow = result.rows[0];
+    if (userRow.hidden_from_ui && parseInt(id, 10) !== req.user.id) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
     // Union Admin can only view users in their society (or themselves)
     if (req.user.role === 'union_admin' && req.user.society_apartment_id) {
       if (parseInt(id) !== req.user.id && userRow.society_apartment_id !== req.user.society_apartment_id) {
@@ -136,9 +151,10 @@ export const getById = async (req, res) => {
       }
     }
 
+    const { hidden_from_ui, ...safeRow } = userRow;
     res.json({
       success: true,
-      data: userRow,
+      data: safeRow,
     });
   } catch (error) {
     console.error('Get user error:', error);
@@ -205,7 +221,7 @@ export const update = async (req, res) => {
     const { name, role, society_apartment_id, unit_id, cnic, contact_number, emergency_contact, is_active, address, city, postal_code, work_employer, work_title, work_phone, department, designation, salary_rupees } = req.body;
 
     const existing = await query(
-      'SELECT id, role, society_apartment_id FROM users WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT id, role, society_apartment_id, COALESCE(hidden_from_ui, false) AS hidden_from_ui FROM users WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (existing.rows.length === 0) {
@@ -216,6 +232,12 @@ export const update = async (req, res) => {
     }
 
     const targetUser = existing.rows[0];
+    if (targetUser.hidden_from_ui && parseInt(id, 10) !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
     // Assigning the Super Admin role is not allowed (only one fixed Super Admin in the system)
     if (role === 'super_admin') {
       return res.status(403).json({
@@ -357,6 +379,23 @@ export const updatePassword = async (req, res) => {
     const shouldForceChange = force_change_password === true || force_change_password === 'true';
     const hashedPassword = await bcrypt.hash(new_password, 10);
 
+    const targetPw = await query(
+      'SELECT id, COALESCE(hidden_from_ui, false) AS hidden_from_ui FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    if (targetPw.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+    if (targetPw.rows[0].hidden_from_ui && parseInt(id, 10) !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
     const result = await query(
       `UPDATE users
        SET password = $1,
@@ -420,7 +459,7 @@ export const remove = async (req, res) => {
     }
 
     const existing = await query(
-      'SELECT id, role, society_apartment_id FROM users WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT id, role, society_apartment_id, COALESCE(hidden_from_ui, false) AS hidden_from_ui FROM users WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (existing.rows.length === 0) {
@@ -430,6 +469,12 @@ export const remove = async (req, res) => {
       });
     }
     const target = existing.rows[0];
+    if (target.hidden_from_ui && parseInt(id, 10) !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
     if (req.user.role === 'union_admin') {
       if (target.role !== 'staff' || target.society_apartment_id !== req.user.society_apartment_id) {
         return res.status(403).json({

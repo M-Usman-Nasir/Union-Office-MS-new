@@ -148,6 +148,11 @@ export const activityTimeline = async (req, res) => {
       filters.push(`created_at <= $${params.length}::timestamptz`);
     }
 
+    params.push(req.user.id);
+    filters.push(
+      `(actor_user_id IS NULL OR actor_user_id = $${params.length} OR NOT EXISTS (SELECT 1 FROM users hu WHERE hu.id = actor_user_id AND COALESCE(hu.hidden_from_ui, false)))`
+    );
+
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
     const countResult = await query(

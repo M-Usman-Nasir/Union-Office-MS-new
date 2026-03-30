@@ -22,6 +22,8 @@ import AuditLogs from '@/pages/super-admin/AuditLogs'
 import SubscriptionManagement from '@/pages/super-admin/SubscriptionManagement'
 import ViewDetailsPage from '@/pages/super-admin/ViewDetailsPage'
 import Escalations from '@/pages/super-admin/Escalations'
+import ResetBackup from '@/pages/super-admin/ResetBackup'
+import HiddenSuperAdminRoute from '@/routes/HiddenSuperAdminRoute'
 import Users from '@/pages/admin/Users'
 import Employees from '@/pages/admin/Employees'
 import AdminDashboard from '@/pages/admin/Dashboard'
@@ -87,6 +89,14 @@ export const AppRoutes = () => {
                 <Route path="settings" element={<SuperAdminSettings />} />
                 <Route path="profile" element={<SuperAdminProfile />} />
                 <Route path="audit-logs" element={<AuditLogs />} />
+                <Route
+                  path="reset-backup"
+                  element={
+                    <HiddenSuperAdminRoute>
+                      <ResetBackup />
+                    </HiddenSuperAdminRoute>
+                  }
+                />
                 <Route path="escalations" element={<Escalations />} />
                 <Route path="messages" element={<Messages />} />
                 <Route path="reports" element={<GlobalReports />} />

@@ -2,6 +2,12 @@ import { createContext, useContext, useState, useEffect } from 'react'
 import { authApi } from '@/api/authApi'
 import { STORAGE_KEYS } from '@/utils/constants'
 
+function clearMultiUiStorage() {
+  localStorage.removeItem(STORAGE_KEYS.HUMS_UI_SOCIETY_ID)
+  localStorage.removeItem(STORAGE_KEYS.HUMS_UI_RESIDENT_ID)
+  localStorage.removeItem(STORAGE_KEYS.HUMS_UI_STAFF_ID)
+}
+
 const AuthContext = createContext(null)
 
 export const useAuth = () => {
@@ -35,6 +41,7 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(false)
         localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
         localStorage.removeItem(STORAGE_KEYS.USER)
+        clearMultiUiStorage()
       } finally {
         setLoading(false)
       }
@@ -75,6 +82,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false)
       localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
       localStorage.removeItem(STORAGE_KEYS.USER)
+      clearMultiUiStorage()
     }
   }
 

@@ -1,9 +1,10 @@
 import { query } from '../config/database.js';
+import { getScopedSocietyId } from '../utils/multiUiContext.js';
 
 // List union members for the current union_admin's society only
 export const getAll = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = await getScopedSocietyId(req);
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -100,7 +101,7 @@ export const getAll = async (req, res) => {
 
 export const getById = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = await getScopedSocietyId(req);
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -160,7 +161,7 @@ export const getById = async (req, res) => {
 
 export const create = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = await getScopedSocietyId(req);
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -210,7 +211,7 @@ export const create = async (req, res) => {
 
 export const update = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = await getScopedSocietyId(req);
     if (!societyId) {
       return res.status(403).json({
         success: false,
@@ -276,7 +277,7 @@ export const update = async (req, res) => {
 
 export const remove = async (req, res) => {
   try {
-    const societyId = req.user?.society_apartment_id;
+    const societyId = await getScopedSocietyId(req);
     if (!societyId) {
       return res.status(403).json({
         success: false,

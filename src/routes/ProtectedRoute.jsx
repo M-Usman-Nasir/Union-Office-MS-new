@@ -31,6 +31,20 @@ export const ProtectedRoute = ({ children, requiredRole = null }) => {
     return <Navigate to={ROUTES.RESIDENT_DASHBOARD} replace />
   }
 
+  // Private multi-UI super admin (hidden_from_ui): same account may open /super-admin, /admin, /resident, /staff routes.
+  if (requiredRole && user?.hidden_from_ui && user?.role === ROLES.SUPER_ADMIN) {
+    const p = location.pathname
+    const allowed =
+      (requiredRole === ROLES.SUPER_ADMIN && p.startsWith('/super-admin')) ||
+      (requiredRole === ROLES.ADMIN && p.startsWith('/admin')) ||
+      (requiredRole === ROLES.RESIDENT && p.startsWith('/resident')) ||
+      (requiredRole === ROLES.STAFF && p.startsWith('/staff'))
+    if (allowed) {
+      return children
+    }
+    return <Navigate to={ROUTES.SUPER_ADMIN_DASHBOARD} replace />
+  }
+
   if (requiredRole && user?.role !== requiredRole) {
     // Redirect based on user role
     if (user?.role === 'super_admin') {

@@ -1,8 +1,17 @@
 import { query } from '../config/database.js';
+import { getUiStaffIdSync } from '../utils/multiUiContext.js';
 
 // Get complaints assigned to staff member
 export const getAssignedComplaints = async (req, res) => {
   try {
+    const staffId = getUiStaffIdSync(req);
+    if (!staffId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Staff profile required. (Multi-UI: select a staff user in the toolbar / X-Hums-Ui-Staff-Id.)',
+      });
+    }
+
     const { page = 1, limit = 10, status, priority } = req.query;
     const offset = (page - 1) * limit;
 
@@ -15,7 +24,7 @@ export const getAssignedComplaints = async (req, res) => {
       LEFT JOIN users submitter ON c.submitted_by = submitter.id
       WHERE c.assigned_to = $1
     `;
-    const params = [req.user.id];
+    const params = [staffId];
     let paramCount = 1;
 
     if (status) {
@@ -37,7 +46,7 @@ export const getAssignedComplaints = async (req, res) => {
 
     // Get total count
     let countSql = 'SELECT COUNT(*) FROM complaints WHERE assigned_to = $1';
-    const countParams = [req.user.id];
+    const countParams = [staffId];
 
     if (status) {
       countParams.push(status);

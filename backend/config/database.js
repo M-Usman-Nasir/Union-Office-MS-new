@@ -163,4 +163,9 @@ export const getClient = async () => {
   return client;
 };
 
+/** Graceful shutdown for tools that must run outside the pool (e.g. pg_restore). */
+export const endPool = async () => {
+  await pool.end();
+};
+
 export default pool;
