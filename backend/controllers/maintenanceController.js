@@ -688,7 +688,7 @@ export const submitPaymentProof = async (req, res) => {
       });
     }
 
-    const insertResult = await createMaintenancePaymentRequest({
+    const createdRequest = await createMaintenancePaymentRequest({
       maintenanceId: parseInt(id),
       submittedBy: userId,
       proofPath: `/uploads/maintenance-payment-proofs/${req.file.filename}`,
@@ -698,7 +698,7 @@ export const submitPaymentProof = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Payment proof submitted. It will be reviewed by the office.',
-      data: insertResult.rows[0],
+      data: createdRequest,
     });
     await activity.track(req, {
       eventType: 'maintenance.payment_proof_submit',
@@ -709,9 +709,10 @@ export const submitPaymentProof = async (req, res) => {
     });
   } catch (error) {
     console.error('Submit payment proof error:', error);
-    res.status(500).json({
+    const status = typeof error.status === 'number' && error.status >= 400 && error.status < 600 ? error.status : 500;
+    res.status(status).json({
       success: false,
-      message: 'Failed to submit payment proof',
+      message: status === 500 ? 'Failed to submit payment proof' : error.message,
       error: error.message,
     });
   }
