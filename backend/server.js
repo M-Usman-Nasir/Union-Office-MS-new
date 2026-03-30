@@ -29,6 +29,7 @@ import cronRoutes from './routes/cron.js';
 import bootstrapRoutes from './routes/bootstrap.js';
 import unitClaimsRoutes from './routes/unitClaims.js';
 import whatsappRoutes from './routes/whatsapp.js';
+import { UPLOADS_ROOT, ensureUploadsRoot } from './config/uploadsRoot.js';
 
 // Load environment variables
 dotenv.config();
@@ -58,22 +59,28 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Serve static files (profile images)
-import path from 'path';
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+// Serve uploaded files (profiles, maintenance proofs, …) from UPLOADS_ROOT (default: ./uploads; override with env for persistent disks)
+ensureUploadsRoot();
+app.use('/uploads', express.static(UPLOADS_ROOT, {
   setHeaders: (res, filePath) => {
-    // Set CORS headers for image files
     res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || 'http://localhost:5173');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    // Cache images for 1 year
     if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.png') || filePath.endsWith('.gif')) {
       res.setHeader('Cache-Control', 'public, max-age=31536000');
     }
-  }
+  },
 }));
+// express.static calls next() when the file is missing — avoid misleading "Route not found" for /uploads/*
+app.use('/uploads', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message:
+      'Upload file not found. On hosts like Render, the default disk is ephemeral: add a persistent disk and set UPLOADS_ROOT to its mount path so uploaded files survive restarts.',
+    code: 'UPLOAD_FILE_NOT_FOUND',
+    path: req.path,
+    method: req.method,
+  });
+});
 
 // Request logging middleware
 app.use((req, res, next) => {

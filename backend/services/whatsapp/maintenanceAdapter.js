@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { query } from '../../config/database.js';
 import { createMaintenancePaymentRequest } from '../../controllers/maintenanceController.js';
+import { UPLOADS_ROOT } from '../../config/uploadsRoot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ensureProofDir = () => {
-  const dir = path.join(__dirname, '..', '..', 'uploads', 'maintenance-payment-proofs');
+  const dir = path.join(UPLOADS_ROOT, 'maintenance-payment-proofs');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

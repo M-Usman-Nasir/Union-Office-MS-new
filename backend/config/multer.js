@@ -1,13 +1,10 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { UPLOADS_ROOT } from './uploadsRoot.js';
 
 // Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '..', 'uploads', 'profiles');
+const uploadsDir = path.join(UPLOADS_ROOT, 'profiles');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -79,7 +76,7 @@ export const getImagePath = (filename) => {
 };
 
 // --- Complaint attachments ---
-const complaintsDir = path.join(__dirname, '..', 'uploads', 'complaints');
+const complaintsDir = path.join(UPLOADS_ROOT, 'complaints');
 if (!fs.existsSync(complaintsDir)) {
   fs.mkdirSync(complaintsDir, { recursive: true });
 }
@@ -117,7 +114,7 @@ export const uploadComplaintAttachments = multer({
 }).array('attachments', 5);
 
 // --- Units import (XLSX, XML, CSV) ---
-const unitsImportDir = path.join(__dirname, '..', 'uploads', 'units-import');
+const unitsImportDir = path.join(UPLOADS_ROOT, 'units-import');
 if (!fs.existsSync(unitsImportDir)) {
   fs.mkdirSync(unitsImportDir, { recursive: true });
 }
@@ -162,7 +159,7 @@ export const uploadUnitsImport = multer({
 }).single('file');
 
 // --- Invoice payment proof (screenshot/document) ---
-const invoicePaymentProofDir = path.join(__dirname, '..', 'uploads', 'invoice-payment-proofs');
+const invoicePaymentProofDir = path.join(UPLOADS_ROOT, 'invoice-payment-proofs');
 if (!fs.existsSync(invoicePaymentProofDir)) {
   fs.mkdirSync(invoicePaymentProofDir, { recursive: true });
 }
@@ -200,7 +197,7 @@ export const uploadInvoicePaymentProof = multer({
 }).single('file');
 
 // --- Maintenance payment receipt (image/PDF) ---
-const maintenanceReceiptsDir = path.join(__dirname, '..', 'uploads', 'maintenance-receipts');
+const maintenanceReceiptsDir = path.join(UPLOADS_ROOT, 'maintenance-receipts');
 if (!fs.existsSync(maintenanceReceiptsDir)) {
   fs.mkdirSync(maintenanceReceiptsDir, { recursive: true });
 }
@@ -238,7 +235,7 @@ export const uploadMaintenanceReceipt = multer({
 }).single('receipt');
 
 // --- Resident maintenance payment proof (for submit payment proof → admin approval) ---
-const maintenancePaymentProofDir = path.join(__dirname, '..', 'uploads', 'maintenance-payment-proofs');
+const maintenancePaymentProofDir = path.join(UPLOADS_ROOT, 'maintenance-payment-proofs');
 if (!fs.existsSync(maintenancePaymentProofDir)) {
   fs.mkdirSync(maintenancePaymentProofDir, { recursive: true });
 }
