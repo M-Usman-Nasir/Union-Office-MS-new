@@ -33,6 +33,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -48,7 +49,7 @@ import { maintenanceApi } from '@/api/maintenanceApi'
 import { propertyApi } from '@/api/propertyApi'
 import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
-import { ROUTES } from '@/utils/constants'
+import { ROUTES, ROLES } from '@/utils/constants'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
@@ -108,6 +109,10 @@ const Maintenance = () => {
   const [editingMaintenance, setEditingMaintenance] = useState(null)
   const [selectedMaintenance, setSelectedMaintenance] = useState(null)
   const societyId = user?.society_apartment_id != null ? Number(user.society_apartment_id) : null
+  const isUnionAdmin = user?.role === ROLES.ADMIN
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN
+  const paymentRequestsBlockedNoSociety = isUnionAdmin && societyId == null
+  const paymentRequestsFetchEnabled = isSuperAdmin || (isUnionAdmin && societyId != null)
   const [selectedBlockId, setSelectedBlockId] = useState(null)
   const [selectedFloorId, setSelectedFloorId] = useState('')
   const [formBlockId, setFormBlockId] = useState('')
@@ -249,11 +254,27 @@ const Maintenance = () => {
   const dialogFloors = dialogFloorsData?.data || []
   const dialogUnits = dialogUnitsData?.data || []
 
-  const { data: paymentRequestsData, mutate: mutatePaymentRequests } = useSWR(
-    societyId ? ['/maintenance/payment-requests', societyId] : null,
-    () => maintenanceApi.getPaymentRequests({ status: 'pending', society_id: societyId }).then(res => res.data)
+  const paymentRequestsSwrKey = paymentRequestsFetchEnabled
+    ? ['/maintenance/payment-requests', 'pending', isSuperAdmin ? societyId ?? 'all' : societyId]
+    : null
+  const {
+    data: paymentRequestsData,
+    error: paymentRequestsError,
+    isLoading: paymentRequestsLoading,
+    mutate: mutatePaymentRequests,
+  } = useSWR(
+    paymentRequestsSwrKey,
+    () => {
+      const params = { status: 'pending' }
+      if (societyId != null) params.society_id = societyId
+      return maintenanceApi.getPaymentRequests(params).then((res) => res.data)
+    }
   )
   const pendingPaymentRequests = paymentRequestsData?.data || []
+  const paymentRequestsErrorMessage =
+    paymentRequestsError?.response?.data?.message ||
+    paymentRequestsError?.message ||
+    null
   const [rejectRequestId, setRejectRequestId] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectLoading, setRejectLoading] = useState(false)
@@ -1347,6 +1368,37 @@ const Maintenance = () => {
           </Button>
         </Box>
       </Box>
+
+      {paymentRequestsBlockedNoSociety && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Your union admin account is not linked to a society, so pending payment verifications cannot be loaded. Ask a
+          super admin to assign your society.
+        </Alert>
+      )}
+
+      {paymentRequestsFetchEnabled && paymentRequestsError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {paymentRequestsErrorMessage || 'Failed to load payment requests.'}
+        </Alert>
+      )}
+
+      {paymentRequestsFetchEnabled && paymentRequestsLoading && pendingPaymentRequests.length === 0 && !paymentRequestsError && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <CircularProgress size={20} />
+          <Typography variant="body2" color="text.secondary">
+            Loading payment requests…
+          </Typography>
+        </Box>
+      )}
+
+      {paymentRequestsFetchEnabled &&
+        !paymentRequestsLoading &&
+        !paymentRequestsError &&
+        pendingPaymentRequests.length === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            No pending payment verifications.
+          </Typography>
+        )}
 
       {pendingPaymentRequests.length > 0 && (
         <Accordion defaultExpanded sx={{ mb: 3 }}>

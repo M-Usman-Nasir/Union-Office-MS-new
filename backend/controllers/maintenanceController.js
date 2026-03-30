@@ -748,7 +748,7 @@ export const getMyPaymentRequests = async (req, res) => {
     }
 
     const result = await query(
-      `SELECT id, maintenance_id, status, created_at 
+      `SELECT id, maintenance_id, status, proof_path, created_at 
        FROM maintenance_payment_requests 
        WHERE submitted_by = $1 
        ORDER BY created_at DESC`,

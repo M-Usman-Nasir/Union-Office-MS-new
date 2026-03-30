@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Container,
   Typography,
@@ -27,7 +27,7 @@ import { getBaseUrl } from '@/utils/constants'
 const ResidentMaintenance = () => {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(10)
+  const [limit, setLimit] = useState(24)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [uploadDialogRow, setUploadDialogRow] = useState(null)
   const [receiptFile, setReceiptFile] = useState(null)
@@ -48,6 +48,14 @@ const ResidentMaintenance = () => {
   const pendingByMaintenanceId = myRequests
     .filter(r => r.status === 'pending')
     .reduce((acc, r) => ({ ...acc, [r.maintenance_id]: true }), {})
+  const pendingRequestByMaintenanceId = useMemo(() => {
+    const map = {}
+    for (const r of myRequests) {
+      if (r.status !== 'pending' || r.maintenance_id == null) continue
+      map[r.maintenance_id] = r
+    }
+    return map
+  }, [myRequests])
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PK', {
@@ -148,21 +156,36 @@ const ResidentMaintenance = () => {
     },
     {
       id: 'receipt',
-      label: 'Receipt',
-      minWidth: 100,
+      label: 'Receipt / proof',
+      minWidth: 120,
       render: (row) => {
-        if (!row.receipt_path) return '—'
         const base = getBaseUrl()
-        return (
-          <Button
-            size="small"
-            href={`${base}${row.receipt_path}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            View receipt
-          </Button>
-        )
+        if (row.receipt_path) {
+          return (
+            <Button
+              size="small"
+              href={`${base}${row.receipt_path}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View receipt
+            </Button>
+          )
+        }
+        const pendingReq = pendingRequestByMaintenanceId[row.id]
+        if (pendingReq?.proof_path) {
+          return (
+            <Button
+              size="small"
+              href={`${base}${pendingReq.proof_path}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View submitted proof
+            </Button>
+          )
+        }
+        return '—'
       },
     },
     {
@@ -171,7 +194,21 @@ const ResidentMaintenance = () => {
       render: (row) => {
         if (row.status === 'paid') return null
         if (pendingByMaintenanceId[row.id]) {
-          return <Chip label="Under review" size="small" variant="outlined" />
+          return (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+              <Chip label="Under review" size="small" variant="outlined" />
+              {pendingRequestByMaintenanceId[row.id]?.proof_path && (
+                <Button
+                  size="small"
+                  href={`${getBaseUrl()}${pendingRequestByMaintenanceId[row.id].proof_path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View proof
+                </Button>
+              )}
+            </Box>
+          )
         }
         if (canUploadProof(row)) {
           return (

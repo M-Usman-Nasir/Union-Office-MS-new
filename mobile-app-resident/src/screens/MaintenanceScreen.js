@@ -38,6 +38,9 @@ const MONTH_NAMES = [
   'December',
 ];
 
+/** First page size for maintenance history (no date filter; ~10 years at one row/month). */
+const MAINTENANCE_HISTORY_LIMIT = 120;
+
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' }).format(amount || 0);
 }
@@ -92,7 +95,7 @@ export default function MaintenanceScreen() {
     if (!user?.unit_id) return;
     try {
       const [res, reqRes] = await Promise.all([
-        maintenanceApi.getAll({ unit_id: user.unit_id, limit: 50, page: 1 }),
+        maintenanceApi.getAll({ unit_id: user.unit_id, limit: MAINTENANCE_HISTORY_LIMIT, page: 1 }),
         maintenanceApi.getMyPaymentRequests().catch(() => ({ data: { data: [] } })),
       ]);
       const raw = res.data?.data ?? res.data;
@@ -121,6 +124,15 @@ export default function MaintenanceScreen() {
   const pendingByMaintenanceId = (paymentRequests || [])
     .filter((r) => (r.status || '').toLowerCase() === 'pending')
     .reduce((acc, r) => ({ ...acc, [r.maintenance_id]: true }), {});
+
+  const pendingRequestByMaintenanceId = useMemo(() => {
+    const map = {};
+    for (const r of paymentRequests || []) {
+      if ((r.status || '').toLowerCase() !== 'pending' || r.maintenance_id == null) continue;
+      map[r.maintenance_id] = r;
+    }
+    return map;
+  }, [paymentRequests]);
 
   const canUploadProof = (row) =>
     (row.status === 'pending' || row.status === 'partially_paid') && !pendingByMaintenanceId[row.id];
@@ -254,6 +266,11 @@ export default function MaintenanceScreen() {
       return;
     }
     if (display === 'pending_verify') {
+      const proof = pendingRequestByMaintenanceId[item.id]?.proof_path;
+      if (proof) {
+        openReceipt(proof);
+        return;
+      }
       Alert.alert('Under review', 'Your payment proof is being verified by the office.');
     }
   };
@@ -337,7 +354,9 @@ export default function MaintenanceScreen() {
       >
         <Text style={styles.payNowBtnText}>Pay Now</Text>
       </TouchableOpacity>
-      <Text style={styles.footerHint}>Tap a row to upload proof (unpaid) or open receipt (paid).</Text>
+      <Text style={styles.footerHint}>
+        Tap a row to upload proof (unpaid), open your submitted proof (pending), or open receipt (paid).
+      </Text>
     </View>
   );
 
