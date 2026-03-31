@@ -9,15 +9,41 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const DEFAULT_UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
+
+function ensureDir(targetPath) {
+  if (!fs.existsSync(targetPath)) {
+    fs.mkdirSync(targetPath, { recursive: true });
+  }
+}
+
 /**
- * Absolute path to the uploads directory (profiles, complaints, maintenance-payment-proofs, …).
- * On Render: mount the persistent disk at e.g. /var/data and set UPLOADS_ROOT=/var/data
- * (the app creates profiles/, maintenance-payment-proofs/, etc. inside it).
- * Do not use a path under /var unless that path is your mount — the OS may deny writes.
+ * Resolve active uploads root:
+ * - development: always local project uploads path
+ * - other envs: prefer UPLOADS_ROOT, fallback to local path if not writable
  */
-export const UPLOADS_ROOT = process.env.UPLOADS_ROOT
-  ? path.resolve(process.env.UPLOADS_ROOT)
-  : path.join(__dirname, '..', 'uploads');
+function resolveUploadsRoot() {
+  const nodeEnv = String(process.env.NODE_ENV || '').toLowerCase();
+  if (nodeEnv === 'development') {
+    return DEFAULT_UPLOADS_ROOT;
+  }
+
+  const configured = process.env.UPLOADS_ROOT ? path.resolve(process.env.UPLOADS_ROOT) : null;
+  if (!configured) return DEFAULT_UPLOADS_ROOT;
+
+  try {
+    ensureDir(configured);
+    return configured;
+  } catch (err) {
+    const code = err?.code || 'UNKNOWN';
+    console.warn(
+      `[uploads] UPLOADS_ROOT "${configured}" is not writable (${code}). Falling back to local path "${DEFAULT_UPLOADS_ROOT}".`
+    );
+    return DEFAULT_UPLOADS_ROOT;
+  }
+}
+
+export const UPLOADS_ROOT = resolveUploadsRoot();
 
 /** Subdirs created under UPLOADS_ROOT (must match multer paths). */
 export const UPLOAD_SUBDIRS = [
@@ -53,9 +79,7 @@ function formatUploadError(err, targetPath) {
 
 export function ensureUploadsRoot() {
   try {
-    if (!fs.existsSync(UPLOADS_ROOT)) {
-      fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
-    }
+    ensureDir(UPLOADS_ROOT);
   } catch (err) {
     throw formatUploadError(err, UPLOADS_ROOT);
   }
