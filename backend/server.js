@@ -29,7 +29,7 @@ import cronRoutes from './routes/cron.js';
 import bootstrapRoutes from './routes/bootstrap.js';
 import unitClaimsRoutes from './routes/unitClaims.js';
 import whatsappRoutes from './routes/whatsapp.js';
-import { UPLOADS_ROOT, ensureUploadsRoot } from './config/uploadsRoot.js';
+import { UPLOADS_ROOT, ensureAllUploadSubdirs } from './config/uploadsRoot.js';
 
 // Load environment variables
 dotenv.config();
@@ -59,8 +59,7 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Serve uploaded files (profiles, maintenance proofs, …) from UPLOADS_ROOT (default: ./uploads; override with env for persistent disks)
-ensureUploadsRoot();
+// Serve uploaded files from UPLOADS_ROOT (dirs created at startup in startServer → ensureAllUploadSubdirs)
 app.use('/uploads', express.static(UPLOADS_ROOT, {
   setHeaders: (res, filePath) => {
     res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || 'http://localhost:5173');
@@ -217,6 +216,14 @@ const startServer = async () => {
     }
 
     await ensureSchemaPatches();
+
+    try {
+      ensureAllUploadSubdirs();
+      console.log(`✅ Upload directories ready at ${UPLOADS_ROOT}`);
+    } catch (uploadErr) {
+      console.error('❌ Upload storage:', uploadErr.message);
+      process.exit(1);
+    }
 
     // Get and display tables
     const tables = await getTables();

@@ -1,18 +1,18 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { UPLOADS_ROOT } from './uploadsRoot.js';
+import { UPLOADS_ROOT, ensureUploadSubdir } from './uploadsRoot.js';
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(UPLOADS_ROOT, 'profiles');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const profilesDir = () => ensureUploadSubdir('profiles');
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+    try {
+      cb(null, profilesDir());
+    } catch (e) {
+      cb(e);
+    }
   },
   filename: (req, file, cb) => {
     // Generate unique filename: user_{userId}_{timestamp}.{ext}
@@ -57,7 +57,7 @@ export const deleteProfileImage = (imagePath) => {
   
   // Extract filename from path (e.g., /uploads/profiles/user_1_123.jpg)
   const filename = path.basename(imagePath);
-  const filePath = path.join(uploadsDir, filename);
+  const filePath = path.join(UPLOADS_ROOT, 'profiles', filename);
   
   // Delete file if it exists
   if (fs.existsSync(filePath)) {
@@ -114,14 +114,13 @@ export const uploadComplaintAttachments = multer({
 }).array('attachments', 5);
 
 // --- Units import (XLSX, XML, CSV) ---
-const unitsImportDir = path.join(UPLOADS_ROOT, 'units-import');
-if (!fs.existsSync(unitsImportDir)) {
-  fs.mkdirSync(unitsImportDir, { recursive: true });
-}
-
 const unitsImportStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, unitsImportDir);
+    try {
+      cb(null, ensureUploadSubdir('units-import'));
+    } catch (e) {
+      cb(e);
+    }
   },
   filename: (req, file, cb) => {
     const userId = req.user?.id || 'unknown';
@@ -159,14 +158,13 @@ export const uploadUnitsImport = multer({
 }).single('file');
 
 // --- Invoice payment proof (screenshot/document) ---
-const invoicePaymentProofDir = path.join(UPLOADS_ROOT, 'invoice-payment-proofs');
-if (!fs.existsSync(invoicePaymentProofDir)) {
-  fs.mkdirSync(invoicePaymentProofDir, { recursive: true });
-}
-
 const invoicePaymentProofStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, invoicePaymentProofDir);
+    try {
+      cb(null, ensureUploadSubdir('invoice-payment-proofs'));
+    } catch (e) {
+      cb(e);
+    }
   },
   filename: (req, file, cb) => {
     const invoiceId = req.params?.id || 'unknown';
@@ -197,14 +195,13 @@ export const uploadInvoicePaymentProof = multer({
 }).single('file');
 
 // --- Maintenance payment receipt (image/PDF) ---
-const maintenanceReceiptsDir = path.join(UPLOADS_ROOT, 'maintenance-receipts');
-if (!fs.existsSync(maintenanceReceiptsDir)) {
-  fs.mkdirSync(maintenanceReceiptsDir, { recursive: true });
-}
-
 const maintenanceReceiptStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, maintenanceReceiptsDir);
+    try {
+      cb(null, ensureUploadSubdir('maintenance-receipts'));
+    } catch (e) {
+      cb(e);
+    }
   },
   filename: (req, file, cb) => {
     const maintenanceId = req.params?.id || 'unknown';
@@ -235,14 +232,13 @@ export const uploadMaintenanceReceipt = multer({
 }).single('receipt');
 
 // --- Resident maintenance payment proof (for submit payment proof → admin approval) ---
-const maintenancePaymentProofDir = path.join(UPLOADS_ROOT, 'maintenance-payment-proofs');
-if (!fs.existsSync(maintenancePaymentProofDir)) {
-  fs.mkdirSync(maintenancePaymentProofDir, { recursive: true });
-}
-
 const maintenancePaymentProofStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, maintenancePaymentProofDir);
+    try {
+      cb(null, ensureUploadSubdir('maintenance-payment-proofs'));
+    } catch (e) {
+      cb(e);
+    }
   },
   filename: (req, file, cb) => {
     const maintenanceId = req.params?.id || 'unknown';

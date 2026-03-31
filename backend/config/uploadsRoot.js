@@ -11,15 +11,76 @@ const __dirname = path.dirname(__filename);
 
 /**
  * Absolute path to the uploads directory (profiles, complaints, maintenance-payment-proofs, …).
- * On Render and similar hosts, set UPLOADS_ROOT to a persistent disk mount so files survive restarts.
- * Example: UPLOADS_ROOT=/var/data/uploads
+ * On Render: mount the persistent disk at e.g. /var/data and set UPLOADS_ROOT=/var/data
+ * (the app creates profiles/, maintenance-payment-proofs/, etc. inside it).
+ * Do not use a path under /var unless that path is your mount — the OS may deny writes.
  */
 export const UPLOADS_ROOT = process.env.UPLOADS_ROOT
   ? path.resolve(process.env.UPLOADS_ROOT)
   : path.join(__dirname, '..', 'uploads');
 
+/** Subdirs created under UPLOADS_ROOT (must match multer paths). */
+export const UPLOAD_SUBDIRS = [
+  'profiles',
+  'complaints',
+  'units-import',
+  'invoice-payment-proofs',
+  'maintenance-receipts',
+  'maintenance-payment-proofs',
+];
+
+function formatUploadError(err, targetPath) {
+  if (err && err.code === 'EACCES') {
+    const hint =
+      'Permission denied creating upload directories. ' +
+      'If you use a persistent disk (e.g. Render): mount the disk at a path, then set UPLOADS_ROOT to that exact mount path (not a parent path the OS denies). ' +
+      'Example: mount disk at /var/data and set UPLOADS_ROOT=/var/data — the app will create profiles/, maintenance-payment-proofs/, etc. inside it.';
+    const wrapped = new Error(`${hint}\nAttempted: ${targetPath}`);
+    wrapped.code = err.code;
+    wrapped.cause = err;
+    return wrapped;
+  }
+  if (err && err.code === 'EROFS') {
+    const wrapped = new Error(
+      `Read-only filesystem at ${targetPath}. Remove UPLOADS_ROOT or point it to a writable mount.`
+    );
+    wrapped.code = err.code;
+    wrapped.cause = err;
+    return wrapped;
+  }
+  return err;
+}
+
 export function ensureUploadsRoot() {
-  if (!fs.existsSync(UPLOADS_ROOT)) {
-    fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
+  try {
+    if (!fs.existsSync(UPLOADS_ROOT)) {
+      fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
+    }
+  } catch (err) {
+    throw formatUploadError(err, UPLOADS_ROOT);
+  }
+}
+
+/**
+ * Ensures a subdirectory under UPLOADS_ROOT exists. Returns absolute path.
+ * @param {string} subdir - e.g. 'profiles', 'maintenance-payment-proofs'
+ */
+export function ensureUploadSubdir(subdir) {
+  const full = path.join(UPLOADS_ROOT, subdir);
+  try {
+    if (!fs.existsSync(full)) {
+      fs.mkdirSync(full, { recursive: true });
+    }
+  } catch (err) {
+    throw formatUploadError(err, full);
+  }
+  return full;
+}
+
+/** Create UPLOADS_ROOT and all known subdirs. Call once at server startup (before listen). */
+export function ensureAllUploadSubdirs() {
+  ensureUploadsRoot();
+  for (const sub of UPLOAD_SUBDIRS) {
+    ensureUploadSubdir(sub);
   }
 }
