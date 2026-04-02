@@ -59,6 +59,8 @@ const Complaints = () => {
   const [actionsComplaint, setActionsComplaint] = useState(null)
   const [escalateDialog, setEscalateDialog] = useState({ open: false, complaint: null, reason: '' })
   const [escalating, setEscalating] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, complaint: null })
+  const [deleting, setDeleting] = useState(false)
   const [societyId] = useState(user?.society_apartment_id)
 
   const { data, isLoading, mutate } = useSWR(
@@ -110,15 +112,25 @@ const Complaints = () => {
     setSelectedComplaint(null)
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this complaint?')) {
-      try {
-        await complaintApi.remove(id)
-        toast.success('Complaint deleted successfully')
-        mutate()
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
-      }
+  const openDeleteDialog = (complaint) => {
+    setDeleteDialog({ open: true, complaint })
+  }
+  const closeDeleteDialog = () => {
+    setDeleteDialog({ open: false, complaint: null })
+  }
+  const handleConfirmDelete = async () => {
+    const id = deleteDialog.complaint?.id
+    if (!id) return
+    setDeleting(true)
+    try {
+      await complaintApi.remove(id)
+      toast.success('Complaint deleted successfully')
+      mutate()
+      closeDeleteDialog()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Delete failed')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -169,7 +181,7 @@ const Complaints = () => {
     if (action === 'assign') handleOpenAssignDialog(actionsComplaint)
     if (action === 'progress') handleOpenProgressDialog(actionsComplaint)
     if (action === 'escalate') openEscalateDialog(actionsComplaint)
-    if (action === 'delete') handleDelete(actionsComplaint.id)
+    if (action === 'delete') openDeleteDialog(actionsComplaint)
     handleCloseActionsMenu()
   }
 
@@ -878,6 +890,33 @@ const Complaints = () => {
           <Button onClick={closeEscalateDialog}>Cancel</Button>
           <Button variant="contained" color="warning" onClick={handleEscalate} disabled={escalating}>
             {escalating ? 'Escalating…' : 'Escalate'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialog.open}
+        onClose={() => {
+          if (!deleting) closeDeleteDialog()
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete complaint?</DialogTitle>
+        <DialogContent>
+          {deleteDialog.complaint && (
+            <Typography variant="body2" color="text.secondary">
+              This will permanently remove &quot;{deleteDialog.complaint.title || deleteDialog.complaint.id}&quot;. This
+              action cannot be undone.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeleteDialog} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDelete} disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
