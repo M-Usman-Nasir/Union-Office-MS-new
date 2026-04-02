@@ -49,7 +49,7 @@ import { maintenanceApi } from '@/api/maintenanceApi'
 import { propertyApi } from '@/api/propertyApi'
 import { settingsApi } from '@/api/settingsApi'
 import DataTable from '@/components/common/DataTable'
-import { ROUTES, ROLES } from '@/utils/constants'
+import { ROUTES, ROLES, getImageUrl } from '@/utils/constants'
 import { Formik, Form } from 'formik'
 import * as Yup from 'yup'
 import toast from 'react-hot-toast'
@@ -1435,7 +1435,7 @@ const Maintenance = () => {
                       <TableCell>
                         <Button
                           size="small"
-                          href={`${(import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '') || window.location.origin}${row.proof_path}`}
+                          href={getImageUrl(row.proof_path)}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

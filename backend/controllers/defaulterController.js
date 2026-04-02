@@ -1,5 +1,60 @@
 import { query } from '../config/database.js';
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Optional month scope for previous-year defaulters.
+ * Full year: omit both `months` and `quarter`.
+ * Quarter: `quarter=1..4` (calendar Q1–Q4).
+ * Custom or single month: `months=1,2,3` (comma-separated, 1–12).
+ * If both are sent, `months` wins.
+ */
+function parsePreviousYearMonthsFilter(query) {
+  const monthsRaw = query.months;
+  const quarterRaw = query.quarter;
+
+  if (monthsRaw != null && String(monthsRaw).trim() !== '') {
+    const parts = String(monthsRaw)
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !Number.isNaN(n) && n >= 1 && n <= 12);
+    const uniq = [...new Set(parts)].sort((a, b) => a - b);
+    if (uniq.length === 0) {
+      return { error: 'Invalid months: use comma-separated values 1–12' };
+    }
+    return { months: uniq, source: 'months' };
+  }
+
+  if (quarterRaw != null && String(quarterRaw).trim() !== '') {
+    const q = parseInt(quarterRaw, 10);
+    if (Number.isNaN(q) || q < 1 || q > 4) {
+      return { error: 'Invalid quarter: use 1, 2, 3, or 4' };
+    }
+    const byQ = {
+      1: [1, 2, 3],
+      2: [4, 5, 6],
+      3: [7, 8, 9],
+      4: [10, 11, 12],
+    };
+    return { months: byQ[q], source: 'quarter', quarter: q };
+  }
+
+  return { months: null, source: 'full_year' };
+}
+
+function buildPreviousYearPeriodLabel(year, parsed) {
+  if (!parsed.months) {
+    return `${year} (full year)`;
+  }
+  if (parsed.source === 'quarter' && parsed.quarter) {
+    return `${year} (Q${parsed.quarter})`;
+  }
+  if (parsed.months.length === 1) {
+    return `${year} (${MONTH_SHORT[parsed.months[0] - 1]})`;
+  }
+  return `${year} (${parsed.months.map((m) => MONTH_SHORT[m - 1]).join(', ')})`;
+}
+
 // Get all defaulters
 export const getAll = async (req, res) => {
   try {
@@ -197,7 +252,7 @@ export const getStatistics = async (req, res) => {
   }
 };
 
-// Get previous-year defaulters (aggregated by unit for a specific year, no month-wise data)
+// Get previous-year defaulters (aggregated by unit for a specific year; optional month / quarter scope)
 export const getPreviousYearDefaulters = async (req, res) => {
   try {
     const { page = 1, limit = 10, society_id, year, block_id, floor_id, search } = req.query;
@@ -212,10 +267,10 @@ export const getPreviousYearDefaulters = async (req, res) => {
     }
 
     const currentYear = new Date().getFullYear();
-    if (targetYear >= currentYear) {
+    if (targetYear > currentYear) {
       return res.status(400).json({
         success: false,
-        message: 'Please select a previous year',
+        message: 'Year cannot be in the future',
       });
     }
 
@@ -230,6 +285,15 @@ export const getPreviousYearDefaulters = async (req, res) => {
         message: 'society_id is required',
       });
     }
+
+    const monthParsed = parsePreviousYearMonthsFilter(req.query);
+    if (monthParsed.error) {
+      return res.status(400).json({
+        success: false,
+        message: monthParsed.error,
+      });
+    }
+    const periodLabel = buildPreviousYearPeriodLabel(targetYear, monthParsed);
 
     let sql = `
       SELECT
@@ -261,6 +325,12 @@ export const getPreviousYearDefaulters = async (req, res) => {
     `;
     const params = [effectiveSocietyId, targetYear];
     let paramCount = 2;
+
+    if (monthParsed.months) {
+      paramCount++;
+      sql += ` AND m.month = ANY($${paramCount}::int[])`;
+      params.push(monthParsed.months);
+    }
 
     if (block_id) {
       paramCount++;
@@ -308,6 +378,12 @@ export const getPreviousYearDefaulters = async (req, res) => {
     const countParams = [effectiveSocietyId, targetYear];
     let countParamCount = 2;
 
+    if (monthParsed.months) {
+      countParamCount++;
+      countSql += ` AND m.month = ANY($${countParamCount}::int[])`;
+      countParams.push(monthParsed.months);
+    }
+
     if (block_id) {
       countParamCount++;
       countSql += ` AND u.block_id = $${countParamCount}`;
@@ -339,6 +415,7 @@ export const getPreviousYearDefaulters = async (req, res) => {
     res.json({
       success: true,
       data: result.rows,
+      period_label: periodLabel,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -370,10 +447,10 @@ export const exportPreviousYearDefaultersCsv = async (req, res) => {
     }
 
     const currentYear = new Date().getFullYear();
-    if (targetYear >= currentYear) {
+    if (targetYear > currentYear) {
       return res.status(400).json({
         success: false,
-        message: 'Please select a previous year',
+        message: 'Year cannot be in the future',
       });
     }
 
@@ -388,6 +465,15 @@ export const exportPreviousYearDefaultersCsv = async (req, res) => {
         message: 'society_id is required',
       });
     }
+
+    const monthParsed = parsePreviousYearMonthsFilter(req.query);
+    if (monthParsed.error) {
+      return res.status(400).json({
+        success: false,
+        message: monthParsed.error,
+      });
+    }
+    const periodLabel = buildPreviousYearPeriodLabel(targetYear, monthParsed);
 
     let sql = `
       SELECT
@@ -412,6 +498,12 @@ export const exportPreviousYearDefaultersCsv = async (req, res) => {
     `;
     const params = [effectiveSocietyId, targetYear];
     let paramCount = 2;
+
+    if (monthParsed.months) {
+      paramCount++;
+      sql += ` AND m.month = ANY($${paramCount}::int[])`;
+      params.push(monthParsed.months);
+    }
 
     if (block_id) {
       paramCount++;
@@ -445,7 +537,7 @@ export const exportPreviousYearDefaultersCsv = async (req, res) => {
 
     const result = await query(sql, params);
 
-    const headers = ['Year', 'Unit', 'Resident', 'Contact', 'Block', 'Floor', 'Total Amount Due'];
+    const headers = ['Year', 'Period', 'Unit', 'Resident', 'Contact', 'Block', 'Floor', 'Total Amount Due'];
     const escapeCsv = (val) => {
       if (val == null) return '';
       const s = String(val);
@@ -454,6 +546,7 @@ export const exportPreviousYearDefaultersCsv = async (req, res) => {
 
     const rows = (result.rows || []).map((r) => ([
       escapeCsv(targetYear),
+      escapeCsv(periodLabel),
       escapeCsv(r.unit_number),
       escapeCsv(r.resident_name),
       escapeCsv(r.resident_contact),
@@ -464,8 +557,12 @@ export const exportPreviousYearDefaultersCsv = async (req, res) => {
 
     const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
 
+    const periodSlug = periodLabel.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="previous-defaulters-${targetYear}-${effectiveSocietyId}-${Date.now()}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="previous-defaulters-${targetYear}-${periodSlug}-${effectiveSocietyId}-${Date.now()}.csv"`
+    );
     res.send('\uFEFF' + csv); // BOM for Excel UTF-8
   } catch (error) {
     console.error('Export previous year defaulters CSV error:', error);

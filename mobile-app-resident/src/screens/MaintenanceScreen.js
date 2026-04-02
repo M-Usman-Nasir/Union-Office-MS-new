@@ -22,6 +22,11 @@ import { colors, spacing } from '../theme';
 
 const baseApiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
 const getServerBaseUrl = () => baseApiUrl.replace(/\/api\/?$/, '');
+const resolveFileUrl = (pathOrUrl) => {
+  if (!pathOrUrl) return null;
+  if (String(pathOrUrl).startsWith('http://') || String(pathOrUrl).startsWith('https://')) return pathOrUrl;
+  return `${getServerBaseUrl()}${pathOrUrl}`;
+};
 
 const MONTH_NAMES = [
   'January',
@@ -230,7 +235,7 @@ export default function MaintenanceScreen() {
 
   const openReceipt = (receiptPath) => {
     if (!receiptPath) return;
-    const url = `${getServerBaseUrl()}${receiptPath}`;
+    const url = resolveFileUrl(receiptPath);
     Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open receipt'));
   };
 

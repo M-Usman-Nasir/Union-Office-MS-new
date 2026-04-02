@@ -22,7 +22,7 @@ import { maintenanceApi } from '@/api/maintenanceApi'
 import DataTable from '@/components/common/DataTable'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
-import { getBaseUrl } from '@/utils/constants'
+import { getImageUrl } from '@/utils/constants'
 
 const ResidentMaintenance = () => {
   const { user } = useAuth()
@@ -68,6 +68,7 @@ const ResidentMaintenance = () => {
     if (!dateValue) return '—'
     return dayjs(dateValue).format('YYYY-MM-DD')
   }
+  const resolveFileUrl = (pathOrUrl) => getImageUrl(pathOrUrl)
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -159,12 +160,11 @@ const ResidentMaintenance = () => {
       label: 'Receipt / proof',
       minWidth: 120,
       render: (row) => {
-        const base = getBaseUrl()
         if (row.receipt_path) {
           return (
             <Button
               size="small"
-              href={`${base}${row.receipt_path}`}
+              href={resolveFileUrl(row.receipt_path)}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -177,7 +177,7 @@ const ResidentMaintenance = () => {
           return (
             <Button
               size="small"
-              href={`${base}${pendingReq.proof_path}`}
+              href={resolveFileUrl(pendingReq.proof_path)}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -200,7 +200,7 @@ const ResidentMaintenance = () => {
               {pendingRequestByMaintenanceId[row.id]?.proof_path && (
                 <Button
                   size="small"
-                  href={`${getBaseUrl()}${pendingRequestByMaintenanceId[row.id].proof_path}`}
+                  href={resolveFileUrl(pendingRequestByMaintenanceId[row.id].proof_path)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >

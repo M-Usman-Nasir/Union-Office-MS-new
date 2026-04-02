@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Container,
   Typography,
@@ -33,7 +33,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import { useAuth } from '@/contexts/AuthContext'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { financeApi } from '@/api/financeApi'
 import { employeesApi } from '@/api/employeesApi'
 import { apartmentApi } from '@/api/apartmentApi'
@@ -69,6 +69,17 @@ const validationSchema = Yup.object({
   description: Yup.string().required('Description is required'),
 })
 
+const formatCurrency = (amount) =>
+  new Intl.NumberFormat('en-PK', {
+    style: 'currency',
+    currency: 'PKR',
+  }).format(amount || 0)
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A'
+  return dayjs(dateString).format('DD/MM/YYYY')
+}
+
 const Finance = () => {
   const { user } = useAuth()
   const currentMonth = dayjs().month() + 1
@@ -85,6 +96,17 @@ const Finance = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [editingFinance, setEditingFinance] = useState(null)
   const [societyId] = useState(user?.society_apartment_id)
+  const { mutate: mutateGlobal } = useSWRConfig()
+
+  const revalidateFinanceCaches = useCallback(async () => {
+    await Promise.all([
+      mutateGlobal(
+        (key) => Array.isArray(key) && key[0] === '/finance/reports/monthly',
+        undefined,
+        { revalidate: true }
+      ),
+    ])
+  }, [mutateGlobal])
 
   const { data, isLoading, error, mutate } = useSWR(
     ['/finance', page, limit, search, societyId, selectedMonth, selectedYear],
@@ -106,14 +128,7 @@ const Finance = () => {
         })
   )
 
-  const { mutate: mutateSummary } = useSWR(
-    ['/finance/summary', societyId],
-    () => financeApi.getSummary({ society_id: societyId }).then(res => res.data.data).catch(err => {
-      console.error('Finance summary error:', err)
-      return null
-    })
-  )
-  const { data: monthlyReportData, isLoading: reportLoading, error: reportError } = useSWR(
+  const { data: monthlyReportData, error: reportError } = useSWR(
     societyId ? ['/finance/reports/monthly', selectedMonth, selectedYear, societyId] : null,
     () => financeApi.getMonthlyReport(selectedMonth, selectedYear, { society_id: societyId }).then((res) => res.data)
   )
@@ -128,10 +143,10 @@ const Finance = () => {
   )
   const employeesList = employeesData?.data ?? []
 
-  const handleOpenDialog = (finance = null) => {
+  const handleOpenDialog = useCallback((finance = null) => {
     setEditingFinance(finance)
     setOpenDialog(true)
-  }
+  }, [])
 
   const handleCloseDialog = () => {
     setOpenDialog(false)
@@ -158,7 +173,7 @@ const Finance = () => {
         await financeApi.create({ ...payload, society_apartment_id: societyId, added_by: user.id })
         toast.success('Finance record created successfully')
       }
-      await Promise.all([mutate(), mutateSummary(undefined, { revalidate: true })])
+      await Promise.all([mutate(), revalidateFinanceCaches()])
       handleCloseDialog()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Operation failed')
@@ -167,32 +182,22 @@ const Finance = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this finance record?')) {
-      try {
-        await financeApi.remove(id)
-        toast.success('Finance record deleted successfully')
-        await Promise.all([mutate(), mutateSummary(undefined, { revalidate: true })])
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Delete failed')
+  const handleDelete = useCallback(
+    async (id) => {
+      if (window.confirm('Are you sure you want to delete this finance record?')) {
+        try {
+          await financeApi.remove(id)
+          toast.success('Finance record deleted successfully')
+          await Promise.all([mutate(), revalidateFinanceCaches()])
+        } catch (error) {
+          toast.error(error.response?.data?.message || 'Delete failed')
+        }
       }
-    }
-  }
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-    }).format(amount || 0)
-  }
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    return dayjs(dateString).format('DD/MM/YYYY')
-  }
+    },
+    [mutate, revalidateFinanceCaches]
+  )
 
   const yearOptions = getFinanceYearOptions()
-  const filterYearOptions = yearOptions.filter((opt) => Number(opt.value) === currentYear)
   const reportSummary = monthlyReportData?.data?.summary
   const monthName = MONTH_OPTIONS.find((m) => Number(m.value) === Number(selectedMonth))?.label || dayjs().format('MMMM')
   const totalIncome = Number(reportSummary?.total_income) || 0
@@ -200,40 +205,80 @@ const Finance = () => {
   const deficit = totalExpenses - totalIncome
   const maxMetric = Math.max(totalIncome, totalExpenses, Math.abs(deficit), 1)
   const expenseBreakdown = (monthlyReportData?.data?.expenseBreakdown || [])
-    .map((item) => ({ category: item.expense_type || 'Other', amount: Number(item.total) || 0 }))
+    .map((item) => ({
+      category: item.expense_type || 'Other',
+      amount: Number(item.total) || 0,
+      count: Number(item.count) || 0,
+    }))
     .sort((a, b) => b.amount - a.amount)
   const societyDisplayName = apartmentData?.data?.name || 'Homeland Apartments'
 
-  const columns = [
-    {
-      id: 'month_year',
-      label: 'Month / Year',
-      render: (row) => {
-        const monthName = MONTH_OPTIONS.find((m) => m.value === row.month)?.label || row.month
-        return `${monthName || '-'} ${row.year || ''}`.trim() || '-'
-      },
-    },
-    { id: 'transaction_date', label: 'Date', render: (row) => formatDate(row.transaction_date) },
-    { id: 'transaction_type', label: 'Type', render: (row) => (
-      <Chip
-        label={row.transaction_type}
-        color={row.transaction_type === 'income' ? 'success' : 'error'}
-        size="small"
-        icon={row.transaction_type === 'income' ? <TrendingUpIcon /> : <TrendingDownIcon />}
-      />
-    )},
-    { id: 'income_type', label: 'Income Type', render: (row) => row.income_type || '-' },
-    { id: 'expense_type', label: 'Expense Type', render: (row) => row.expense_type || '-' },
-    {
+  const columns = useMemo(() => {
+    const dateCol = {
+      id: 'transaction_date',
+      label: 'Date',
+      minWidth: 102,
+      noWrapHeader: true,
+      render: (row) => formatDate(row.transaction_date),
+    }
+    const typeCol = {
+      id: 'transaction_type',
+      label: 'Type',
+      minWidth: 96,
+      render: (row) => (
+        <Chip
+          label={row.transaction_type}
+          color={row.transaction_type === 'income' ? 'success' : 'error'}
+          size="small"
+          icon={row.transaction_type === 'income' ? <TrendingUpIcon /> : <TrendingDownIcon />}
+        />
+      ),
+    }
+    const categoryCol = {
+      id: 'category',
+      label: 'Category',
+      minWidth: 128,
+      render: (row) =>
+        row.transaction_type === 'income' ? row.income_type || '—' : row.expense_type || '—',
+    }
+    const employeeCol = {
       id: 'employee_name',
       label: 'Employee',
-      render: (row) => (row.transaction_type === 'expense' && row.expense_type === 'Salary' && row.employee_name ? row.employee_name : '—'),
-    },
-    { id: 'description', label: 'Description' },
-    { id: 'payment_mode', label: 'Payment Mode', render: (row) => row.payment_mode || '-' },
-    {
+      minWidth: 110,
+      render: (row) =>
+        row.transaction_type === 'expense' && row.expense_type === 'Salary' && row.employee_name
+          ? row.employee_name
+          : '—',
+    }
+    const descCol = {
+      id: 'description',
+      label: 'Description',
+      minWidth: 140,
+      maxWidth: 240,
+      cellSx: { maxWidth: 240, overflow: 'hidden' },
+      render: (row) => {
+        const text = row.description || '—'
+        return row.description ? (
+          <Tooltip title={row.description} placement="top-start">
+            <Typography variant="body2" noWrap component="span" display="block">
+              {text}
+            </Typography>
+          </Tooltip>
+        ) : (
+          text
+        )
+      },
+    }
+    const paymentCol = {
+      id: 'payment_mode',
+      label: 'Payment',
+      minWidth: 96,
+      render: (row) => row.payment_mode || '—',
+    }
+    const statusCol = {
       id: 'status',
       label: 'Status',
+      minWidth: 92,
       render: (row) => (
         <Chip
           label={(row.status || 'paid').charAt(0).toUpperCase() + (row.status || 'paid').slice(1)}
@@ -241,42 +286,66 @@ const Finance = () => {
           color={row.status === 'paid' ? 'success' : row.status === 'pending' ? 'warning' : 'default'}
         />
       ),
-    },
-    {
+    }
+    const remarksCol = {
       id: 'remarks',
       label: 'Remarks',
+      minWidth: 100,
+      maxWidth: 140,
+      cellSx: { maxWidth: 140, overflow: 'hidden' },
       render: (row) =>
         row.remarks ? (
           <Tooltip title={row.remarks} placement="top-start">
-            <Typography variant="body2" sx={{ maxWidth: 160 }} noWrap>
+            <Typography variant="body2" noWrap component="span" display="block">
               {row.remarks}
             </Typography>
           </Tooltip>
         ) : (
-          '-'
+          '—'
         ),
-    },
-    { id: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount) },
-    {
+    }
+    const amountCol = {
+      id: 'amount',
+      label: 'Amount',
+      align: 'right',
+      minWidth: 112,
+      noWrapHeader: true,
+      render: (row) => formatCurrency(row.amount),
+    }
+    const actionsCol = {
       id: 'actions',
       label: 'Actions',
       align: 'right',
+      minWidth: 100,
       render: (row) => (
-        <Box>
+        <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
           <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => handleOpenDialog(row)}>
+            <IconButton size="small" onClick={() => handleOpenDialog(row)} aria-label="Edit transaction">
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => handleDelete(row.id)}
+              aria-label="Delete transaction"
+            >
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
       ),
-    },
-  ]
+    }
+
+    if (activeTab === 1) {
+      return [dateCol, categoryCol, descCol, paymentCol, statusCol, remarksCol, amountCol, actionsCol]
+    }
+    if (activeTab === 2) {
+      return [dateCol, categoryCol, employeeCol, descCol, paymentCol, statusCol, remarksCol, amountCol, actionsCol]
+    }
+    return [dateCol, typeCol, categoryCol, employeeCol, descCol, paymentCol, statusCol, remarksCol, amountCol, actionsCol]
+  }, [activeTab, handleOpenDialog, handleDelete])
 
   const incomeTypeOptions = [
     { value: INCOME_TYPES.FINES, label: INCOME_TYPE_LABELS[INCOME_TYPES.FINES] },
@@ -628,6 +697,7 @@ const Finance = () => {
                 fullWidth
                 select
                 size="small"
+                label="Month"
                 value={selectedMonth}
                 onChange={(e) => {
                   setSelectedMonth(Number(e.target.value))
@@ -646,10 +716,14 @@ const Finance = () => {
                 fullWidth
                 select
                 size="small"
+                label="Year"
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                onChange={(e) => {
+                  setSelectedYear(Number(e.target.value))
+                  setPage(1)
+                }}
               >
-                {filterYearOptions.map((opt) => (
+                {yearOptions.map((opt) => (
                   <MenuItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </MenuItem>
@@ -657,13 +731,16 @@ const Finance = () => {
               </TextField>
             </Grid>
           </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+            Dashboard totals and exports use the selected month and year (each transaction&apos;s stored period, kept in sync when you change Transaction Date).
+          </Typography>
         </CardContent>
       </Card>
 
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ py: 1.5 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            {monthName} {selectedYear} - Maintenance Income vs Expenses
+            {monthName} {selectedYear} — Income vs expenses
           </Typography>
         </CardContent>
       </Card>
@@ -675,13 +752,13 @@ const Finance = () => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <Box>
                   <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-                    Maintenance Collection (Income)
+                    Total income
                   </Typography>
                   <Typography variant="h5" color="success.main" sx={{ mt: 1 }}>
                     {formatCurrency(totalIncome)}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Collected this month
+                    All income types in this period
                   </Typography>
                 </Box>
                 <TrendingUpIcon color="success" fontSize="small" />
@@ -740,9 +817,9 @@ const Finance = () => {
       </Card>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {expenseBreakdown.length > 0 ? expenseBreakdown.slice(0, 4).map((item) => (
-          <Grid item xs={12} sm={6} md={3} key={item.category}>
-            <Card>
+        {expenseBreakdown.length > 0 ? expenseBreakdown.map((item, idx) => (
+          <Grid item xs={12} sm={6} md={4} key={`${item.category}-${idx}`}>
+            <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
                   {item.category}
@@ -750,8 +827,9 @@ const Finance = () => {
                 <Typography variant="h5" color="primary.main" sx={{ mt: 1 }}>
                   {formatCurrency(item.amount)}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="text.secondary" display="block">
                   {totalExpenses ? `${Math.round((item.amount / totalExpenses) * 100)}% of expenses` : '0% of expenses'}
+                  {item.count > 0 ? ` · ${item.count} transaction${item.count === 1 ? '' : 's'}` : ''}
                 </Typography>
               </CardContent>
             </Card>
@@ -812,9 +890,16 @@ const Finance = () => {
         </CardContent>
       </Card>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Typography variant="h6">Transactions</Typography>
-        <Box sx={{ display: 'inline-flex' }}>
+        <Box sx={{ display: 'inline-flex', flexWrap: 'wrap', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+          >
+            Add transaction
+          </Button>
           <Button
             variant="contained"
             startIcon={<FileDownloadIcon />}
@@ -892,7 +977,9 @@ const Finance = () => {
               ? (data?.data || []).filter((item) => item.transaction_type === 'income')
               : (data?.data || []).filter((item) => item.transaction_type === 'expense')
         }
-        loading={isLoading || reportLoading}
+        loading={isLoading}
+        dense
+        minTableWidth={1040}
         pagination={data?.pagination}
         onPageChange={setPage}
         onRowsPerPageChange={(newLimit) => {
@@ -1098,6 +1185,11 @@ const Finance = () => {
                         </MenuItem>
                       ))}
                     </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="caption" color="text.secondary">
+                      Month and year set the accounting period for reports and totals. Changing Transaction Date updates them automatically; you can override manually if needed.
+                    </Typography>
                   </Grid>
                   <Grid item xs={12}>
                     <TextField

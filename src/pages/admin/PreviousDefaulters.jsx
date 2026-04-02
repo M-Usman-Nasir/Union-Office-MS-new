@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Container,
   Typography,
@@ -9,6 +9,10 @@ import {
   Tabs,
   Tab,
   Button,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
@@ -22,13 +26,33 @@ import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
 import { jsPDF } from 'jspdf'
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+const PERIOD_MODES = {
+  FULL_YEAR: 'full_year',
+  MONTH: 'month',
+  QUARTER: 'quarter',
+  CUSTOM: 'custom',
+}
+
+function buildPeriodQueryParams(periodMode, singleMonth, quarter, customMonths) {
+  if (periodMode === PERIOD_MODES.FULL_YEAR) return {}
+  if (periodMode === PERIOD_MODES.MONTH) return { months: String(singleMonth) }
+  if (periodMode === PERIOD_MODES.QUARTER) return { quarter: String(quarter) }
+  const sorted = [...new Set(customMonths)]
+    .filter((m) => m >= 1 && m <= 12)
+    .sort((a, b) => a - b)
+  return { months: (sorted.length ? sorted : [1]).join(',') }
+}
+
 const PreviousDefaulters = () => {
   const { user } = useAuth()
   const societyId = user?.society_apartment_id
   const currentYear = new Date().getFullYear()
-  const yearOptions = Array.from({ length: 10 }, (_, i) => currentYear - 1 - i)
+  // Current calendar year plus prior 10 years (e.g. 2026 … 2016 when year is 2026)
+  const yearOptions = Array.from({ length: 11 }, (_, i) => currentYear - i)
 
-  const [year, setYear] = useState(yearOptions[0] || currentYear - 1)
+  const [year, setYear] = useState(yearOptions[0] ?? currentYear)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [search, setSearch] = useState('')
@@ -36,14 +60,43 @@ const PreviousDefaulters = () => {
   const [selectedFloorId, setSelectedFloorId] = useState('')
   const [exporting, setExporting] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
+  const [periodMode, setPeriodMode] = useState(PERIOD_MODES.FULL_YEAR)
+  const [singleMonth, setSingleMonth] = useState(1)
+  const [quarter, setQuarter] = useState(1)
+  const [customMonths, setCustomMonths] = useState([1])
 
-  const params = { page, limit, search, year, society_id: societyId }
+  const periodQuery = useMemo(
+    () => buildPeriodQueryParams(periodMode, singleMonth, quarter, customMonths),
+    [periodMode, singleMonth, quarter, customMonths]
+  )
+
+  const params = { page, limit, search, year, society_id: societyId, ...periodQuery }
   if (selectedBlockId != null && selectedBlockId !== '') params.block_id = selectedBlockId
   if (selectedFloorId != null && selectedFloorId !== '') params.floor_id = selectedFloorId
 
-  const { data, isLoading } = useSWR(
-    ['/defaulters/previous-years', page, limit, search, year, societyId, selectedBlockId, selectedFloorId],
-    () => defaulterApi.getPreviousYear(params).then((res) => res.data)
+  const swrKey = societyId
+    ? [
+        '/defaulters/previous-years',
+        page,
+        limit,
+        search,
+        year,
+        societyId,
+        selectedBlockId,
+        selectedFloorId,
+        periodMode,
+        singleMonth,
+        quarter,
+        [...customMonths].slice().sort((a, b) => a - b).join(','),
+      ]
+    : null
+
+  const { data, isLoading, error } = useSWR(swrKey, () =>
+    defaulterApi.getPreviousYear(params).then((res) => res.data).catch((err) => {
+      console.error('Previous defaulters API error:', err)
+      toast.error(err.response?.data?.message || 'Failed to load previous defaulters')
+      throw err
+    })
   )
 
   const { data: blocksData } = useSWR(
@@ -85,7 +138,7 @@ const PreviousDefaulters = () => {
   const handleExportCsv = async () => {
     setExporting(true)
     try {
-      const exportParams = { year, society_id: societyId, search }
+      const exportParams = { year, society_id: societyId, search, ...periodQuery }
       if (selectedBlockId != null && selectedBlockId !== '') exportParams.block_id = selectedBlockId
       if (selectedFloorId != null && selectedFloorId !== '') exportParams.floor_id = selectedFloorId
       const res = await defaulterApi.exportPreviousYearCsv(exportParams)
@@ -107,11 +160,12 @@ const PreviousDefaulters = () => {
   const handleExportPdf = async () => {
     setExportingPdf(true)
     try {
-      const exportParams = { page: 1, limit: 10000, year, society_id: societyId, search }
+      const exportParams = { page: 1, limit: 10000, year, society_id: societyId, search, ...periodQuery }
       if (selectedBlockId != null && selectedBlockId !== '') exportParams.block_id = selectedBlockId
       if (selectedFloorId != null && selectedFloorId !== '') exportParams.floor_id = selectedFloorId
       const res = await defaulterApi.getPreviousYear(exportParams)
       const list = res?.data?.data || []
+      const periodLabel = res?.data?.period_label || String(year)
       if (!list.length) {
         toast.error('No data to export')
         return
@@ -126,7 +180,7 @@ const PreviousDefaulters = () => {
       let y = 15
 
       doc.setFontSize(14)
-      doc.text(`Previous Year Defaulters (${year})`, startX, y)
+      doc.text(`Previous defaulters — ${periodLabel}`, startX, y)
       y += 8
       doc.setFontSize(9)
       doc.text(`Generated on ${dayjs().format('DD MMM YYYY HH:mm')}`, startX, y)
@@ -171,13 +225,22 @@ const PreviousDefaulters = () => {
         y += rowHeight
       })
 
-      doc.save(`previous-defaulters-${year}-${dayjs().format('YYYY-MM-DD')}.pdf`)
+      const safeSlug = String(periodLabel).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report'
+      doc.save(`previous-defaulters-${safeSlug}-${dayjs().format('YYYY-MM-DD')}.pdf`)
       toast.success('PDF downloaded')
     } catch (err) {
       console.error(err)
       toast.error(err.response?.data?.message || 'Failed to generate PDF')
     } finally {
       setExportingPdf(false)
+    }
+  }
+
+  const handlePeriodModeChange = (next) => {
+    setPeriodMode(next)
+    setPage(1)
+    if (next === PERIOD_MODES.CUSTOM && customMonths.length === 0) {
+      setCustomMonths([1])
     }
   }
 
@@ -188,9 +251,31 @@ const PreviousDefaulters = () => {
           Previous Year Defaulters
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Shows unit-wise pending amounts for the selected previous year only.
+          Unit-wise pending maintenance for the selected calendar year (including the current year). Default
+          scope is the full year; narrow by month, quarter, or custom months.
         </Typography>
+        {data?.period_label && (
+          <Typography variant="body2" color="primary.main" sx={{ mt: 0.5 }}>
+            Current scope: {data.period_label}
+          </Typography>
+        )}
       </Box>
+
+      {!societyId && (
+        <Box sx={{ mb: 2 }}>
+          <Alert severity="warning">
+            Select or associate a society to load previous defaulters (super admin may need a society context).
+          </Alert>
+        </Box>
+      )}
+
+      {error && (
+        <Box sx={{ mb: 2 }}>
+          <Alert severity="error">
+            {error.response?.data?.message || 'Failed to load data. Please try again.'}
+          </Alert>
+        </Box>
+      )}
 
       {blocks.length > 0 && (
         <Tabs
@@ -209,7 +294,7 @@ const PreviousDefaulters = () => {
         </Tabs>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           select
           label="Year"
@@ -228,6 +313,92 @@ const PreviousDefaulters = () => {
           ))}
         </TextField>
 
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel id="prev-def-period-mode">Period scope</InputLabel>
+          <Select
+            labelId="prev-def-period-mode"
+            label="Period scope"
+            value={periodMode}
+            onChange={(e) => handlePeriodModeChange(e.target.value)}
+          >
+            <MenuItem value={PERIOD_MODES.FULL_YEAR}>Full year (default)</MenuItem>
+            <MenuItem value={PERIOD_MODES.MONTH}>Single month</MenuItem>
+            <MenuItem value={PERIOD_MODES.QUARTER}>Quarter (calendar)</MenuItem>
+            <MenuItem value={PERIOD_MODES.CUSTOM}>Custom months</MenuItem>
+          </Select>
+        </FormControl>
+
+        {periodMode === PERIOD_MODES.MONTH && (
+          <TextField
+            select
+            label="Month"
+            size="small"
+            value={singleMonth}
+            onChange={(e) => {
+              setSingleMonth(Number(e.target.value))
+              setPage(1)
+            }}
+            sx={{ minWidth: 140 }}
+          >
+            {MONTH_SHORT.map((name, idx) => (
+              <MenuItem key={idx + 1} value={idx + 1}>
+                {name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+
+        {periodMode === PERIOD_MODES.QUARTER && (
+          <TextField
+            select
+            label="Quarter"
+            size="small"
+            value={quarter}
+            onChange={(e) => {
+              setQuarter(Number(e.target.value))
+              setPage(1)
+            }}
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value={1}>Q1 (Jan–Mar)</MenuItem>
+            <MenuItem value={2}>Q2 (Apr–Jun)</MenuItem>
+            <MenuItem value={3}>Q3 (Jul–Sep)</MenuItem>
+            <MenuItem value={4}>Q4 (Oct–Dec)</MenuItem>
+          </TextField>
+        )}
+
+        {periodMode === PERIOD_MODES.CUSTOM && (
+          <TextField
+            select
+            label="Months"
+            size="small"
+            sx={{ minWidth: 240 }}
+            SelectProps={{
+              multiple: true,
+              renderValue: (selected) =>
+                [...selected]
+                  .sort((a, b) => a - b)
+                  .map((m) => MONTH_SHORT[m - 1])
+                  .join(', '),
+            }}
+            value={customMonths}
+            onChange={(e) => {
+              const v = e.target.value
+              const next = typeof v === 'string' ? v.split(',').map(Number) : v
+              setCustomMonths(next.length ? next : [1])
+              setPage(1)
+            }}
+          >
+            {MONTH_SHORT.map((name, idx) => (
+              <MenuItem key={idx + 1} value={idx + 1}>
+                {name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+      </Box>
+
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         {selectedBlockId && floorsForBlock.length > 0 && (
           <TextField
             select
@@ -275,7 +446,7 @@ const PreviousDefaulters = () => {
           variant="outlined"
           startIcon={<FileDownloadIcon />}
           onClick={handleExportCsv}
-          disabled={exporting}
+          disabled={exporting || !societyId}
         >
           {exporting ? 'Exporting...' : 'Export CSV'}
         </Button>
@@ -284,7 +455,7 @@ const PreviousDefaulters = () => {
           variant="outlined"
           startIcon={<PictureAsPdfIcon />}
           onClick={handleExportPdf}
-          disabled={exportingPdf}
+          disabled={exportingPdf || !societyId}
         >
           {exportingPdf ? 'Exporting...' : 'Download PDF'}
         </Button>

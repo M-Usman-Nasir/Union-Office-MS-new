@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import { runSyncForSocieties } from './defaulterController.js';
 import * as activity from '../services/activityService.js';
+import { recordUploadedFile } from '../services/fileMetadataService.js';
 import {
   getUiSocietyId,
   getUiResidentIdSync,
@@ -430,6 +431,18 @@ export const uploadReceipt = async (req, res) => {
       message: 'Receipt uploaded successfully',
       data: result.rows[0],
     });
+    recordUploadedFile({
+      module: 'maintenance_receipt',
+      ownerUserId: req.user?.id ?? null,
+      societyId: result.rows[0]?.society_apartment_id ?? null,
+      maintenanceId: result.rows[0]?.id ?? null,
+      storagePath: receiptPath,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      sizeBytes: req.file.size,
+    }).catch((metaErr) => {
+      console.error('Record uploaded file metadata (maintenance_receipt) failed:', metaErr?.message || metaErr);
+    });
   } catch (error) {
     console.error('Upload receipt error:', error);
     res.status(500).json({
@@ -699,6 +712,18 @@ export const submitPaymentProof = async (req, res) => {
       success: true,
       message: 'Payment proof submitted. It will be reviewed by the office.',
       data: createdRequest,
+    });
+    recordUploadedFile({
+      module: 'maintenance_payment_proof',
+      ownerUserId: userId ?? null,
+      societyId: maintenance.society_apartment_id ?? null,
+      maintenanceId: parseInt(id),
+      storagePath: createdRequest?.proof_path || `/uploads/maintenance-payment-proofs/${req.file.filename}`,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      sizeBytes: req.file.size,
+    }).catch((metaErr) => {
+      console.error('Record uploaded file metadata (maintenance_payment_proof) failed:', metaErr?.message || metaErr);
     });
     await activity.track(req, {
       eventType: 'maintenance.payment_proof_submit',

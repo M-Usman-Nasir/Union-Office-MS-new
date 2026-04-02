@@ -124,6 +124,29 @@ export const ensureSchemaPatches = async () => {
   } catch (e) {
     console.warn('⚠️  Schema patch (complaints feedback) skipped:', e.message);
   }
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS uploaded_files (
+        id SERIAL PRIMARY KEY,
+        module VARCHAR(100) NOT NULL,
+        owner_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+        society_apartment_id INTEGER NULL REFERENCES apartments(id) ON DELETE SET NULL,
+        maintenance_id INTEGER NULL REFERENCES maintenance(id) ON DELETE SET NULL,
+        storage_path TEXT NOT NULL,
+        original_name TEXT NULL,
+        mime_type VARCHAR(255) NULL,
+        size_bytes BIGINT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_module ON uploaded_files(module);
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_owner_user_id ON uploaded_files(owner_user_id);
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_maintenance_id ON uploaded_files(maintenance_id);
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_society_id ON uploaded_files(society_apartment_id);
+    `);
+    console.log('✅ Schema patch: uploaded_files');
+  } catch (e) {
+    console.warn('⚠️  Schema patch (uploaded_files) skipped:', e.message);
+  }
 };
 
 // Get all tables
